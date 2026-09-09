@@ -242,7 +242,10 @@ main.tsx
     │       ├── ControlBar
     │       │   ├── MicToggle            entra mutado; 1º clique dispara o prompt de permissão
     │       │   ├── ShareScreenButton    desabilitado + tooltip conforme §4
+    │       │   ├── DeviceSettingsButton abre o painel de dispositivos
     │       │   └── LeaveButton          room.disconnect() e volta para "/"
+    │       ├── DeviceSettings           painel: entrada e saída de áudio
+    │       │                            (sem câmera — ver §6.6)
     │       └── ToastStack               permissão negada, seletor cancelado, desempate perdido
     │
     └── "*"             NotFound         link de volta para "/"
@@ -326,6 +329,17 @@ Egress agregado do SFU com 20 pessoas: `≈ 58 Mbps` → **≈ 26 GB por hora de
 Em `h720fps15` (~1,5 Mbps) cai para ~15 GB/h; em `h720fps5`, bem menos.
 
 Esse número é a variável que decide se o plano free do LiveKit aguenta o uso real (§9).
+
+### 6.6 Escolha de dispositivo (emenda pós-implementação)
+
+`Room.switchActiveDevice(kind, deviceId)` guarda a preferência no `Room` mesmo sem track publicada, então a escolha de microfone funciona estando mutado: vale no momento em que o microfone for ligado. `RoomEvent.MediaDevicesChanged` refaz a lista quando alguém pluga ou tira um dispositivo.
+
+Dois limites do navegador, não do app:
+
+- **Rótulos vazios sem permissão.** O navegador esconde o nome dos dispositivos até haver permissão de microfone — proteção contra fingerprinting. Como o app entra mutado de propósito, esse é o estado normal na chegada. O painel oferece revelar os nomes em vez de pedir permissão por conta própria, que contrariaria a regra de entrar mutado.
+- **Saída de áudio só em Chromium.** `supportsAudioOutputSelection()` é falso em Firefox e Safari; nesses, a troca é pelo sistema operacional.
+
+**Não há escolha de dispositivo de vídeo** porque não há câmera: o `canPublishSources` do token nem permite publicar uma (§2.2). O vídeo da sala é a tela compartilhada, e quem escolhe janela ou monitor é o seletor do próprio navegador.
 
 ---
 

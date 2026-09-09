@@ -68,3 +68,27 @@ export function LeaveIcon(props: IconProps): JSX.Element {
     </Icon>
   );
 }
+
+export function SpeakerIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g>
+        <path d="M4 9.5h3.5L12 5.5v13L7.5 14.5H4z" />
+        <path d="M16 9.5a4 4 0 0 1 0 5M18.5 7a7.5 7.5 0 0 1 0 10" />
+      </g>
+    </Icon>
+  );
+}
+
+export function SlidersIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g>
+        <path d="M4 7h7M15 7h5M4 17h5M13 17h7M4 12h11M19 12h1" />
+        <circle cx="13" cy="7" r="2" />
+        <circle cx="11" cy="17" r="2" />
+        <circle cx="17" cy="12" r="2" />
+      </g>
+    </Icon>
+  );
+}

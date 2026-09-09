@@ -83,3 +83,16 @@
   font-size: 12px;
   color: var(--text-faint);
 }
+
+/* Estado "painel aberto": marca o botão sem roubar a ênfase do microfone. */
+.toggled {
+  background: rgba(var(--accent-rgb), 0.14);
+  border-color: rgba(var(--accent-rgb), 0.45);
+  color: var(--accent-soft);
+}
+
+.toggled:hover:not(:disabled) {
+  background: rgba(var(--accent-rgb), 0.2);
+  border-color: rgba(var(--accent-rgb), 0.6);
+  color: var(--accent-soft);
+}

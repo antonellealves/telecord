@@ -1,4 +1,4 @@
-import { LeaveIcon, MicIcon, MicOffIcon, ScreenIcon } from './icons';
+import { LeaveIcon, MicIcon, MicOffIcon, ScreenIcon, SlidersIcon } from './icons';
 import styles from './ControlBar.module.css';
 
 interface ControlBarProps {
@@ -10,6 +10,8 @@ interface ControlBarProps {
   onToggleScreenShare: () => void;
   onLeave: () => void;
   disabled: boolean;
+  isSettingsOpen: boolean;
+  onToggleSettings: () => void;
 }
 
 export function ControlBar({
@@ -21,6 +23,8 @@ export function ControlBar({
   onToggleScreenShare,
   onLeave,
   disabled,
+  isSettingsOpen,
+  onToggleSettings,
 }: ControlBarProps): JSX.Element {
   const shareBlocked = !isSharingScreen && shareDisabledReason !== null;
 
@@ -47,6 +51,20 @@ export function ControlBar({
       >
         <ScreenIcon />
         {isSharingScreen ? 'Parar de compartilhar' : 'Compartilhar tela'}
+      </button>
+
+      {/* Fica habilitado mesmo desconectado: escolher dispositivo enquanto a
+          sala reconecta é justamente quando isso costuma ser preciso. */}
+      <button
+        type="button"
+        className={`${styles.button} ${isSettingsOpen ? styles.toggled : ''}`}
+        onClick={onToggleSettings}
+        aria-expanded={isSettingsOpen}
+        aria-haspopup="dialog"
+        title="Escolher microfone e saída de áudio"
+      >
+        <SlidersIcon />
+        Dispositivos
       </button>
 
       <button type="button" className={`${styles.button} ${styles.danger}`} onClick={onLeave}>

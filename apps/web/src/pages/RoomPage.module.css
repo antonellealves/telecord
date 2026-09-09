@@ -49,6 +49,12 @@
   word-break: break-all;
 }
 
+/* Âncora do painel de dispositivos, que abre acima da barra. */
+.controls {
+  position: relative;
+  flex: none;
+}
+
 .main {
   --sidebar-width: 268px;
 

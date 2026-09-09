@@ -4,6 +4,7 @@ import { AmbientGradient } from '../components/AmbientGradient';
 import { AudioPlaybackGate } from '../components/AudioPlaybackGate';
 import { ConnectionBanner } from '../components/ConnectionBanner';
 import { ControlBar } from '../components/ControlBar';
+import { DeviceSettings } from '../components/DeviceSettings';
 import { ParticipantSidebar } from '../components/ParticipantSidebar';
 import { ScreenStage } from '../components/ScreenStage';
 import { ToastStack } from '../components/ToastStack';
@@ -30,6 +31,8 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
   const { toasts, push, dismiss } = useToasts();
   const share = useScreenShareLock(push);
   const [isMicrophoneBusy, setIsMicrophoneBusy] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const controlsRef = useRef<HTMLDivElement | null>(null);
 
   const mainRef = useRef<HTMLDivElement | null>(null);
   const sidebar = useResizableSidebar(mainRef);
@@ -90,16 +93,28 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
           <ScreenStage entry={share.active} />
         </div>
 
-        <ControlBar
-          isMicrophoneEnabled={isMicrophoneEnabled}
-          isMicrophoneBusy={isMicrophoneBusy}
-          onToggleMicrophone={toggleMicrophone}
-          isSharingScreen={share.isLocalOwner}
-          shareDisabledReason={share.disabledReason}
-          onToggleScreenShare={share.isLocalOwner ? share.stop : share.start}
-          onLeave={leave}
-          disabled={status !== 'connected'}
-        />
+        <div className={styles.controls} ref={controlsRef}>
+          {isSettingsOpen ? (
+            <DeviceSettings
+              containerRef={controlsRef}
+              onClose={() => setIsSettingsOpen(false)}
+              notify={push}
+            />
+          ) : null}
+
+          <ControlBar
+            isMicrophoneEnabled={isMicrophoneEnabled}
+            isMicrophoneBusy={isMicrophoneBusy}
+            onToggleMicrophone={toggleMicrophone}
+            isSharingScreen={share.isLocalOwner}
+            shareDisabledReason={share.disabledReason}
+            onToggleScreenShare={share.isLocalOwner ? share.stop : share.start}
+            onLeave={leave}
+            disabled={status !== 'connected'}
+            isSettingsOpen={isSettingsOpen}
+            onToggleSettings={() => setIsSettingsOpen((open) => !open)}
+          />
+        </div>
 
         <ToastStack toasts={toasts} onDismiss={dismiss} />
       </div>
