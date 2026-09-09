@@ -29,6 +29,11 @@
      meio, com faixa morta em cima e embaixo. */
   grid-auto-rows: minmax(180px, 1fr);
   align-content: stretch;
+  /* .stage centraliza o conteúdo para o estado vazio; na grade isso deixava os
+     quadros boiando no meio da linha em vez de ocupá-la. */
+  align-items: stretch;
+  justify-items: stretch;
+  justify-content: stretch;
   gap: 8px;
   padding: 8px;
   background: rgba(8, 10, 14, 0.32);
@@ -55,12 +60,47 @@
   border-radius: 0;
 }
 
+/*
+ * Recurso de reserva para quando a API de tela cheia não existe ou é recusada
+ * (iOS não implementa requestFullscreen em div). Ocupa a janela inteira por
+ * CSS — o efeito é o mesmo para quem está olhando.
+ */
+.tileMaximized {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  border: none;
+  border-radius: 0;
+}
+
+/* Recorta o que passa do quadro quando há zoom, e é quem escuta roda e
+   arrasto. `touch-action: none` impede o navegador de sequestrar o gesto
+   para rolar a página no toque. */
+.viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.surface {
+  width: 100%;
+  height: 100%;
+  transform-origin: center center;
+  will-change: transform;
+}
+
 .video {
   width: 100%;
   height: 100%;
   object-fit: contain;
   background: #000;
   display: block;
+  /* O arrasto do zoom é tratado no viewport; sem isto o navegador tenta
+     arrastar o vídeo como se fosse uma imagem. */
+  -webkit-user-drag: none;
+  user-select: none;
+  pointer-events: none;
 }
 
 .label {
@@ -95,39 +135,73 @@
   box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.9);
 }
 
-.expand {
+/*
+ * Barra de ferramentas do quadro.
+ *
+ * Fica SEMPRE visível. A versão anterior só aparecia no hover, e o resultado
+ * prático era um botão que ninguém achava — parecia que tela cheia não
+ * existia. Em repouso ela é discreta; no hover do quadro ganha contraste.
+ */
+.toolbar {
   position: absolute;
   right: 10px;
   top: 10px;
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--border);
-  background: rgba(8, 10, 14, 0.7);
-  color: var(--text-dim);
+  background: rgba(8, 10, 14, 0.72);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  opacity: 0;
-  transition: opacity 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+  opacity: 0.55;
+  transition: opacity 0.18s ease, border-color 0.18s ease;
 }
 
-/* Aparece no hover, mas nunca some para quem navega por teclado ou toque. */
-.tile:hover .expand,
-.expand:focus-visible {
+.tile:hover .toolbar,
+.toolbar:focus-within {
   opacity: 1;
+  border-color: var(--border-strong);
 }
 
-@media (hover: none) {
-  .expand {
-    opacity: 1;
-  }
+.tool {
+  display: grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-dim);
+  font-size: 15px;
+  line-height: 1;
+  transition: background 0.16s ease, color 0.16s ease;
 }
 
-.expand:hover {
-  border-color: rgba(var(--accent-rgb), 0.6);
+.tool:hover:not(:disabled) {
+  background: rgba(var(--accent-rgb), 0.18);
   color: var(--accent-soft);
+}
+
+.tool:disabled {
+  opacity: 0.35;
+}
+
+/* O nível de zoom é também o botão de voltar ao tamanho da tela. */
+.level {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  min-width: 46px;
+}
+
+.divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  background: var(--border-strong);
 }
 
 /* ---- estado vazio --------------------------------------------------- */

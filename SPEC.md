@@ -268,7 +268,8 @@ main.tsx
     │       │   ├── ParticipantSidebar   à ESQUERDA, largura arrastável (208–440 px)
     │       │   │   └── ParticipantRow[] nome, anel de "falando", ícone de mutado, badge "apresentando"
     │       │   ├── Resizer              divisória com pointer capture; setas e duplo clique também ajustam
-    │       │   ├── ScreenStage          <VideoTrack> da tela ativa + nome de quem apresenta
+    │       │   ├── ScreenStage          grade de telas; cada quadro tem barra
+    │       │   │                        com zoom (roda/arrasto) e tela cheia
     │       │   └── EmptyStage           estado vazio: "Ninguém está compartilhando"
     │       ├── ControlBar
     │       │   ├── MicToggle            entra mutado; 1º clique dispara o prompt de permissão
@@ -397,6 +398,10 @@ Nada é persistido: o histórico vive em memória, some com a sala, e quem entra
 ### 6.8 Áudio da tela e retorno
 
 `systemAudio: 'exclude'` faz o navegador oferecer só o áudio da aba ou janela escolhida — sem isso, notificação e qualquer outro programa do sistema entram junto na sala.
+
+**Zoom e tela cheia por quadro.** A roda amplia mantendo fixo o ponto sob o cursor — zoom que sempre puxa para o centro faz a pessoa perseguir o que queria ver. O deslocamento é travado dentro do conteúdo, senão dá para arrastar a imagem para fora e ficar olhando o vazio sem saber como voltar. Escala e deslocamento vivem em refs e são escritos direto no DOM: o arrasto atualiza a cada movimento do ponteiro, e re-renderizar nesse ritmo é desperdício.
+
+A tela cheia tenta a API do navegador e **cai para um modo maximizado por CSS** quando ela não existe ou é recusada (iOS não implementa `requestFullscreen` em div). A versão anterior engolia a recusa em silêncio, e o botão parecia morto. A barra também deixou de ser `opacity: 0` até o hover: era invisível o bastante para dar a impressão de que o recurso não existia.
 
 **Nenhum elemento de vídeo do palco toca áudio.** Todos são `muted`, e o áudio da tela sai exclusivamente pelo `RoomAudioRenderer`, que só renderiza tracks remotas. É isso que garante que quem compartilha não ouve o próprio áudio de volta, e que quem assiste não ouve dobrado — com várias telas simultâneas, um único elemento não-mudo bastaria para criar as duas coisas.
 
