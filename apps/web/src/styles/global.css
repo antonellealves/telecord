@@ -1,16 +1,38 @@
 :root {
-  --bg: #0d1117;
-  --surface: #161b22;
-  --surface-2: #1c2129;
-  --border: #2a313c;
-  --text: #e6edf3;
-  --muted: #8b949e;
-  --accent: #4f8cff;
-  --accent-strong: #2f6fe0;
-  --danger: #f85149;
-  --speaking: #3fb950;
-  --radius: 10px;
-  --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* ---- base soft dark -------------------------------------------------
+     Nada de preto puro: um carvão levemente frio dá profundidade e evita o
+     contraste duro que faz gradiente sutil virar mancha. */
+  --bg: #0a0b0e;
+  --bg-deep: #06070a;
+  --bg-raised: #101218;
+
+  /* Superfícies são translúcidas de propósito: deixam o gradiente do fundo
+     atravessar, que é o que dá coesão à composição inteira. */
+  --surface: rgba(255, 255, 255, 0.028);
+  --surface-hover: rgba(255, 255, 255, 0.055);
+  --border: rgba(255, 255, 255, 0.075);
+  --border-strong: rgba(255, 255, 255, 0.15);
+
+  --text: #edeff3;
+  --text-dim: #a4abb8;
+  --text-faint: #6a7180;
+
+  --accent: #5eead4;
+  --accent-deep: #2dd4bf;
+  --accent-ink: #04211c;
+  --accent-2: #8b93f8;
+  --danger: #f87171;
+  --warn: #fbbf24;
+
+  --radius: 14px;
+  --radius-sm: 10px;
+  --radius-pill: 999px;
+
+  --font-sans: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --shadow-soft: 0 24px 70px -30px rgba(0, 0, 0, 0.9);
+  --shadow-lift: 0 1px 0 rgba(255, 255, 255, 0.05) inset;
 
   color-scheme: dark;
 }
@@ -29,16 +51,30 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font);
+  font-family: var(--font-sans);
   font-size: 15px;
-  line-height: 1.5;
+  line-height: 1.55;
+  letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Rótulo monoespaçado em caixa alta: ancora a hierarquia sem pedir peso
+   visual, e é o que dá o ar técnico do layout. */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent);
 }
 
 button {
   font: inherit;
   color: inherit;
   cursor: pointer;
+  letter-spacing: -0.005em;
 }
 
 button:disabled {
@@ -55,12 +91,21 @@ a {
 
 :focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: rgba(94, 234, 212, 0.25);
+  color: #fff;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }

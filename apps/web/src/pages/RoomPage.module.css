@@ -3,11 +3,18 @@
 }
 
 .shell {
+  position: relative;
   height: 100%;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 14px;
+  padding: 16px;
+  /* Halo estático e discreto: na sala o conteúdo é a tela compartilhada,
+     então o fundo apenas ancora a composição — não compete com ela. */
+  background:
+    radial-gradient(90% 55% at 50% -10%, rgba(45, 212, 191, 0.05), transparent 68%),
+    radial-gradient(70% 60% at 100% 110%, rgba(139, 147, 248, 0.045), transparent 70%),
+    var(--bg);
 }
 
 .header {
@@ -16,20 +23,23 @@
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+  padding: 2px 4px;
 }
 
-.eyebrow {
-  margin: 0;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
+.identity {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
 }
 
 .title {
   margin: 0;
-  font-size: 18px;
-  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text);
   word-break: break-all;
 }
 
@@ -40,13 +50,17 @@
   gap: 12px;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 780px) {
+  .shell {
+    padding: 12px;
+  }
+
   .main {
     flex-direction: column;
   }
 
   .main > aside {
     width: 100%;
-    max-height: 190px;
+    max-height: 176px;
   }
 }

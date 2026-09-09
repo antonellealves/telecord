@@ -2,39 +2,60 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
-  color: var(--muted);
+  padding: 5px 12px 5px 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
 }
 
 .dot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--muted);
+  background: var(--text-faint);
   flex: none;
 }
 
+.connected {
+  color: var(--text-dim);
+  border-color: rgba(94, 234, 212, 0.22);
+}
+
 .connected .dot {
-  background: var(--speaking);
+  background: var(--accent);
+  box-shadow: 0 0 10px rgba(94, 234, 212, 0.9);
+}
+
+.connecting,
+.reconnecting {
+  color: var(--text);
+  border-color: rgba(251, 191, 36, 0.3);
 }
 
 .connecting .dot,
 .reconnecting .dot {
-  background: #d29922;
-  animation: pulse 1.1s ease-in-out infinite;
+  background: var(--warn);
+  box-shadow: 0 0 10px rgba(251, 191, 36, 0.8);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.disconnected {
+  color: var(--text);
+  border-color: rgba(248, 113, 113, 0.35);
 }
 
 .disconnected .dot {
   background: var(--danger);
-}
-
-.reconnecting,
-.disconnected {
-  color: var(--text);
+  box-shadow: 0 0 10px rgba(248, 113, 113, 0.8);
 }
 
 @keyframes pulse {
   50% {
-    opacity: 0.25;
+    opacity: 0.2;
   }
 }

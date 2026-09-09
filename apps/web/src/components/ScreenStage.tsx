@@ -32,6 +32,7 @@ export function ScreenStage({ entry }: ScreenStageProps): JSX.Element {
     return (
       <section className={styles.stage} aria-label="Tela compartilhada">
         <div className={styles.empty}>
+          <div className={styles.frame} aria-hidden="true" />
           <p className={styles.emptyTitle}>Ninguém está compartilhando a tela</p>
           <p className={styles.emptyHint}>
             Use o botão “Compartilhar tela” na barra abaixo. Só uma pessoa por vez.
@@ -45,7 +46,8 @@ export function ScreenStage({ entry }: ScreenStageProps): JSX.Element {
     <section className={styles.stage} aria-label="Tela compartilhada">
       <video ref={videoRef} className={styles.video} autoPlay playsInline muted />
       <span className={styles.label}>
-        {entry.owner.isLocal ? 'Você está compartilhando' : `${entry.owner.displayName} está compartilhando`}
+        <span className={styles.live} aria-hidden="true" />
+        {entry.owner.isLocal ? 'você está compartilhando' : `${entry.owner.displayName} está compartilhando`}
       </span>
     </section>
   );

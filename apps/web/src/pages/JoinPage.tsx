@@ -8,9 +8,12 @@ import {
   validateDisplayName,
   validateRoomId,
 } from '@telecord/shared';
+import { AmbientGradient } from '../components/AmbientGradient';
 import { useDisplayName } from '../hooks/useDisplayName';
 import { generateRoomId } from '../lib/media';
 import styles from './JoinPage.module.css';
+
+const NOTES = ['entra mutado', 'uma tela por vez', 'sem gravação'];
 
 export function JoinPage(): JSX.Element {
   const navigate = useNavigate();
@@ -46,59 +49,80 @@ export function JoinPage(): JSX.Element {
   }
 
   return (
-    <div className={styles.wrapper}>
-      <form className={styles.card} onSubmit={handleSubmit}>
-        <h1 className={styles.title}>Telecord</h1>
-        <p className={styles.subtitle}>
-          Sala de voz com compartilhamento de tela. Sem cadastro, sem gravação.
-        </p>
+    <>
+      <AmbientGradient />
 
-        {error !== null ? (
-          <p className={styles.error} role="alert">
-            {error}
-          </p>
-        ) : null}
+      <div className={styles.page}>
+        <div className={styles.shell}>
+          <header className={styles.hero}>
+            <p className="eyebrow">Telecord — sala efêmera</p>
+            <h1 className={styles.title}>
+              Entre, fale e
+              <span className={styles.titleAccent}>mostre a tela.</span>
+            </h1>
+            <p className={styles.lead}>
+              Uma pessoa compartilha a tela, até 20 ouvem e falam. Sem cadastro, sem instalar nada
+              — e a sala deixa de existir quando o último sai.
+            </p>
+          </header>
 
-        <label className={styles.field}>
-          <span className={styles.label}>Nome da sala</span>
-          <input
-            className={styles.input}
-            value={room}
-            onChange={(event) => setRoom(event.target.value)}
-            placeholder="reuniao-do-time"
-            maxLength={ROOM_ID_MAX_LENGTH}
-            autoComplete="off"
-            spellCheck={false}
-          />
-          <p className={styles.hint}>
-            {previewSlug === ''
-              ? 'Deixe em branco para criar uma sala nova com nome aleatório.'
-              : `Você vai entrar em /sala/${previewSlug}`}
-          </p>
-        </label>
+          <form className={styles.card} onSubmit={handleSubmit}>
+            {error !== null ? (
+              <p className={styles.error} role="alert">
+                {error}
+              </p>
+            ) : null}
 
-        <label className={styles.field}>
-          <span className={styles.label}>Seu nome</span>
-          <input
-            className={styles.input}
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Como as pessoas vão te ver"
-            maxLength={DISPLAY_NAME_MAX_LENGTH}
-            autoComplete="nickname"
-          />
-          <p className={styles.hint}>Fica salvo neste navegador para a próxima vez.</p>
-        </label>
+            <label className={styles.field}>
+              <span className={styles.label}>Nome da sala</span>
+              <input
+                className={styles.input}
+                value={room}
+                onChange={(event) => setRoom(event.target.value)}
+                placeholder="reuniao-do-time"
+                maxLength={ROOM_ID_MAX_LENGTH}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <p className={styles.hint}>
+                {previewSlug === '' ? (
+                  'Em branco cria uma sala nova com nome aleatório.'
+                ) : (
+                  <>
+                    Você entra em <span className={styles.hintSlug}>/sala/{previewSlug}</span>
+                  </>
+                )}
+              </p>
+            </label>
 
-        <button type="submit" className={styles.submit}>
-          Entrar
-        </button>
+            <label className={styles.field}>
+              <span className={styles.label}>Seu nome</span>
+              <input
+                className={styles.input}
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Como as pessoas vão te ver"
+                maxLength={DISPLAY_NAME_MAX_LENGTH}
+                autoComplete="nickname"
+              />
+              <p className={styles.hint}>Fica salvo neste navegador para a próxima vez.</p>
+            </label>
 
-        <p className={styles.footnote}>
-          Você entra com o microfone mutado. Uma pessoa compartilha a tela por vez, e a sala deixa
-          de existir quando todo mundo sai.
-        </p>
-      </form>
-    </div>
+            <button type="submit" className={styles.submit}>
+              Entrar na sala
+            </button>
+          </form>
+
+          <ul className={styles.notes}>
+            {NOTES.map((note) => (
+              <li key={note} className={styles.note}>
+                <span className={styles.dot} aria-hidden="true" />
+                {note}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </>
   );
 }

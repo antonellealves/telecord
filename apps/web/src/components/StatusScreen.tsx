@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { AmbientGradient } from './AmbientGradient';
 import styles from './StatusScreen.module.css';
 
 interface StatusScreenProps {
@@ -18,13 +19,16 @@ export function StatusScreen({
   children,
 }: StatusScreenProps): JSX.Element {
   return (
-    <div className={styles.wrapper}>
-      <div className={`${styles.card} ${variant === 'error' ? styles.error : ''}`} role="status">
-        {loading ? <div className={styles.spinner} aria-hidden="true" /> : null}
-        <h1 className={styles.title}>{title}</h1>
-        {message !== undefined ? <p className={styles.message}>{message}</p> : null}
-        {children !== undefined ? <div className={styles.actions}>{children}</div> : null}
+    <>
+      <AmbientGradient />
+      <div className={styles.wrapper}>
+        <div className={`${styles.card} ${variant === 'error' ? styles.error : ''}`} role="status">
+          {loading ? <div className={styles.spinner} aria-hidden="true" /> : null}
+          <h1 className={styles.title}>{title}</h1>
+          {message !== undefined ? <p className={styles.message}>{message}</p> : null}
+          {children !== undefined ? <div className={styles.actions}>{children}</div> : null}
+        </div>
       </div>
-    </div>
+    </>
   );
 }

@@ -11,7 +11,9 @@ function initials(name: string): string {
 export function ParticipantSidebar({ participants }: { participants: ParticipantView[] }): JSX.Element {
   return (
     <aside className={styles.sidebar} aria-label="Participantes">
-      <h2 className={styles.heading}>Participantes ({participants.length})</h2>
+      <h2 className={styles.heading}>
+        Participantes <span className={styles.count}>{participants.length}</span>
+      </h2>
       <ul className={styles.list}>
         {participants.map((participant) => (
           <li
