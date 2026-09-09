@@ -1,0 +1,5 @@
+# Normaliza fim de linha: o repo guarda LF, independente de quem commita.
+# A Vercel builda em Linux; CRLF vazando para o repo já quebrou coisa demais.
+* text=auto eol=lf
+
+pnpm-lock.yaml linguist-generated=true

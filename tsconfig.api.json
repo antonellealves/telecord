@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@telecord/shared": ["./packages/shared/src/index.ts"]
+    },
+    "noEmit": true
+  },
+  "include": ["api/**/*.ts", "scripts/**/*.mjs"]
+}

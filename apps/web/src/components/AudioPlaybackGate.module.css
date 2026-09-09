@@ -1,0 +1,21 @@
+.gate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px solid #d29922;
+  background: rgba(210, 153, 34, 0.12);
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.button {
+  border: 1px solid #d29922;
+  background: #d29922;
+  color: #1c1200;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 6px 14px;
+}

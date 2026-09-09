@@ -1,0 +1,24 @@
+{
+  "name": "telecord",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm --filter @telecord/shared build && pnpm --filter web build && node scripts/check-bundle.mjs",
+    "typecheck": "pnpm --recursive typecheck && tsc --project tsconfig.api.json --noEmit",
+    "lint": "pnpm run typecheck"
+  },
+  "dependencies": {
+    "@telecord/shared": "workspace:*",
+    "livekit-server-sdk": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}

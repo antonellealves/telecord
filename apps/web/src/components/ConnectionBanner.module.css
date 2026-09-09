@@ -1,0 +1,40 @@
+.banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex: none;
+}
+
+.connected .dot {
+  background: var(--speaking);
+}
+
+.connecting .dot,
+.reconnecting .dot {
+  background: #d29922;
+  animation: pulse 1.1s ease-in-out infinite;
+}
+
+.disconnected .dot {
+  background: var(--danger);
+}
+
+.reconnecting,
+.disconnected {
+  color: var(--text);
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.25;
+  }
+}

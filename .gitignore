@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.vercel/
+*.tsbuildinfo
+
+# Segredos: só o .env.example é versionado.
+.env
+.env.*
+!.env.example
+
+.DS_Store
+*.log
