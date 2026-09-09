@@ -1,6 +1,8 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { useMediaDevices } from '../hooks/useMediaDevices';
+import { useMicrophoneTest } from '../hooks/useMicrophoneTest';
 import type { ToastKind } from '../hooks/useToasts';
+import type { TalkMode } from '../lib/storage';
 import { MicIcon, ScreenIcon, SpeakerIcon } from './icons';
 import styles from './DeviceSettings.module.css';
 
@@ -11,14 +13,32 @@ interface DeviceSettingsProps {
    * reabriria pelo clique no botão, e o painel pareceria travado aberto.
    */
   containerRef: RefObject<HTMLElement | null>;
+  talkMode: TalkMode;
+  onChangeTalkMode: (mode: TalkMode) => void;
   onClose: () => void;
   notify: (kind: ToastKind, message: string) => void;
 }
 
-/** Painel de dispositivos de áudio, ancorado acima da barra de controle. */
-export function DeviceSettings({ containerRef, onClose, notify }: DeviceSettingsProps): JSX.Element {
+const TEST_LABEL: Record<'idle' | 'recording' | 'playing', string> = {
+  idle: 'Testar',
+  recording: 'Gravando…',
+  playing: 'Tocando…',
+};
+
+/** Painel de áudio: modo de voz, dispositivos e teste de microfone. */
+export function DeviceSettings({
+  containerRef,
+  talkMode,
+  onChangeTalkMode,
+  onClose,
+  notify,
+}: DeviceSettingsProps): JSX.Element {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const devices = useMediaDevices((message) => notify('error', message));
+  const test = useMicrophoneTest(
+    () => devices.activeAudioOutput,
+    (message) => notify('error', message),
+  );
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent): void => {
@@ -44,12 +64,44 @@ export function DeviceSettings({ containerRef, onClose, notify }: DeviceSettings
   }, [onClose, containerRef]);
 
   return (
-    <div className={styles.panel} ref={panelRef} role="dialog" aria-label="Dispositivos de áudio">
+    <div className={styles.panel} ref={panelRef} role="dialog" aria-label="Áudio">
       <div className={styles.header}>
-        <h2 className={styles.heading}>Dispositivos</h2>
+        <h2 className={styles.heading}>Áudio</h2>
         <button type="button" className={styles.close} onClick={onClose} aria-label="Fechar">
           ×
         </button>
+      </div>
+
+      <div className={styles.field}>
+        <span className={styles.label}>
+          <MicIcon className={styles.icon} />
+          Modo de voz
+        </span>
+        <div className={styles.segmented} role="radiogroup" aria-label="Modo de voz">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={talkMode === 'open'}
+            className={`${styles.segment} ${talkMode === 'open' ? styles.segmentOn : ''}`}
+            onClick={() => onChangeTalkMode('open')}
+          >
+            Voz aberta
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={talkMode === 'push'}
+            className={`${styles.segment} ${talkMode === 'push' ? styles.segmentOn : ''}`}
+            onClick={() => onChangeTalkMode('push')}
+          >
+            Aperte para falar
+          </button>
+        </div>
+        <span className={styles.hint}>
+          {talkMode === 'open'
+            ? 'O microfone fica ligado até você desligar.'
+            : 'Segure a barra de espaço, ou o botão da barra, para transmitir.'}
+        </span>
       </div>
 
       {devices.labelsHidden ? (
@@ -61,7 +113,7 @@ export function DeviceSettings({ containerRef, onClose, notify }: DeviceSettings
         </p>
       ) : null}
 
-      <label className={styles.field}>
+      <div className={styles.field}>
         <span className={styles.label}>
           <MicIcon className={styles.icon} />
           Microfone
@@ -71,6 +123,7 @@ export function DeviceSettings({ containerRef, onClose, notify }: DeviceSettings
           value={devices.activeAudioInput}
           disabled={devices.isSwitching || devices.audioInputs.length === 0}
           onChange={(event) => devices.selectAudioInput(event.target.value)}
+          aria-label="Microfone"
         >
           {devices.audioInputs.length === 0 ? (
             <option value="default">Nenhum microfone encontrado</option>
@@ -82,10 +135,32 @@ export function DeviceSettings({ containerRef, onClose, notify }: DeviceSettings
             ))
           )}
         </select>
+
+        {test.supported ? (
+          <div className={styles.testRow}>
+            <button
+              type="button"
+              className={`${styles.testButton} ${test.state !== 'idle' ? styles.testButtonOn : ''}`}
+              onClick={test.state === 'idle' ? test.start : test.cancel}
+            >
+              {test.state === 'recording'
+                ? `${TEST_LABEL.recording} ${test.secondsLeft}s`
+                : TEST_LABEL[test.state]}
+            </button>
+            <div className={styles.meter} ref={test.meterRef} aria-hidden="true">
+              <div className={styles.meterFill} />
+            </div>
+          </div>
+        ) : null}
+
         <span className={styles.hint}>
-          Dá para escolher estando mutado: a troca vale quando o microfone for ligado.
+          {test.state === 'recording'
+            ? 'Fale normalmente — a barra mostra o que está entrando.'
+            : test.state === 'playing'
+              ? 'Tocando a gravação pela saída escolhida abaixo.'
+              : 'O teste grava alguns segundos e toca de volta, sem abrir o microfone da sala.'}
         </span>
-      </label>
+      </div>
 
       <label className={styles.field}>
         <span className={styles.label}>

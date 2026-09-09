@@ -12,8 +12,8 @@ import { useParticipantViews } from '../hooks/useParticipantViews';
 import { useResizableSidebar } from '../hooks/useResizableSidebar';
 import { useRoomConnectionStatus } from '../hooks/useRoomConnection';
 import { useScreenShareLock } from '../hooks/useScreenShareLock';
+import { useTalkControls } from '../hooks/useTalkControls';
 import { useToasts } from '../hooks/useToasts';
-import { describeMicrophoneError } from '../lib/errors';
 import styles from './RoomPage.module.css';
 
 interface RoomShellProps {
@@ -30,7 +30,7 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
   const participants = useParticipantViews();
   const { toasts, push, dismiss } = useToasts();
   const share = useScreenShareLock(push);
-  const [isMicrophoneBusy, setIsMicrophoneBusy] = useState(false);
+  const talk = useTalkControls((message) => push('error', message));
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const controlsRef = useRef<HTMLDivElement | null>(null);
 
@@ -39,20 +39,6 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
 
   const local = participants.find((participant) => participant.isLocal) ?? null;
   const isMicrophoneEnabled = local?.isMicrophoneEnabled ?? false;
-
-  const toggleMicrophone = useCallback(() => {
-    if (isMicrophoneBusy) {
-      return;
-    }
-    setIsMicrophoneBusy(true);
-    const next = !room.localParticipant.isMicrophoneEnabled;
-    void room.localParticipant
-      .setMicrophoneEnabled(next)
-      .catch((error: unknown) => {
-        push('error', describeMicrophoneError(error));
-      })
-      .finally(() => setIsMicrophoneBusy(false));
-  }, [room, isMicrophoneBusy, push]);
 
   const leave = useCallback(() => {
     onLeaveIntent();
@@ -97,15 +83,20 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
           {isSettingsOpen ? (
             <DeviceSettings
               containerRef={controlsRef}
+              talkMode={talk.mode}
+              onChangeTalkMode={talk.setMode}
               onClose={() => setIsSettingsOpen(false)}
               notify={push}
             />
           ) : null}
 
           <ControlBar
+            talkMode={talk.mode}
             isMicrophoneEnabled={isMicrophoneEnabled}
-            isMicrophoneBusy={isMicrophoneBusy}
-            onToggleMicrophone={toggleMicrophone}
+            isMicrophoneBusy={talk.isBusy}
+            onToggleMicrophone={talk.toggleOpenMic}
+            onPressToTalk={talk.pressToTalk}
+            onReleaseToTalk={talk.releaseToTalk}
             isSharingScreen={share.isLocalOwner}
             shareDisabledReason={share.disabledReason}
             onToggleScreenShare={share.isLocalOwner ? share.stop : share.start}

@@ -176,7 +176,7 @@ Regras:
 
 - **Em `Reconnected`, re-derivar tudo do objeto `room`**, sem confiar em deltas: durante a reconexão eventos se perdem.
 - **A sala nasce no primeiro join e morre sozinha.** Nenhum código nosso cria ou destrói sala; quem faz isso é o LiveKit, com o `emptyTimeout` configurado no projeto do Cloud. Se todos saem, a sala deixa de existir; a URL continua válida e recria a sala no próximo join.
-- **`localStorage` guarda apenas `telecord.displayName`.** Nada de sala, token ou participantes.
+- **`localStorage` guarda só preferências do usuário**: `telecord.displayName` e `telecord.talkMode`. Nada de sala, token ou participantes — nenhum estado que o SFU seja dono.
 - Reload da página = nova identity, novo token, participante novo do ponto de vista do SFU.
 
 ---
@@ -244,7 +244,10 @@ main.tsx
     │       │   ├── ShareScreenButton    desabilitado + tooltip conforme §4
     │       │   ├── DeviceSettingsButton abre o painel de dispositivos
     │       │   └── LeaveButton          room.disconnect() e volta para "/"
-    │       ├── DeviceSettings           painel: entrada e saída de áudio
+    │       ├── DeviceSettings           painel de áudio:
+    │       │   ├── modo de voz          aberta | aperte para falar
+    │       │   ├── entrada e saída       seleção de dispositivo
+    │       │   └── teste de microfone    grava e toca de volta, com medidor
     │       │                            (sem câmera — ver §6.6)
     │       └── ToastStack               permissão negada, seletor cancelado, desempate perdido
     │
@@ -330,7 +333,7 @@ Em `h720fps15` (~1,5 Mbps) cai para ~15 GB/h; em `h720fps5`, bem menos.
 
 Esse número é a variável que decide se o plano free do LiveKit aguenta o uso real (§9).
 
-### 6.6 Escolha de dispositivo (emenda pós-implementação)
+### 6.6 Dispositivos, modo de voz e teste (emenda pós-implementação)
 
 `Room.switchActiveDevice(kind, deviceId)` guarda a preferência no `Room` mesmo sem track publicada, então a escolha de microfone funciona estando mutado: vale no momento em que o microfone for ligado. `RoomEvent.MediaDevicesChanged` refaz a lista quando alguém pluga ou tira um dispositivo.
 
@@ -340,6 +343,10 @@ Dois limites do navegador, não do app:
 - **Saída de áudio só em Chromium.** `supportsAudioOutputSelection()` é falso em Firefox e Safari; nesses, a troca é pelo sistema operacional.
 
 **Não há escolha de dispositivo de vídeo** porque não há câmera: o `canPublishSources` do token nem permite publicar uma (§2.2). O vídeo da sala é a tela compartilhada, e quem escolhe janela ou monitor é o seletor do próprio navegador.
+
+**Modo de voz.** Além da voz aberta, há aperte-para-falar (barra de espaço ou o botão da barra). `setMicrophoneEnabled` é assíncrono e a tecla pode ser solta durante a chamada, então o cliente guarda o estado *desejado* e reconcilia ao fim de cada troca — uma chamada por evento deixaria o microfone aberto sempre que o "liga" resolvesse depois do "desliga". Perder o foco da janela corta a transmissão: alt-tab com a tecla apertada nunca gera `keyup`.
+
+**Teste de microfone.** Grava alguns segundos e toca de volta, em vez de monitorar ao vivo. Monitoração ao vivo em quem está de caixa de som vira microfonia imediata; gravar e reproduzir é o único jeito de "ouvir você mesmo" sem exigir fone. A reprodução usa `setSinkId` quando disponível, então o mesmo teste cobre a saída escolhida. O teste usa `getUserMedia` próprio e **não** publica nada na sala.
 
 ---
 

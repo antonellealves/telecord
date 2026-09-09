@@ -19,3 +19,24 @@ export function writeStoredDisplayName(value: string): void {
     // Storage indisponível: o nome vale só para esta aba. Não é erro fatal.
   }
 }
+
+/** Voz aberta ou "aperte para falar". */
+export type TalkMode = 'open' | 'push';
+
+const TALK_MODE_KEY = 'telecord.talkMode';
+
+export function readTalkMode(): TalkMode {
+  try {
+    return window.localStorage.getItem(TALK_MODE_KEY) === 'push' ? 'push' : 'open';
+  } catch {
+    return 'open';
+  }
+}
+
+export function writeTalkMode(mode: TalkMode): void {
+  try {
+    window.localStorage.setItem(TALK_MODE_KEY, mode);
+  } catch {
+    // Storage indisponível: o modo vale só para esta aba.
+  }
+}
