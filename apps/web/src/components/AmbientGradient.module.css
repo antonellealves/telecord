@@ -1,19 +1,17 @@
 /*
- * Luz ancorada no centro inferior, em camadas:
- *   bed → grid → bloom → halo → core → grain → vignette
+ * Fundo em campo de cor, não em foco de luz.
  *
- * A cor é dividida entre as camadas, não misturada dentro de cada uma: o
- * núcleo é azul quase branco, o halo faz a travessia azul→roxo, e o campo
- * largo é roxo. Assim os dois extremos ficam legíveis como cores, em vez de
- * derreterem num tom médio.
+ * A regra que governa este arquivo: nenhuma camada pode ter borda dentro da
+ * viewport. Círculo com blend `screen` sobre fundo escuro é lido como disco —
+ * é exatamente a aparência de lanterna. Por isso toda âncora fica FORA da tela
+ * (em 120%, -20%) e toda extensão é maior que a viewport: o olho só encontra
+ * transição, nunca contorno.
  *
- * `--glow` (0..1) e `--sway` (-1..1) vêm do ponteiro. Cada camada reage com um
- * coeficiente diferente: o núcleo abre e fecha mais, o campo largo quase não
- * muda — é isso que faz a luz ganhar corpo em vez de piscar inteira junto.
+ * A segunda regra: o degradê é o próprio fundo. Não existe "preto por baixo" —
+ * a cor mais escura da composição já é roxo, e a mais clara já é azul. Sem
+ * isso, qualquer brilho aplicado por cima volta a se destacar como mancha.
  *
- * A queda de cada degradê é deliberadamente RASA (muito peso na faixa média)
- * em vez de gaussiana. Queda rápida concentra tudo num ponto quente e deixa o
- * resto da tela morto; rasa espalha a luz por quase toda a área.
+ * Camadas: bed → tint → sheen → grid → grain
  */
 
 .root {
@@ -27,168 +25,110 @@
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
-  /* Isola o blending: as camadas somam luz entre si, nunca com o conteúdo. */
-  isolation: isolate;
 }
 
 .subtle {
-  --strength: 0.82;
+  --strength: 0.72;
 }
 
-/* Base estática — sustenta a composição antes de o ponteiro existir, já com
-   os dois extremos: azul na base, roxo subindo pelos lados. */
+/*
+ * O campo. Roxo escuro em cima, azul claro embaixo, atravessando a tela
+ * inteira. É esta camada que responde por "preencher a tela toda".
+ */
 .bed {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(140% 78% at 50% 114%, rgba(var(--accent-rgb), 0.19), transparent 76%),
-    radial-gradient(95% 85% at 6% 30%, rgba(var(--accent-2-rgb), 0.13), transparent 74%),
-    radial-gradient(95% 85% at 94% 26%, rgba(var(--accent-2-rgb), 0.11), transparent 74%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.016) 0%, transparent 26%),
-    var(--bg-deep);
+  background: linear-gradient(
+    177deg,
+    #1d1a2f 0%,
+    #262340 16%,
+    #2f2c50 33%,
+    #363556 48%,
+    #3a4166 63%,
+    #3f5079 78%,
+    #46617f 90%,
+    #4c6d8a 100%
+  );
 }
 
-/* Malha técnica, mascarada com folga para não deixar borda visível. */
+/*
+ * Deriva de cor: reforça o roxo no alto e o azul na base. Ancorada fora da
+ * viewport nos dois casos, então some pelas beiradas sem desenhar nada.
+ */
+.tint {
+  position: absolute;
+  inset: 0;
+  transform: translateX(calc(var(--sway) * 1.4vw));
+  opacity: calc((0.72 + var(--glow) * 0.28) * var(--strength));
+  background:
+    radial-gradient(135% 95% at 50% 124%, rgba(var(--accent-rgb), 0.34), transparent 74%),
+    radial-gradient(145% 90% at 50% -24%, rgba(var(--accent-2-rgb), 0.3), transparent 72%),
+    radial-gradient(90% 70% at 4% 8%, rgba(var(--accent-2-rgb), 0.16), transparent 70%),
+    radial-gradient(90% 70% at 96% 4%, rgba(var(--accent-2-rgb), 0.13), transparent 70%);
+}
+
+/*
+ * A camada que mais responde ao ponteiro. Extensão muito maior que a tela e
+ * centro abaixo dela: o que aparece é só o topo da curva, uma subida suave de
+ * luz — sem miolo brilhante nem contorno.
+ */
+.sheen {
+  position: absolute;
+  inset: 0;
+  transform: translateX(calc(var(--sway) * 3vw));
+  opacity: calc((0.35 + var(--glow) * 0.65) * var(--strength));
+  background: radial-gradient(
+    115% 78% at 50% 132%,
+    rgba(214, 234, 252, 0.24) 0%,
+    rgba(198, 222, 246, 0.185) 22%,
+    rgba(180, 208, 238, 0.13) 40%,
+    rgba(163, 192, 230, 0.082) 57%,
+    rgba(var(--accent-mid-rgb), 0.044) 72%,
+    rgba(var(--accent-2-rgb), 0.017) 86%,
+    transparent 100%
+  );
+}
+
+/* Malha técnica, quase imperceptível: dá escala sem virar padrão. */
 .grid {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.026) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px);
-  background-size: 64px 64px;
+    linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+  background-size: 68px 68px;
   background-position: center bottom;
-  -webkit-mask-image: radial-gradient(145% 108% at 50% 106%, #000 0%, transparent 88%);
-  mask-image: radial-gradient(145% 108% at 50% 106%, #000 0%, transparent 88%);
-  opacity: calc((0.62 + var(--glow) * 0.38) * var(--strength));
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 38%, #000 100%);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 38%, #000 100%);
+  opacity: calc((0.6 + var(--glow) * 0.4) * var(--strength));
 }
 
-.halo,
-.core {
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  border-radius: 50%;
-  mix-blend-mode: screen;
-  will-change: opacity, transform;
-}
-
-/*
- * Campo roxo. Ancorado ALTO, não na base: se o roxo tem o ponto mais forte no
- * mesmo lugar que o azul, os dois se somam num lavanda achatado e nenhuma das
- * duas cores se lê. Com o roxo governando a metade de cima e o azul a de
- * baixo, o degradê atravessa a tela de uma cor para a outra.
- */
-.bloom {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 230vw;
-  height: 155vh;
-  border-radius: 50%;
-  mix-blend-mode: screen;
-  will-change: opacity, transform;
-  transform: translate(calc(-50% + var(--sway) * 0.8vw), -62%);
-  opacity: calc((0.7 + var(--glow) * 0.3) * var(--strength));
-  background: radial-gradient(
-    ellipse at center,
-    rgba(var(--accent-2-rgb), 0.26) 0%,
-    rgba(var(--accent-2-rgb), 0.228) 25%,
-    rgba(var(--accent-2-rgb), 0.182) 45%,
-    rgba(var(--accent-2-rgb), 0.13) 62%,
-    rgba(var(--accent-2-rgb), 0.078) 78%,
-    rgba(var(--accent-2-rgb), 0.035) 88%,
-    rgba(var(--accent-2-rgb), 0.01) 95%,
-    transparent 100%
-  );
-}
-
-/*
- * Camada principal — é ela que faz a travessia de cor: azul no centro, roxo
- * na borda. O diâmetro é generoso de propósito: com queda rasa, a parada final
- * ainda carrega alfa perceptível, então a borda do círculo apareceria como
- * arco se caísse dentro da viewport.
- */
-.halo {
-  width: min(2400px, 260vw);
-  height: min(2400px, 260vw);
-  transform: translate(calc(-50% + var(--sway) * 1.8vw), 34%);
-  opacity: calc((0.5 + var(--glow) * 0.5) * var(--strength));
-  background: radial-gradient(
-    circle at center,
-    rgba(var(--accent-rgb), 0.4) 0%,
-    rgba(var(--accent-rgb), 0.355) 22%,
-    rgba(var(--accent-rgb), 0.29) 38%,
-    rgba(var(--accent-mid-rgb), 0.21) 55%,
-    rgba(var(--accent-2-rgb), 0.125) 72%,
-    rgba(var(--accent-2-rgb), 0.055) 86%,
-    rgba(var(--accent-2-rgb), 0.012) 95%,
-    transparent 100%
-  );
-}
-
-/*
- * Núcleo azul quase branco.
- *
- * Diferente das outras camadas, este tem queda RÁPIDA e some bem antes da
- * borda geométrica. É o único jeito de ele acender o centro sem que o próprio
- * contorno do círculo apareça — com queda rasa, a parada final ainda carrega
- * alfa e o disco fica desenhado na tela.
- */
-.core {
-  width: min(920px, 104vw);
-  height: min(920px, 104vw);
-  transform: translate(calc(-50% + var(--sway) * 3vw), 42%);
-  opacity: calc((0.34 + var(--glow) * 0.66) * var(--strength));
-  background: radial-gradient(
-    circle at center,
-    rgba(234, 245, 255, 0.24) 0%,
-    rgba(222, 238, 254, 0.19) 20%,
-    rgba(207, 229, 251, 0.125) 38%,
-    rgba(190, 216, 246, 0.056) 54%,
-    rgba(178, 210, 238, 0.024) 68%,
-    rgba(174, 208, 234, 0.007) 82%,
-    transparent 93%
-  );
-}
-
-/* Respiração lenta, para o fundo não morrer parado. */
+/* Respiração lenta, para o campo não ficar morto. */
 .drift {
   position: absolute;
   inset: 0;
-  animation: drift 34s ease-in-out infinite alternate;
+  animation: drift 38s ease-in-out infinite alternate;
 }
 
 @keyframes drift {
   from {
-    transform: translate3d(-1.2%, 0, 0) scale(1);
+    transform: translate3d(-1%, -0.6%, 0) scale(1.02);
   }
   to {
-    transform: translate3d(1.2%, 0, 0) scale(1.04);
+    transform: translate3d(1%, 0.6%, 0) scale(1.06);
   }
 }
 
 /*
- * Grão. Em 8 bits por canal, transição longa no escuro cria faixas visíveis;
- * o ruído quebra a quantização. soft-light em vez de overlay porque overlay
- * amplifica o ruído nas sombras e o grão vira mancha. Quanto mais denso o
- * degradê, mais essa camada importa.
+ * Grão. Agora obrigatório, não decorativo: um degradê contínuo do topo à base
+ * em 8 bits por canal produz faixas visíveis, e é o ruído que quebra a
+ * quantização. soft-light em vez de overlay porque overlay amplifica o ruído
+ * nas sombras e o grão vira mancha.
  */
 .grain {
   position: absolute;
   inset: -50%;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.92' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
-  opacity: 0.038;
+  opacity: 0.045;
   mix-blend-mode: soft-light;
-}
-
-/*
- * Vinheta discreta. Escurecer muito as bordas é o jeito mais rápido de
- * destruir a uniformidade — aqui ela só assenta o topo, onde fica o conteúdo.
- */
-.vignette {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(150% 118% at 50% 100%, transparent 56%, rgba(5, 6, 12, 0.3) 100%),
-    linear-gradient(180deg, rgba(5, 6, 12, 0.4) 0%, transparent 30%);
 }

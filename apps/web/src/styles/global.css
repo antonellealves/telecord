@@ -8,14 +8,14 @@
 
   /* Superfícies são translúcidas de propósito: deixam o gradiente do fundo
      atravessar, que é o que dá coesão à composição inteira. */
-  --surface: rgba(255, 255, 255, 0.028);
-  --surface-hover: rgba(255, 255, 255, 0.055);
-  --border: rgba(255, 255, 255, 0.075);
-  --border-strong: rgba(255, 255, 255, 0.15);
+  --surface: rgba(255, 255, 255, 0.05);
+  --surface-hover: rgba(255, 255, 255, 0.09);
+  --border: rgba(255, 255, 255, 0.11);
+  --border-strong: rgba(255, 255, 255, 0.22);
 
   --text: #edeff3;
   --text-dim: #a4abb8;
-  --text-faint: #6a7180;
+  --text-faint: #949cae;
 
   /* Azul claro vintage. Suave, mas azul de verdade — sem componente cinza,
      que no escuro apaga a cor e deixa tudo com cara de fumaça. O triplete RGB
@@ -40,6 +40,13 @@
   --danger-rgb: 240, 136, 138;
   --warn: #e7c07a;
   --warn-rgb: 231, 192, 122;
+
+  /* Ação: azul claro na quina superior, roxo escuro na inferior. O texto fica
+     sobre a faixa média (roxo médio a escuro), que é onde o branco tem
+     contraste — por isso o azul se resolve já nos primeiros 26%. */
+  --gradient-action: linear-gradient(120deg, #a6cdee 0%, #8e7fd8 26%, #5d4fae 62%, #3f3585 100%);
+  --gradient-action-hover: linear-gradient(120deg, #b9d9f5 0%, #9c8fe2 26%, #6c5dc0 62%, #4b409a 100%);
+  --gradient-action-ink: #ffffff;
 
   --radius: 14px;
   --radius-sm: 10px;

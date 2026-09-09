@@ -10,16 +10,18 @@ interface AmbientGradientProps {
 const REST_GLOW = 0.5;
 
 /**
- * Luz de fundo ancorada no centro inferior da tela.
+ * Fundo da aplicação.
+ *
+ * O degradê É o fundo, não um brilho por cima de um fundo escuro — essa
+ * distinção é o que separa "campo de cor" de "lanterna apontada para a tela".
+ * Nenhuma camada tem borda dentro da viewport: as âncoras ficam fora dela, de
+ * modo que não existe contorno de círculo para o olho encontrar.
  *
  * A posição é fixa; o que responde ao ponteiro é a INTENSIDADE. Quanto mais
- * perto o cursor chega da base, mais o degradê acende — e a mancha oscila
- * alguns viewport-widths na horizontal, o bastante para o fundo parecer vivo
- * sem sair do lugar.
+ * perto o cursor chega da base, mais o degradê acende.
  *
- * O ponteiro alimenta duas variáveis CSS (`--glow` e `--sway`) suavizadas por
- * rAF. Elas movem só `opacity` e `transform`, que ficam no compositor; o loop
- * para sozinho quando o valor alcança o alvo.
+ * `--glow` e `--sway` são suavizados por rAF e movem só `opacity` e
+ * `transform`, que ficam no compositor. O loop para sozinho ao alcançar o alvo.
  */
 export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX.Element {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -52,8 +54,6 @@ export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX
       const deltaGlow = targetGlow - glow;
       const deltaSway = targetSway - sway;
       if (Math.abs(deltaGlow) > 0.0015 || Math.abs(deltaSway) > 0.0015) {
-        // A intensidade sobe mais depressa do que a mancha se desloca: a luz
-        // responde ao gesto, o deslocamento fica para trás.
         glow += deltaGlow * 0.085;
         sway += deltaSway * 0.05;
         apply();
@@ -74,16 +74,13 @@ export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX
       const width = window.innerWidth;
       const height = window.innerHeight;
 
-      // Distância normalizada até a âncora (centro inferior). O eixo horizontal
-      // pesa menos: a luz nasce da base, então subir o cursor apaga mais do que
-      // afastá-lo para o lado.
       const horizontal = (event.clientX - width / 2) / (width / 2);
       const vertical = (height - event.clientY) / height;
       const distance = Math.min(1, Math.hypot(horizontal * 0.55, vertical));
 
-      // Faixa 0,3–1,0: modulação perceptível, mas sem acender e apagar. O
-      // contraste forte brigava com a leitura uniforme do degradê.
-      targetGlow = 1 - distance * 0.7;
+      // Faixa estreita, 0,45–1,0: com o degradê preenchendo a tela inteira,
+      // variação grande de intensidade volta a parecer foco de luz.
+      targetGlow = 1 - distance * 0.55;
       targetSway = horizontal;
       start();
     };
@@ -111,14 +108,12 @@ export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX
       aria-hidden="true"
     >
       <div className={styles.bed} />
-      <div className={styles.grid} />
       <div className={styles.drift}>
-        <div className={styles.bloom} />
+        <div className={styles.tint} />
       </div>
-      <div className={styles.halo} />
-      <div className={styles.core} />
+      <div className={styles.sheen} />
+      <div className={styles.grid} />
       <div className={styles.grain} />
-      <div className={styles.vignette} />
     </div>
   );
 }

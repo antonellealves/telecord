@@ -49,9 +49,10 @@
 /* Estado ligado — o único elemento saturado da barra, então não há dúvida
    sobre o que está aberto. */
 .active {
-  background: linear-gradient(180deg, var(--accent-soft) 0%, var(--accent-deep) 100%);
-  border-color: rgba(var(--accent-rgb), 0.35);
-  color: var(--accent-ink);
+  background: var(--gradient-action);
+  border-color: rgba(var(--accent-rgb), 0.4);
+  color: var(--gradient-action-ink);
+  text-shadow: 0 1px 2px rgba(20, 16, 46, 0.35);
   font-weight: 600;
   box-shadow:
     0 10px 26px -14px rgba(var(--accent-rgb), 0.75),
@@ -59,9 +60,9 @@
 }
 
 .active:hover:not(:disabled) {
-  background: linear-gradient(180deg, #eaf5ff 0%, #93c1e6 100%);
-  border-color: rgba(var(--accent-rgb), 0.5);
-  color: var(--accent-ink);
+  background: var(--gradient-action-hover);
+  border-color: rgba(var(--accent-rgb), 0.55);
+  color: var(--gradient-action-ink);
 }
 
 .danger {
