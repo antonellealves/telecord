@@ -334,14 +334,16 @@ Esse número é a variável que decide se o plano free do LiveKit aguenta o uso 
 |---|---|---|---|
 | `LIVEKIT_API_KEY` | runtime, servidor | **não** | Vercel → Environment Variables (Production, Preview, Development) + `.env` local |
 | `LIVEKIT_API_SECRET` | runtime, servidor | **não** | idem |
-| `VITE_LIVEKIT_URL` | build (Vite) | **sim** | Vercel (Build) + `.env` local. Formato `wss://<projeto>.livekit.cloud` |
+| `VITE_LIVEKIT_URL` | build (Vite), opcional | **sim** | default versionado em `apps/web/src/lib/config.ts`; defina só para apontar para outro servidor |
 | `VITE_TOKEN_ENDPOINT` | build (Vite), opcional | sim | default `/api/token` |
+
+> **Emenda (pós-implementação).** A URL do servidor LiveKit passou a ter default no código. Ela é pública por definição — o navegador precisa dela e ela acaba no bundle de qualquer forma —, então versioná-la não expõe nada e elimina uma classe de falha real: publicar um build sem a variável e obter um app que não conecta. Key e secret continuam proibidos de serem versionados, e são o motivo pelo qual a configuração na Vercel continua obrigatória: arquivo `.env` do repositório **não** é carregado no runtime das funções.
 
 **A regra dura:** apenas variáveis com prefixo `VITE_` são injetadas no bundle, e tudo que entra no bundle é **legível por qualquer visitante** — basta abrir o devtools. Portanto:
 
 - `LIVEKIT_API_SECRET` **nunca** pode ganhar prefixo `VITE_`, ser referenciado em código de `apps/web`, nem entrar em `define` do Vite. Vazamento do secret = qualquer pessoa emite token para qualquer sala, entra, escuta e publica. A remediação é rotacionar a key no dashboard do LiveKit.
 - `LIVEKIT_API_KEY` tem o mesmo tratamento: sozinha não assina nada, mas não há motivo para expô-la.
-- `VITE_LIVEKIT_URL` é público por natureza (o browser precisa dele para conectar) e é **congelado no build** — trocar de servidor LiveKit exige rebuild + redeploy. Ver decisão 6 em §10.
+- `VITE_LIVEKIT_URL` é público por natureza (o browser precisa dele para conectar) e é **congelado no build** — trocar de servidor LiveKit exige rebuild + redeploy, seja mexendo na variável ou no default versionado. Ver decisão 6 em §10.
 
 Guard-rail sugerido no build: um script que faz `grep` do `dist/` procurando `LIVEKIT_API_` e o valor do secret, e falha o build se achar. Custa 15 linhas e fecha a classe inteira de erro.
 

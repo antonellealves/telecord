@@ -48,22 +48,26 @@ Scripts da raiz:
 ## Criando o projeto no LiveKit Cloud
 
 1. Crie a conta em <https://cloud.livekit.io> e um projeto (escolha a região mais próxima dos participantes).
-2. Em **Settings → Keys**, gere um par de chaves. Você vai usar três valores:
+2. Em **Settings → Keys**, gere um par de chaves:
    - a **API Key** (`APIxxxx…`) → `LIVEKIT_API_KEY`
-   - o **API Secret** → `LIVEKIT_API_SECRET`
-   - a **WebSocket URL** do projeto (`wss://<seu-projeto>.livekit.cloud`) → `VITE_LIVEKIT_URL`
+   - o **API Secret** → `LIVEKIT_API_SECRET` (só é exibido na criação)
+   - a **WebSocket URL** do projeto (`wss://<seu-projeto>.livekit.cloud`) já está versionada como default em [config.ts](apps/web/src/lib/config.ts); troque lá se for outro projeto
 3. Opcional: em **Settings**, ajuste o *empty timeout* das salas. É ele que define quanto tempo uma sala vazia sobrevive antes de ser destruída — o app não cria nem destrói salas.
 
 Nenhum outro recurso do LiveKit precisa ser configurado: a sala é criada no primeiro `join`.
 
 ## Variáveis de ambiente
 
-| Nome | Escopo | Público? |
-|---|---|---|
-| `LIVEKIT_API_KEY` | runtime, servidor | **não** |
-| `LIVEKIT_API_SECRET` | runtime, servidor | **não** |
-| `VITE_LIVEKIT_URL` | build do Vite | **sim** — vai para o bundle |
-| `VITE_TOKEN_ENDPOINT` | build do Vite, opcional | sim (default `/api/token`) |
+| Nome | Escopo | Obrigatória? | Público? |
+|---|---|---|---|
+| `LIVEKIT_API_KEY` | runtime, servidor | **sim** | não |
+| `LIVEKIT_API_SECRET` | runtime, servidor | **sim** | não |
+| `VITE_LIVEKIT_URL` | build do Vite | não | sim — vai para o bundle |
+| `VITE_TOKEN_ENDPOINT` | build do Vite | não | sim (default `/api/token`) |
+
+A URL do servidor LiveKit tem default versionado em [config.ts](apps/web/src/lib/config.ts): ela é pública por natureza (o navegador precisa dela) e acaba no bundle de qualquer jeito, então versionar só elimina o risco de publicar um app que não conecta por falta de uma variável de build. Defina `VITE_LIVEKIT_URL` apenas para apontar para outro servidor.
+
+**A key e o secret nunca podem ser versionados.** Eles são lidos do ambiente pela função serverless, e é por isso que precisam ser cadastrados na Vercel: um `.env` no repositório **não** é carregado no runtime das funções — o resultado seria expor o secret e continuar com `500 SERVER_MISCONFIGURED`.
 
 > **Só o prefixo `VITE_` expõe uma variável ao navegador — e o que vai para o bundle é legível por qualquer visitante.** Nunca prefixe a key ou o secret com `VITE_`. Se o secret vazar, qualquer pessoa emite token para qualquer sala: rotacione a chave no dashboard do LiveKit.
 >
@@ -76,10 +80,13 @@ Nenhum outro recurso do LiveKit precisa ser configurado: a sala é criada no pri
    - **Root Directory**: a raiz do repositório (`./`). Se apontar para `apps/web`, o diretório `api/` deixa de ser detectado e a função de token não existe.
    - **Framework Preset**: Vite. Build Command, Output Directory e Install Command já vêm do [vercel.json](./vercel.json).
    - **Node.js Version**: 22.x.
-3. Em **Settings → Environment Variables**, adicione as variáveis acima em **Production**, **Preview** e **Development**. Marque key e secret como *Sensitive* se quiser escondê-las da interface.
+3. Em **Settings → Environment Variables**, adicione **`LIVEKIT_API_KEY` e `LIVEKIT_API_SECRET`** em **Production**, **Preview** e **Development**. Marque as duas como *Sensitive*.
+
+   > Environment Variables existem no plano Hobby. O que é pago é criar **Environments** customizados (um "staging" próprio) — outra tela, outra coisa.
+
 4. **Faça um Redeploy** (Deployments → ⋯ → Redeploy, com o cache desmarcado).
 
-   > A Vercel dispara o primeiro build assim que você importa o repositório — ou seja, **antes** de existirem as variáveis. Como `VITE_LIVEKIT_URL` é congelada dentro do bundle no momento do build, esse primeiro deploy sobe um app que mostra "Configuração incompleta" em toda sala, mesmo depois de você cadastrar a variável. Só um novo build resolve. Vale para qualquer alteração futura em variáveis `VITE_*`.
+   > Variável cadastrada só passa a existir no deploy seguinte: a Vercel injeta o ambiente no momento em que builda e publica a função. Enquanto não houver redeploy, `/api/token` continua devolvendo `500 SERVER_MISCONFIGURED`. O mesmo vale para qualquer alteração futura de variável.
 
 A cada push a Vercel roda `pnpm install --frozen-lockfile` e depois `pnpm run build`; as funções de `api/` são compiladas em seguida, já com `packages/shared/dist` pronto.
 
@@ -104,7 +111,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://SEU-APP.vercel.app/api/nada
 # 404
 ```
 
-Se o token vier certo mas a sala não conectar, o problema é a `VITE_LIVEKIT_URL` — ela é de build, não de runtime: confira o valor e faça o redeploy.
+Se o token vier certo mas a sala não conectar, o problema é a URL do servidor: confira o default em [config.ts](apps/web/src/lib/config.ts) (ou a `VITE_LIVEKIT_URL`, se você tiver definido uma). Como é valor de build, mudá-la exige um novo deploy.
 
 ## Notas de operação
 
