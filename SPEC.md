@@ -401,6 +401,10 @@ Notas:
 
 Ordem que importa: a Vercel roda o `buildCommand` **antes** de compilar as funções de `api/`. Logo, `packages/shared/dist` já existe quando `api/token.ts` é empacotado.
 
+> **Emenda (pós-implementação).** O deploy automático da Vercel foi desligado (`git.deploymentEnabled: false`) e a publicação passou para o GitHub Actions: `vercel pull` → `vercel build --prod` → `vercel deploy --prebuilt --prod`, com verificação de `/api/token` no fim.
+>
+> A consequência que importa para esta seção: **deploy prebuilt não carrega arquivo `.env` para o runtime das funções**. O ambiente do Lambda continua vindo da plataforma, então o workflow sincroniza `LIVEKIT_API_KEY` e `LIVEKIT_API_SECRET` no projeto (via `vercel env`) antes de publicar. Os valores vivem nos GitHub Secrets; o repositório continua sem nenhuma credencial.
+
 ### 8.3 Dev local
 
 `vite dev` sozinho não executa a função `/api/token`. A proposta é um plugin de dev do próprio Vite que monta o handler no middleware, lendo `LIVEKIT_API_KEY`/`SECRET` via `loadEnv` — **sem** passar por `define`, então nada disso encosta no bundle. Custa zero dependência nova e mantém front e API na mesma origem, igual à produção. A alternativa é `vercel dev`, que exige a CLI da Vercel instalada (ver decisão 2 em §10).

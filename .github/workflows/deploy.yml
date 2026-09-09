@@ -1,0 +1,151 @@
+name: Deploy
+
+# O deploy automático da Vercel está desligado em vercel.json
+# (git.deploymentEnabled: false). Quem publica é este workflow.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Nunca dois deploys de produção ao mesmo tempo. Em PR, cancelar o anterior é
+# o que se quer; em produção, não — daí o cancel-in-progress condicional.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify:
+    name: Typecheck e build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Instala dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      # Roda sem nenhuma credencial: se o build só passa com segredo presente,
+      # é sinal de que algo virou dependência de ambiente sem necessidade.
+      - name: Build
+        run: pnpm run build
+
+  deploy:
+    name: Publica em produção
+    needs: verify
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Instala a CLI da Vercel
+        run: npm install --global vercel@latest
+
+      # A função lê LIVEKIT_API_KEY/SECRET de process.env em runtime, e runtime
+      # é a plataforma da Vercel — deploy prebuilt não carrega .env para dentro
+      # do Lambda. Então os segredos do GitHub são empurrados para o projeto
+      # antes de publicar. A CLI não tem upsert: remove e adiciona.
+      - name: Injeta as credenciais no projeto da Vercel
+        env:
+          LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
+          LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${LIVEKIT_API_KEY:-}" ] || [ -z "${LIVEKIT_API_SECRET:-}" ]; then
+            echo "::error::Faltam os secrets LIVEKIT_API_KEY e/ou LIVEKIT_API_SECRET no repositório."
+            exit 1
+          fi
+
+          sync_env() {
+            name="$1"
+            value="$2"
+            # Sem stdout: o valor nunca aparece no log, mesmo que a CLI mude de
+            # comportamento. (O Actions também mascara secrets, é cinto duplo.)
+            vercel env rm "$name" production --yes --token="$VERCEL_TOKEN" >/dev/null 2>&1 || true
+            printf '%s' "$value" | vercel env add "$name" production --token="$VERCEL_TOKEN" >/dev/null
+            echo "  $name sincronizada"
+          }
+
+          echo "Sincronizando credenciais em production:"
+          sync_env LIVEKIT_API_KEY "$LIVEKIT_API_KEY"
+          sync_env LIVEKIT_API_SECRET "$LIVEKIT_API_SECRET"
+
+      - name: Puxa as configurações do projeto
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      - name: Build de produção
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+
+      - name: Publica
+        id: deploy
+        run: |
+          set -euo pipefail
+          url=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Publicado em $url"
+          echo "### Deploy publicado" >> "$GITHUB_STEP_SUMMARY"
+          echo "$url" >> "$GITHUB_STEP_SUMMARY"
+
+      # Fecha o ciclo: sem isto, um deploy "verde" ainda pode estar sem
+      # credencial e devolvendo 500 em toda entrada de sala.
+      - name: Verifica o deploy
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          set -euo pipefail
+          fail=0
+
+          echo "1. POST /api/token deve assinar o token"
+          code=$(curl -sS -o /tmp/token.json -w '%{http_code}' --max-time 30 \
+            -X POST "$URL/api/token" \
+            -H 'content-type: application/json' \
+            -d '{"roomId":"ci-smoke","displayName":"CI"}')
+          if [ "$code" = "200" ]; then
+            echo "   ok (200)"
+          else
+            echo "::error::/api/token respondeu $code"
+            # O corpo de erro nunca carrega credencial — é seguro mostrar.
+            cat /tmp/token.json || true
+            fail=1
+          fi
+
+          echo "2. /sala/:id deve cair no rewrite da SPA"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$URL/sala/ci-smoke")
+          if [ "$code" = "200" ]; then echo "   ok (200)"; else echo "::error::rewrite de SPA respondeu $code"; fail=1; fi
+
+          echo "3. rota de API inexistente deve dar 404, não o HTML da SPA"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$URL/api/nada")
+          if [ "$code" = "404" ]; then echo "   ok (404)"; else echo "::error::/api/nada respondeu $code"; fail=1; fi
+
+          exit $fail

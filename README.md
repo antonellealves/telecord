@@ -73,42 +73,66 @@ A URL do servidor LiveKit tem default versionado em [config.ts](apps/web/src/lib
 >
 > O `pnpm build` roda `scripts/check-bundle.mjs`, que falha o build se encontrar `LIVEKIT_API_` ou o valor do secret dentro de `apps/web/dist`.
 
-## Deploy na Vercel
+## Deploy
 
-1. **Importe o repositório** na Vercel.
-2. Em **Settings → General**:
-   - **Root Directory**: a raiz do repositório (`./`). Se apontar para `apps/web`, o diretório `api/` deixa de ser detectado e a função de token não existe.
-   - **Framework Preset**: Vite. Build Command, Output Directory e Install Command já vêm do [vercel.json](./vercel.json).
-   - **Node.js Version**: 22.x.
-3. Em **Settings → Environment Variables**, adicione **`LIVEKIT_API_KEY` e `LIVEKIT_API_SECRET`** em **Production**, **Preview** e **Development**. Marque as duas como *Sensitive*.
+Quem publica é o **GitHub Actions**, não a Vercel. O deploy automático dela está desligado em [vercel.json](./vercel.json) (`git.deploymentEnabled: false`), e o pipeline está em [.github/workflows/deploy.yml](.github/workflows/deploy.yml).
 
-   > Environment Variables existem no plano Hobby. O que é pago é criar **Environments** customizados (um "staging" próprio) — outra tela, outra coisa.
+```
+push na main
+   │
+   ├─ verify ─── typecheck + build, sem nenhuma credencial
+   │
+   └─ deploy ─── injeta as credenciais no projeto da Vercel
+                 vercel pull  →  vercel build --prod
+                 vercel deploy --prebuilt --prod
+                 verifica /api/token, rewrite de SPA e 404 de API
+```
 
-4. **Faça um Redeploy** (Deployments → ⋯ → Redeploy, com o cache desmarcado).
+O passo de verificação no fim é o que impede um deploy "verde" mas quebrado: se `/api/token` não devolver 200, o job falha.
 
-   > Variável cadastrada só passa a existir no deploy seguinte: a Vercel injeta o ambiente no momento em que builda e publica a função. Enquanto não houver redeploy, `/api/token` continua devolvendo `500 SERVER_MISCONFIGURED`. O mesmo vale para qualquer alteração futura de variável.
+### Por que as credenciais são empurradas para a Vercel
 
-A cada push a Vercel roda `pnpm install --frozen-lockfile` e depois `pnpm run build`; as funções de `api/` são compiladas em seguida, já com `packages/shared/dist` pronto.
+A função lê `LIVEKIT_API_KEY` e `LIVEKIT_API_SECRET` de `process.env`, e esse ambiente é fornecido pela plataforma no momento da invocação. **Deploy prebuilt não carrega `.env` para dentro do Lambda** — nenhum arquivo do repositório vira ambiente de runtime. Por isso o workflow sincroniza os dois segredos no projeto (`vercel env rm` + `vercel env add`) antes de publicar: os valores vivem nos GitHub Secrets, e o dashboard da Vercel nunca precisa ser aberto para isso.
 
-O `vercel.json` cuida do rewrite de SPA (`/sala/:id` recarrega sem 404) sem capturar `/api/*`.
+Os valores não passam pelo log — a saída dos comandos é descartada, e o Actions ainda mascara qualquer secret que apareça.
 
-### Conferindo que subiu certo
+### Configuração, uma vez só
+
+1. **Ligue o repositório local ao projeto da Vercel** para descobrir os dois IDs:
+
+   ```bash
+   npx vercel link
+   cat .vercel/project.json   # orgId e projectId (o diretório .vercel é git-ignorado)
+   ```
+
+2. **Gere um token** em <https://vercel.com/account/tokens> com escopo no projeto.
+
+3. **Cadastre 5 secrets** no GitHub, em *Settings → Secrets and variables → Actions*:
+
+   | Secret | De onde vem |
+   |---|---|
+   | `VERCEL_TOKEN` | o token do passo 2 |
+   | `VERCEL_ORG_ID` | `orgId` do `.vercel/project.json` |
+   | `VERCEL_PROJECT_ID` | `projectId` do `.vercel/project.json` |
+   | `LIVEKIT_API_KEY` | LiveKit Cloud → Settings → Keys |
+   | `LIVEKIT_API_SECRET` | idem (só aparece na criação da chave) |
+
+4. Em **Settings → General** do projeto na Vercel, confira que **Root Directory** é a raiz (`./`) e o **Node.js Version** é 22.x. Se apontar para `apps/web`, o diretório `api/` não é detectado e a função de token não existe.
+
+Depois disso, publicar é dar push na `main` — ou rodar o workflow à mão em *Actions → Deploy → Run workflow*.
+
+> O push que introduz `git.deploymentEnabled: false` ainda pode disparar um último deploy automático, porque a Vercel lê essa configuração do commit que chegou. A partir do seguinte, ela para.
+
+### Conferindo à mão
+
+O workflow já faz isso, mas para checar fora dele:
 
 ```bash
-# 1. a função responde e assina o token
 curl -s -X POST https://SEU-APP.vercel.app/api/token \
   -H 'Content-Type: application/json' \
   -d '{"roomId":"teste-de-deploy","displayName":"Ana"}'
 # 200 + { "token": "eyJ…", "identity": "…" }  → key e secret OK
-# 500 SERVER_MISCONFIGURED                     → falta variável no runtime
-
-# 2. a SPA recarrega dentro da sala (rewrite)
-curl -s -o /dev/null -w '%{http_code}\n' https://SEU-APP.vercel.app/sala/teste-de-deploy
-# 200
-
-# 3. rota de API inexistente devolve 404, e não o HTML da SPA
-curl -s -o /dev/null -w '%{http_code}\n' https://SEU-APP.vercel.app/api/nada
-# 404
+# 500 SERVER_MISCONFIGURED                     → os secrets não chegaram ao projeto
 ```
 
 Se o token vier certo mas a sala não conectar, o problema é a URL do servidor: confira o default em [config.ts](apps/web/src/lib/config.ts) (ou a `VITE_LIVEKIT_URL`, se você tiver definido uma). Como é valor de build, mudá-la exige um novo deploy.
