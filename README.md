@@ -98,7 +98,9 @@ Os valores não passam pelo log — a saída dos comandos é descartada, e o Act
 
 ### Configuração, uma vez só
 
-1. **Gere um token** em <https://vercel.com/account/tokens> com escopo no projeto.
+1. **Gere um token de conta** em <https://vercel.com/account/tokens>, com o *scope* apontando para o time dono do projeto.
+
+   > Precisa ser um **token de conta**. Token com escopo de projeto (prefixo `vcp_`, gerado nas configurações do projeto) lê a API do projeto mas não resolve usuário nem time — e a CLI resolve a conta antes de qualquer comando. Com ele, todo comando morre em `Could not retrieve Project Settings`, mensagem que não diz nada sobre a causa. O workflow checa isso logo no começo e falha com um recado claro.
 
 2. **Cadastre 3 valores** no GitHub Environment chamado **`Production`** (*Settings → Environments → Production*). O nome precisa bater com o `environment:` do workflow.
 

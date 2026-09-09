@@ -74,6 +74,29 @@ jobs:
           if [ -n "${MASK_TOKEN:-}" ]; then echo "::add-mask::$MASK_TOKEN"; fi
           if [ -n "${MASK_SECRET:-}" ]; then echo "::add-mask::$MASK_SECRET"; fi
 
+      # A CLI da Vercel resolve a conta antes de qualquer comando. Um token com
+      # escopo de projeto (prefixo vcp_) lê o projeto pela API mas não resolve
+      # usuário nem time, e a CLI então falha com "Could not retrieve Project
+      # Settings" — mensagem que não diz nada sobre a causa. Este passo troca
+      # esse erro por um que aponta o problema.
+      - name: Confere o token da Vercel
+        run: |
+          set -euo pipefail
+
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "::error::VERCEL_TOKEN não chegou. Cadastre no Environment 'Production', como secret (recomendado) ou variable."
+            exit 1
+          fi
+
+          if ! curl -sSf -o /dev/null \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              https://api.vercel.com/v2/user 2>/dev/null; then
+            echo "::error::VERCEL_TOKEN não é um token de conta — a CLI da Vercel não consegue resolver o usuário com ele. Tokens de projeto (prefixo vcp_) não servem aqui. Gere um em https://vercel.com/account/tokens, com escopo no time dono do projeto, e cadastre como Environment secret."
+            exit 1
+          fi
+
+          echo "Token de conta válido."
+
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
