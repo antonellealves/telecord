@@ -59,7 +59,7 @@
 }
 
 .active:hover:not(:disabled) {
-  background: linear-gradient(180deg, #e4eef7 0%, #9abcd8 100%);
+  background: linear-gradient(180deg, #eaf5ff 0%, #93c1e6 100%);
   border-color: rgba(var(--accent-rgb), 0.5);
   color: var(--accent-ink);
 }

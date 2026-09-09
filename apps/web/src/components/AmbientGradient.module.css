@@ -3,11 +3,13 @@
  *   bed → grid → bloom → halo → core → grain → vignette
  *
  * `--glow` (0..1) e `--sway` (-1..1) vêm do ponteiro. Cada camada reage com um
- * coeficiente diferente: o núcleo abre e fecha muito, a base quase não muda —
- * é isso que faz a luz parecer ganhar corpo em vez de só piscar junto.
+ * coeficiente diferente: o núcleo abre e fecha mais, a base quase não muda —
+ * é isso que faz a luz ganhar corpo em vez de piscar inteira junto.
  *
- * Cada degradê usa uma queda em 6 paradas aproximando uma gaussiana. Radial de
- * duas paradas cai linear e, no escuro, deixa a borda do disco visível.
+ * A queda de cada degradê é deliberadamente RASA (muito peso na faixa média)
+ * em vez de gaussiana. Queda rápida concentra tudo num ponto quente e deixa o
+ * resto da tela morto; rasa espalha a luz por quase toda a área. Ainda assim
+ * são 7 paradas: duas paradas caem linear e deixam a borda do disco visível.
  */
 
 .root {
@@ -25,10 +27,8 @@
   isolation: isolate;
 }
 
-/* Na sala o conteúdo cobre quase toda a tela, então a luz precisa de mais
-   força para ainda ser percebida por baixo dos painéis. */
 .subtle {
-  --strength: 0.9;
+  --strength: 0.88;
 }
 
 /* Base estática — sustenta a composição antes de o ponteiro existir. */
@@ -36,24 +36,24 @@
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(120% 62% at 50% 108%, rgba(var(--accent-rgb), 0.1), transparent 68%),
-    radial-gradient(80% 45% at 50% 100%, rgba(var(--accent-2-rgb), 0.05), transparent 70%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.018) 0%, transparent 24%),
+    radial-gradient(150% 85% at 50% 112%, rgba(var(--accent-rgb), 0.1), transparent 78%),
+    radial-gradient(110% 60% at 50% 100%, rgba(var(--accent-2-rgb), 0.055), transparent 80%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.016) 0%, transparent 26%),
     var(--bg-deep);
 }
 
-/* Malha técnica, mascarada para morrer antes do topo. */
+/* Malha técnica, mascarada com folga para não deixar borda visível. */
 .grid {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+    linear-gradient(rgba(255, 255, 255, 0.026) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px);
   background-size: 64px 64px;
   background-position: center bottom;
-  -webkit-mask-image: radial-gradient(115% 78% at 50% 104%, #000 0%, transparent 74%);
-  mask-image: radial-gradient(115% 78% at 50% 104%, #000 0%, transparent 74%);
-  opacity: calc((0.5 + var(--glow) * 0.5) * var(--strength));
+  -webkit-mask-image: radial-gradient(145% 108% at 50% 106%, #000 0%, transparent 88%);
+  mask-image: radial-gradient(145% 108% at 50% 106%, #000 0%, transparent 88%);
+  opacity: calc((0.62 + var(--glow) * 0.38) * var(--strength));
 }
 
 .bloom,
@@ -62,65 +62,77 @@
   position: absolute;
   left: 50%;
   bottom: 0;
+  border-radius: 50%;
   mix-blend-mode: screen;
   will-change: opacity, transform;
 }
 
 /*
- * Faixa larga e baixa: a "linha do horizonte". Reage pouco ao ponteiro, porque
- * é ela que segura a composição quando a luz está fraca.
+ * Campo largo: cobre a tela inteira e é o que garante que não exista canto
+ * apagado. Reage pouco ao ponteiro, porque é ele que segura a uniformidade.
  */
 .bloom {
-  width: 165vw;
-  height: 76vh;
-  border-radius: 50%;
-  transform: translate(calc(-50% + var(--sway) * 1.1vw), 42%);
-  opacity: calc((0.52 + var(--glow) * 0.48) * var(--strength));
+  width: 220vw;
+  height: 155vh;
+  transform: translate(calc(-50% + var(--sway) * 0.8vw), 26%);
+  opacity: calc((0.66 + var(--glow) * 0.34) * var(--strength));
   background: radial-gradient(
     ellipse at center,
-    rgba(var(--accent-rgb), 0.15) 0%,
-    rgba(var(--accent-rgb), 0.108) 20%,
-    rgba(var(--accent-2-rgb), 0.066) 35%,
-    rgba(var(--accent-2-rgb), 0.034) 50%,
-    rgba(var(--accent-2-rgb), 0.014) 65%,
-    rgba(var(--accent-2-rgb), 0.004) 80%,
+    rgba(var(--accent-rgb), 0.13) 0%,
+    rgba(var(--accent-rgb), 0.114) 25%,
+    rgba(var(--accent-rgb), 0.091) 45%,
+    rgba(var(--accent-2-rgb), 0.065) 62%,
+    rgba(var(--accent-2-rgb), 0.039) 78%,
+    rgba(var(--accent-2-rgb), 0.017) 88%,
+    rgba(var(--accent-2-rgb), 0.005) 95%,
     transparent 100%
   );
 }
 
-/* Camada principal — é ela que se lê como "o gradiente". */
+/*
+ * Camada principal — é ela que se lê como "o gradiente".
+ *
+ * O diâmetro é generoso de propósito: com queda rasa, a parada final ainda
+ * carrega alfa perceptível, então a borda do círculo aparece como arco se ela
+ * cair dentro da viewport. Grande assim, a terminação fica fora da tela em
+ * qualquer proporção comum.
+ */
 .halo {
-  width: min(1000px, 118vw);
-  height: min(1000px, 118vw);
-  border-radius: 50%;
-  transform: translate(calc(-50% + var(--sway) * 2.4vw), 46%);
-  opacity: calc((0.3 + var(--glow) * 0.7) * var(--strength));
+  width: min(2400px, 260vw);
+  height: min(2400px, 260vw);
+  transform: translate(calc(-50% + var(--sway) * 1.8vw), 34%);
+  opacity: calc((0.5 + var(--glow) * 0.5) * var(--strength));
   background: radial-gradient(
     circle at center,
-    rgba(var(--accent-rgb), 0.24) 0%,
-    rgba(var(--accent-rgb), 0.172) 20%,
-    rgba(var(--accent-rgb), 0.108) 35%,
-    rgba(var(--accent-rgb), 0.058) 50%,
-    rgba(var(--accent-rgb), 0.024) 65%,
-    rgba(var(--accent-rgb), 0.007) 80%,
+    rgba(var(--accent-rgb), 0.17) 0%,
+    rgba(var(--accent-rgb), 0.15) 25%,
+    rgba(var(--accent-rgb), 0.119) 45%,
+    rgba(var(--accent-rgb), 0.085) 62%,
+    rgba(var(--accent-2-rgb), 0.051) 78%,
+    rgba(var(--accent-2-rgb), 0.022) 88%,
+    rgba(var(--accent-2-rgb), 0.007) 95%,
     transparent 100%
   );
 }
 
-/* Núcleo quase branco: o que mais abre e fecha com o ponteiro. */
+/*
+ * Núcleo. Largo e fraco de propósito: um núcleo pequeno e forte vira ponto
+ * quente e destrói a uniformidade que o resto da composição busca.
+ */
 .core {
-  width: min(420px, 62vw);
-  height: min(420px, 62vw);
-  border-radius: 50%;
-  transform: translate(calc(-50% + var(--sway) * 3.6vw), 52%);
-  opacity: calc((0.12 + var(--glow) * 0.88) * var(--strength));
+  width: min(780px, 96vw);
+  height: min(780px, 96vw);
+  transform: translate(calc(-50% + var(--sway) * 3vw), 40%);
+  opacity: calc((0.34 + var(--glow) * 0.66) * var(--strength));
   background: radial-gradient(
     circle at center,
-    rgba(226, 238, 250, 0.2) 0%,
-    rgba(210, 227, 243, 0.126) 22%,
-    rgba(193, 214, 235, 0.06) 40%,
-    rgba(180, 204, 228, 0.02) 60%,
-    transparent 82%
+    rgba(228, 240, 252, 0.11) 0%,
+    rgba(216, 233, 249, 0.094) 25%,
+    rgba(202, 226, 246, 0.07) 45%,
+    rgba(188, 217, 242, 0.046) 62%,
+    rgba(174, 208, 234, 0.024) 78%,
+    rgba(174, 208, 234, 0.009) 90%,
+    transparent 100%
   );
 }
 
@@ -128,36 +140,40 @@
 .drift {
   position: absolute;
   inset: 0;
-  animation: drift 30s ease-in-out infinite alternate;
+  animation: drift 34s ease-in-out infinite alternate;
 }
 
 @keyframes drift {
   from {
-    transform: translate3d(-1.6%, 0, 0) scale(1);
+    transform: translate3d(-1.2%, 0, 0) scale(1);
   }
   to {
-    transform: translate3d(1.6%, 0, 0) scale(1.05);
+    transform: translate3d(1.2%, 0, 0) scale(1.04);
   }
 }
 
 /*
  * Grão. Em 8 bits por canal, transição longa no escuro cria faixas visíveis;
  * o ruído quebra a quantização. soft-light em vez de overlay porque overlay
- * amplifica o ruído nas sombras e o grão vira mancha.
+ * amplifica o ruído nas sombras e o grão vira mancha. Com o degradê agora
+ * cobrindo quase toda a tela, essa camada importa mais do que antes.
  */
 .grain {
   position: absolute;
   inset: -50%;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.92' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
-  opacity: 0.032;
+  opacity: 0.034;
   mix-blend-mode: soft-light;
 }
 
-/* Fecha a composição e protege o topo, onde fica o conteúdo. */
+/*
+ * Vinheta discreta. Escurecer muito as bordas é o jeito mais rápido de
+ * destruir a uniformidade — aqui ela só assenta o topo, onde fica o conteúdo.
+ */
 .vignette {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(125% 88% at 50% 100%, transparent 30%, rgba(4, 5, 8, 0.6) 100%),
-    linear-gradient(180deg, rgba(4, 5, 8, 0.55) 0%, transparent 34%);
+    radial-gradient(150% 115% at 50% 100%, transparent 52%, rgba(4, 6, 11, 0.34) 100%),
+    linear-gradient(180deg, rgba(4, 6, 11, 0.42) 0%, transparent 30%);
 }

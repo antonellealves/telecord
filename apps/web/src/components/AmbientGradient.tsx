@@ -79,9 +79,11 @@ export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX
       // afastá-lo para o lado.
       const horizontal = (event.clientX - width / 2) / (width / 2);
       const vertical = (height - event.clientY) / height;
-      const distance = Math.min(1, Math.hypot(horizontal * 0.6, vertical));
+      const distance = Math.min(1, Math.hypot(horizontal * 0.55, vertical));
 
-      targetGlow = 1 - distance * 0.8;
+      // Faixa 0,3–1,0: modulação perceptível, mas sem acender e apagar. O
+      // contraste forte brigava com a leitura uniforme do degradê.
+      targetGlow = 1 - distance * 0.7;
       targetSway = horizontal;
       start();
     };

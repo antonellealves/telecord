@@ -1,7 +1,12 @@
 node_modules/
 dist/
-.vercel/
 *.tsbuildinfo
+
+# O project.json é versionado de propósito: orgId e projectId são
+# identificadores, não credenciais. Com ele no repo, a CLI já sabe em qual
+# projeto está operando e o CI só precisa do token.
+.vercel/*
+!.vercel/project.json
 
 # Segredos: só o .env.example é versionado.
 .env

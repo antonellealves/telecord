@@ -2,9 +2,9 @@
   /* ---- base soft dark -------------------------------------------------
      Nada de preto puro: um carvão levemente frio dá profundidade e evita o
      contraste duro que faz gradiente sutil virar mancha. */
-  --bg: #0a0b0e;
-  --bg-deep: #06070a;
-  --bg-raised: #101218;
+  --bg: #090b10;
+  --bg-deep: #05070c;
+  --bg-raised: #0f1219;
 
   /* Superfícies são translúcidas de propósito: deixam o gradiente do fundo
      atravessar, que é o que dá coesão à composição inteira. */
@@ -17,17 +17,19 @@
   --text-dim: #a4abb8;
   --text-faint: #6a7180;
 
-  /* Azul bebê vintage, puxado para o cinza: dessaturado o bastante para não
-     brilhar como neon no escuro. O triplete RGB existe para compor tintas com
-     rgba() sem espalhar hex literal pelos módulos. */
-  --accent: #a9c5dc;
-  --accent-rgb: 169, 197, 220;
-  --accent-deep: #86aac8;
-  --accent-soft: #d5e2ee;
-  --accent-ink: #0d1a24;
+  /* Azul claro vintage. Suave, mas azul de verdade — sem componente cinza,
+     que no escuro apaga a cor e deixa tudo com cara de fumaça. O triplete RGB
+     existe para compor tintas com rgba() sem espalhar hex pelos módulos. */
+  --accent: #aed0ea;
+  --accent-rgb: 174, 208, 234;
+  --accent-deep: #7fb2d8;
+  --accent-soft: #deeefb;
+  --accent-ink: #0b1a26;
 
-  --accent-2: #b3bccb;
-  --accent-2-rgb: 179, 188, 203;
+  /* Companheiro mais fundo, ainda azul: dá profundidade ao degradê sem
+     introduzir uma segunda família de cor. */
+  --accent-2: #8dbde2;
+  --accent-2-rgb: 141, 189, 226;
 
   --danger: #f0888a;
   --danger-rgb: 240, 136, 138;

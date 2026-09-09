@@ -98,26 +98,19 @@ Os valores não passam pelo log — a saída dos comandos é descartada, e o Act
 
 ### Configuração, uma vez só
 
-1. **Ligue o repositório local ao projeto da Vercel** para descobrir os dois IDs:
+1. **Gere um token** em <https://vercel.com/account/tokens> com escopo no projeto.
 
-   ```bash
-   npx vercel link
-   cat .vercel/project.json   # orgId e projectId (o diretório .vercel é git-ignorado)
-   ```
-
-2. **Gere um token** em <https://vercel.com/account/tokens> com escopo no projeto.
-
-3. **Cadastre 5 secrets** no GitHub, em *Settings → Secrets and variables → Actions*:
+2. **Cadastre 3 secrets** no GitHub, em *Settings → Secrets and variables → Actions*:
 
    | Secret | De onde vem |
    |---|---|
-   | `VERCEL_TOKEN` | o token do passo 2 |
-   | `VERCEL_ORG_ID` | `orgId` do `.vercel/project.json` |
-   | `VERCEL_PROJECT_ID` | `projectId` do `.vercel/project.json` |
+   | `VERCEL_TOKEN` | o token do passo 1 |
    | `LIVEKIT_API_KEY` | LiveKit Cloud → Settings → Keys |
    | `LIVEKIT_API_SECRET` | idem (só aparece na criação da chave) |
 
-4. Em **Settings → General** do projeto na Vercel, confira que **Root Directory** é a raiz (`./`) e o **Node.js Version** é 22.x. Se apontar para `apps/web`, o diretório `api/` não é detectado e a função de token não existe.
+   > `orgId` e `projectId` **não** são secrets: são identificadores, e estão versionados em [.vercel/project.json](.vercel/project.json) — o mesmo arquivo que `vercel link` gera. Com ele no repositório, a CLI já sabe em qual projeto está operando. Apontar para outro projeto é editar esse arquivo (ou rodar `npx vercel link` de novo).
+
+3. Em **Settings → General** do projeto na Vercel, confira que **Root Directory** é a raiz (`./`) e o **Node.js Version** é 22.x. Se apontar para `apps/web`, o diretório `api/` não é detectado e a função de token não existe.
 
 Depois disso, publicar é dar push na `main` — ou rodar o workflow à mão em *Actions → Deploy → Run workflow*.
 

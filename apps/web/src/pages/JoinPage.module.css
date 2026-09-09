@@ -36,7 +36,7 @@
 
 .titleAccent {
   display: block;
-  background: linear-gradient(104deg, #dbe7f2 0%, #a9c5dc 46%, #b3bccb 100%);
+  background: linear-gradient(104deg, #e4f1fd 0%, #aed0ea 45%, #8dbde2 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: var(--accent);

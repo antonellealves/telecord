@@ -52,9 +52,9 @@ jobs:
     environment:
       name: production
       url: ${{ steps.deploy.outputs.url }}
+    # orgId e projectId vêm de .vercel/project.json, versionado no repositório.
+    # Só o token precisa ser secret.
     env:
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
     steps:
       - uses: actions/checkout@v4
