@@ -43,13 +43,15 @@ function newId(): string {
  * Nada aqui é persistido: a sala é efêmera, e o histórico morre com ela. Quem
  * entra depois não vê o que passou — é a mesma regra do resto do app.
  */
-export function useRoomMessages(): RoomMessaging {
+export function useRoomMessages(getVolume: () => number): RoomMessaging {
   const room = useRoomContext();
   const [messages, setMessages] = useState<ChatEntry[]>([]);
   const [unread, setUnread] = useState(0);
 
   const seenRef = useRef(new Set<string>());
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const getVolumeRef = useRef(getVolume);
+  getVolumeRef.current = getVolume;
 
   const playLocally = useCallback((soundId: string) => {
     const sound = findSound(soundId);
@@ -58,8 +60,16 @@ export function useRoomMessages(): RoomMessaging {
       // versões. Ignorar é melhor do que estourar erro na cara de quem ouve.
       return;
     }
+    const volume = getVolumeRef.current();
+    if (volume <= 0) {
+      // Mudo ou volume zerado: nem cria o elemento. O aviso continua chegando
+      // e sendo aceito — quem silenciou foi só este cliente.
+      return;
+    }
+
     audioRef.current?.pause();
     const audio = new Audio(sound.file);
+    audio.volume = Math.min(1, volume);
     audioRef.current = audio;
     void audio.play().catch(() => undefined);
   }, []);

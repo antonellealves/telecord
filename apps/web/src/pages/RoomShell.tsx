@@ -11,10 +11,11 @@ import { ScreenStage } from '../components/ScreenStage';
 import { Soundboard } from '../components/Soundboard';
 import { ToastStack } from '../components/ToastStack';
 import { useParticipantViews } from '../hooks/useParticipantViews';
-import { useResizableSidebar } from '../hooks/useResizableSidebar';
+import { useResizablePanel } from '../hooks/useResizablePanel';
 import { useRoomConnectionStatus } from '../hooks/useRoomConnection';
 import { useRoomMessages } from '../hooks/useRoomMessages';
 import { useScreenShares } from '../hooks/useScreenShares';
+import { useSoundVolume } from '../hooks/useSoundVolume';
 import { useTalkControls } from '../hooks/useTalkControls';
 import { useToasts } from '../hooks/useToasts';
 import styles from './RoomPage.module.css';
@@ -24,7 +25,10 @@ interface RoomShellProps {
   onLeaveIntent: () => void;
 }
 
-type SidebarWidthStyle = CSSProperties & { '--sidebar-width': string };
+type PanelWidthStyle = CSSProperties & {
+  '--sidebar-width': string;
+  '--chat-width': string;
+};
 
 /** Interior da sala. Só existe dentro do contexto do LiveKitRoom. */
 export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Element {
@@ -34,7 +38,8 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
   const { toasts, push, dismiss } = useToasts();
   const shares = useScreenShares(push);
   const talk = useTalkControls((message) => push('error', message));
-  const { messages, unread, sendChat, playSound, markRead } = useRoomMessages();
+  const sound = useSoundVolume();
+  const { messages, unread, sendChat, playSound, markRead } = useRoomMessages(() => sound.effective);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSoundboardOpen, setIsSoundboardOpen] = useState(false);
@@ -42,7 +47,22 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
 
   const controlsRef = useRef<HTMLDivElement | null>(null);
   const mainRef = useRef<HTMLDivElement | null>(null);
-  const sidebar = useResizableSidebar(mainRef);
+  const sidebar = useResizablePanel(mainRef, {
+    name: 'sidebar',
+    side: 'left',
+    label: 'Redimensionar a lista de participantes',
+    min: 208,
+    max: 440,
+    initial: 268,
+  });
+  const chatPanel = useResizablePanel(mainRef, {
+    name: 'chat',
+    side: 'right',
+    label: 'Redimensionar o chat',
+    min: 260,
+    max: 560,
+    initial: 320,
+  });
 
   const local = participants.find((participant) => participant.isLocal) ?? null;
   const isMicrophoneEnabled = local?.isMicrophoneEnabled ?? false;
@@ -61,7 +81,10 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
 
   // A largura vai como custom property, não como `width` inline: assim o
   // layout empilhado do mobile consegue sobrescrevê-la pelo CSS.
-  const mainStyle: SidebarWidthStyle = { '--sidebar-width': `${sidebar.width}px` };
+  const mainStyle: PanelWidthStyle = {
+    '--sidebar-width': `${sidebar.width}px`,
+    '--chat-width': `${chatPanel.width}px`,
+  };
 
   return (
     <>
@@ -83,7 +106,7 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
 
         <div
           ref={mainRef}
-          className={`${styles.main} ${sidebar.isResizing ? styles.resizing : ''}`}
+          className={`${styles.main} ${sidebar.isResizing || chatPanel.isResizing ? styles.resizing : ''}`}
           style={mainStyle}
         >
           <ParticipantSidebar participants={participants} />
@@ -92,11 +115,19 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
           </div>
           <ScreenStage entries={shares.entries} />
           {isChatOpen ? (
-            <ChatPanel
-              messages={messages}
-              onSend={sendChat}
-              onClose={() => setIsChatOpen(false)}
-            />
+            <>
+              <div
+                className={`${styles.resizer} ${styles.resizerChat}`}
+                {...chatPanel.handleProps}
+              >
+                <span className={styles.grip} aria-hidden="true" />
+              </div>
+              <ChatPanel
+                messages={messages}
+                onSend={sendChat}
+                onClose={() => setIsChatOpen(false)}
+              />
+            </>
           ) : null}
         </div>
 
@@ -116,6 +147,10 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
               containerRef={controlsRef}
               onPlay={playSound}
               onClose={() => setIsSoundboardOpen(false)}
+              volume={sound.volume}
+              muted={sound.muted}
+              onVolumeChange={sound.setVolume}
+              onToggleMute={sound.toggleMuted}
             />
           ) : null}
 

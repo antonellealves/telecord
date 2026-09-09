@@ -123,3 +123,71 @@ export function writePreferredDevice(kind: MediaDeviceKind, deviceId: string): v
     // Storage indisponível.
   }
 }
+
+// ---------------------------------------------------------------------------
+// Soundboard e painéis
+// ---------------------------------------------------------------------------
+
+const SOUND_VOLUME_KEY = 'telecord.soundVolume';
+const SOUND_MUTED_KEY = 'telecord.soundMuted';
+const PANEL_WIDTH_PREFIX = 'telecord.panel.';
+
+const DEFAULT_SOUND_VOLUME = 0.7;
+
+/** 0..1. Volume LOCAL: controla quanto esta pessoa ouve, não os outros. */
+export function readSoundVolume(): number {
+  try {
+    const stored = window.localStorage.getItem(SOUND_VOLUME_KEY);
+    // A checagem de null vem ANTES da conversão: Number(null) é 0, que passa
+    // na validação de faixa e faria a chave ausente virar volume zerado —
+    // ou seja, o padrão nunca seria usado e ninguém ouviria som nenhum.
+    if (stored === null) {
+      return DEFAULT_SOUND_VOLUME;
+    }
+    const raw = Number(stored);
+    return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : DEFAULT_SOUND_VOLUME;
+  } catch {
+    return DEFAULT_SOUND_VOLUME;
+  }
+}
+
+export function writeSoundVolume(volume: number): void {
+  try {
+    window.localStorage.setItem(SOUND_VOLUME_KEY, String(volume));
+  } catch {
+    // Storage indisponível.
+  }
+}
+
+export function readSoundMuted(): boolean {
+  try {
+    return window.localStorage.getItem(SOUND_MUTED_KEY) === 'yes';
+  } catch {
+    return false;
+  }
+}
+
+export function writeSoundMuted(muted: boolean): void {
+  try {
+    window.localStorage.setItem(SOUND_MUTED_KEY, muted ? 'yes' : 'no');
+  } catch {
+    // Storage indisponível.
+  }
+}
+
+export function readPanelWidth(name: string, fallback: number): number {
+  try {
+    const raw = Number(window.localStorage.getItem(PANEL_WIDTH_PREFIX + name));
+    return Number.isFinite(raw) && raw > 0 ? raw : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function writePanelWidth(name: string, width: number): void {
+  try {
+    window.localStorage.setItem(PANEL_WIDTH_PREFIX + name, String(Math.round(width)));
+  } catch {
+    // Storage indisponível.
+  }
+}

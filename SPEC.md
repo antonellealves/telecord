@@ -266,6 +266,7 @@ main.tsx
     │       ├── RoomAudioRenderer        (@livekit/components-react) toca todo áudio remoto
     │       ├── Stage
     │       │   ├── ParticipantSidebar   à ESQUERDA, largura arrastável (208–440 px)
+    │       │   ├── ChatPanel            à DIREITA, largura arrastável (260–560 px)
     │       │   │   └── ParticipantRow[] nome, anel de "falando", ícone de mutado, badge "apresentando"
     │       │   ├── Resizer              divisória com pointer capture; setas e duplo clique também ajustam
     │       │   ├── ScreenStage          grade de telas; cada quadro tem barra
@@ -393,7 +394,9 @@ Duas consequências de o canal ser aberto a qualquer participante:
 - **Toda mensagem recebida é entrada não confiável.** `parseRoomMessage` valida tipo, tamanho e charset antes de qualquer coisa chegar à tela — as mesmas regras que a API aplica no token.
 - **O canal não devolve o que a própria pessoa publicou**, então o remetente insere a própria mensagem localmente.
 
-Nada é persistido: o histórico vive em memória, some com a sala, e quem entra depois não vê o que passou. É a mesma regra do resto do app (§3).
+**O volume do soundboard é local**, de 0 a 100% com mudo. Não há volume compartilhado para controlar — cada cliente toca o próprio arquivo —, e é melhor assim: ninguém quer que o ajuste do outro mande no seu. Em mudo o elemento de áudio nem chega a ser criado; o aviso continua sendo recebido e aceito, quem silenciou foi só aquele cliente.
+
+Nada é persistido do que a sala produz: o histórico do chat vive em memória, some com ela, e quem entra depois não vê o que passou. É a mesma regra do resto do app (§3). Já as preferências de quem usa — volume, mudo e largura dos painéis — ficam em `localStorage`.
 
 ### 6.8 Áudio da tela e retorno
 

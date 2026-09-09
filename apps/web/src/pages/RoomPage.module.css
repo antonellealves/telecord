@@ -127,6 +127,12 @@
  * - em ~780px nada mais divide horizontalmente e tudo empilha.
  */
 @media (max-width: 1080px) {
+  /* O chat vira sobreposição aqui; divisória em painel flutuante não faz
+     sentido, e o CSS passa a mandar na largura. */
+  .resizerChat {
+    display: none;
+  }
+
   .main > aside:last-child {
     position: absolute;
     right: 0;

@@ -1,5 +1,6 @@
 .panel {
-  width: 300px;
+  /* Largura vem do container, ajustada pela divisória arrastável. */
+  width: var(--chat-width, 320px);
   flex: none;
   display: flex;
   flex-direction: column;

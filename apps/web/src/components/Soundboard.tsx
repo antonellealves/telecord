@@ -1,5 +1,6 @@
 import { useEffect, type RefObject } from 'react';
 import { SOUNDS } from '../lib/sounds';
+import { SpeakerIcon } from './icons';
 import styles from './Soundboard.module.css';
 
 interface SoundboardProps {
@@ -7,6 +8,11 @@ interface SoundboardProps {
   containerRef: RefObject<HTMLElement | null>;
   onPlay: (soundId: string) => void;
   onClose: () => void;
+  /** 0..1, só para esta pessoa. */
+  volume: number;
+  muted: boolean;
+  onVolumeChange: (volume: number) => void;
+  onToggleMute: () => void;
 }
 
 /**
@@ -16,7 +22,15 @@ interface SoundboardProps {
  * arquivo que já baixou de `public/sons`. Mandar o som como áudio custaria
  * banda por ouvinte e chegaria dessincronizado.
  */
-export function Soundboard({ containerRef, onPlay, onClose }: SoundboardProps): JSX.Element {
+export function Soundboard({
+  containerRef,
+  onPlay,
+  onClose,
+  volume,
+  muted,
+  onVolumeChange,
+  onToggleMute,
+}: SoundboardProps): JSX.Element {
   useEffect(() => {
     const handleKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') onClose();
@@ -57,8 +71,33 @@ export function Soundboard({ containerRef, onPlay, onClose }: SoundboardProps): 
         ))}
       </div>
 
+      <div className={styles.volumeRow}>
+        <button
+          type="button"
+          className={`${styles.mute} ${muted ? styles.muteOn : ''}`}
+          onClick={onToggleMute}
+          aria-pressed={muted}
+          title={muted ? 'Voltar a ouvir os sons' : 'Silenciar os sons'}
+        >
+          <SpeakerIcon />
+        </button>
+        <input
+          type="range"
+          className={styles.slider}
+          min={0}
+          max={100}
+          step={1}
+          value={Math.round(volume * 100)}
+          onChange={(event) => onVolumeChange(Number(event.target.value) / 100)}
+          disabled={muted}
+          aria-label="Volume dos sons"
+        />
+        <span className={styles.volumeValue}>{muted ? 'mudo' : `${Math.round(volume * 100)}%`}</span>
+      </div>
+
       <p className={styles.hint}>
-        Todo mundo na sala ouve. Para trocar os sons, coloque os arquivos em{' '}
+        O volume é só seu — cada pessoa ajusta o quanto ouve. Para trocar os sons, coloque os
+        arquivos em{' '}
         <code className={styles.code}>apps/web/public/sons</code> e liste em{' '}
         <code className={styles.code}>lib/sounds.ts</code>.
       </p>

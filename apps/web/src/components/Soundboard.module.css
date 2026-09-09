@@ -97,3 +97,98 @@
   background: rgba(255, 255, 255, 0.06);
   color: var(--accent-soft);
 }
+
+/* ---- volume ---------------------------------------------------------- */
+
+.volumeRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.mute {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-dim);
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.mute:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.muteOn {
+  border-color: rgba(var(--danger-rgb), 0.5);
+  background: rgba(var(--danger-rgb), 0.14);
+  color: #f2b0b1;
+}
+
+/*
+ * Trilha desenhada à mão: o controle nativo herda o azul do sistema e destoa
+ * do resto. `appearance: none` some com a trilha padrão nos dois motores, daí
+ * as duas regras de polegar.
+ */
+.slider {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  cursor: pointer;
+}
+
+.slider::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.slider::-moz-range-track {
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.7);
+}
+
+.slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.7);
+}
+
+.slider:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.volumeValue {
+  flex: none;
+  min-width: 44px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
