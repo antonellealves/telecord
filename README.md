@@ -76,10 +76,35 @@ Nenhum outro recurso do LiveKit precisa ser configurado: a sala é criada no pri
    - **Root Directory**: a raiz do repositório (`./`). Se apontar para `apps/web`, o diretório `api/` deixa de ser detectado e a função de token não existe.
    - **Framework Preset**: Vite. Build Command, Output Directory e Install Command já vêm do [vercel.json](./vercel.json).
    - **Node.js Version**: 22.x.
-3. Em **Settings → Environment Variables**, adicione as quatro variáveis acima em **Production**, **Preview** e **Development**. Marque key e secret como *Sensitive* se quiser escondê-las da interface.
-4. Deploy. A cada push a Vercel roda `pnpm install --frozen-lockfile` e depois `pnpm run build`; as funções de `api/` são compiladas em seguida, já com `packages/shared/dist` pronto.
+3. Em **Settings → Environment Variables**, adicione as variáveis acima em **Production**, **Preview** e **Development**. Marque key e secret como *Sensitive* se quiser escondê-las da interface.
+4. **Faça um Redeploy** (Deployments → ⋯ → Redeploy, com o cache desmarcado).
+
+   > A Vercel dispara o primeiro build assim que você importa o repositório — ou seja, **antes** de existirem as variáveis. Como `VITE_LIVEKIT_URL` é congelada dentro do bundle no momento do build, esse primeiro deploy sobe um app que mostra "Configuração incompleta" em toda sala, mesmo depois de você cadastrar a variável. Só um novo build resolve. Vale para qualquer alteração futura em variáveis `VITE_*`.
+
+A cada push a Vercel roda `pnpm install --frozen-lockfile` e depois `pnpm run build`; as funções de `api/` são compiladas em seguida, já com `packages/shared/dist` pronto.
 
 O `vercel.json` cuida do rewrite de SPA (`/sala/:id` recarrega sem 404) sem capturar `/api/*`.
+
+### Conferindo que subiu certo
+
+```bash
+# 1. a função responde e assina o token
+curl -s -X POST https://SEU-APP.vercel.app/api/token \
+  -H 'Content-Type: application/json' \
+  -d '{"roomId":"teste-de-deploy","displayName":"Ana"}'
+# 200 + { "token": "eyJ…", "identity": "…" }  → key e secret OK
+# 500 SERVER_MISCONFIGURED                     → falta variável no runtime
+
+# 2. a SPA recarrega dentro da sala (rewrite)
+curl -s -o /dev/null -w '%{http_code}\n' https://SEU-APP.vercel.app/sala/teste-de-deploy
+# 200
+
+# 3. rota de API inexistente devolve 404, e não o HTML da SPA
+curl -s -o /dev/null -w '%{http_code}\n' https://SEU-APP.vercel.app/api/nada
+# 404
+```
+
+Se o token vier certo mas a sala não conectar, o problema é a `VITE_LIVEKIT_URL` — ela é de build, não de runtime: confira o valor e faça o redeploy.
 
 ## Notas de operação
 
