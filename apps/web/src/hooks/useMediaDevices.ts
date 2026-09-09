@@ -2,7 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRoomContext } from '@livekit/components-react';
 import { LocalAudioTrack, Room, RoomEvent, Track, supportsAudioOutputSelection } from 'livekit-client';
 import { describeMicrophoneError } from '../lib/errors';
-import { readNoiseSuppression, writeNoiseSuppression } from '../lib/storage';
+import {
+  readNoiseSuppression,
+  readPreferredDevice,
+  writeNoiseSuppression,
+  writePreferredDevice,
+} from '../lib/storage';
 
 export interface DeviceOption {
   deviceId: string;
@@ -62,6 +67,8 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
   const outputSelectionSupported = supportsAudioOutputSelection();
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
+  /** A restauração da preferência só acontece uma vez por sessão de sala. */
+  const restoredRef = useRef(false);
 
   const refresh = useCallback(async (): Promise<void> => {
     try {
@@ -123,8 +130,49 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
     [room, refresh, isSwitching],
   );
 
-  const selectAudioInput = useCallback((deviceId: string) => select('audioinput', deviceId), [select]);
-  const selectAudioOutput = useCallback((deviceId: string) => select('audiooutput', deviceId), [select]);
+  const selectAudioInput = useCallback(
+    (deviceId: string) => {
+      writePreferredDevice('audioinput', deviceId);
+      select('audioinput', deviceId);
+    },
+    [select],
+  );
+
+  const selectAudioOutput = useCallback(
+    (deviceId: string) => {
+      writePreferredDevice('audiooutput', deviceId);
+      select('audiooutput', deviceId);
+    },
+    [select],
+  );
+
+  /**
+   * Restaura o dispositivo escolhido da última vez.
+   *
+   * Só depois de enumerar, e só se o id ainda existir: fone desconectado deixa
+   * uma preferência órfã, e tentar aplicá-la daria erro de dispositivo
+   * inexistente em vez de cair no padrão do sistema, que é o certo.
+   */
+  useEffect(() => {
+    if (restoredRef.current || audioInputs.length === 0) {
+      return;
+    }
+    restoredRef.current = true;
+
+    const wantedInput = readPreferredDevice('audioinput');
+    if (wantedInput !== '' && wantedInput !== activeAudioInput) {
+      if (audioInputs.some((device) => device.deviceId === wantedInput)) {
+        select('audioinput', wantedInput);
+      }
+    }
+
+    const wantedOutput = readPreferredDevice('audiooutput');
+    if (outputSelectionSupported && wantedOutput !== '' && wantedOutput !== activeAudioOutput) {
+      if (audioOutputs.some((device) => device.deviceId === wantedOutput)) {
+        select('audiooutput', wantedOutput);
+      }
+    }
+  }, [audioInputs, audioOutputs, activeAudioInput, activeAudioOutput, outputSelectionSupported, select]);
 
   /**
    * Supressão de ruído.

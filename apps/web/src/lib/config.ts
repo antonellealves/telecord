@@ -3,6 +3,8 @@
  * Só variáveis VITE_* existem aqui — e tudo aqui é público.
  */
 
+import { LIVEKIT_HOST } from '@telecord/shared';
+
 /**
  * URL do servidor LiveKit deste projeto.
  *
@@ -15,7 +17,7 @@
  * Isto NÃO vale para a key e o secret: esses são lidos só pela função
  * serverless, a partir do ambiente, e nunca podem ser versionados.
  */
-const DEFAULT_LIVEKIT_URL = 'wss://telecord-rjk64f88.livekit.cloud';
+const DEFAULT_LIVEKIT_URL = `wss://${LIVEKIT_HOST}`;
 
 const configuredLivekitUrl = import.meta.env.VITE_LIVEKIT_URL?.trim() ?? '';
 
@@ -23,6 +25,7 @@ export const LIVEKIT_URL: string =
   configuredLivekitUrl === '' ? DEFAULT_LIVEKIT_URL : configuredLivekitUrl;
 
 export const TOKEN_ENDPOINT: string = import.meta.env.VITE_TOKEN_ENDPOINT ?? '/api/token';
+export const ROOMS_ENDPOINT = '/api/rooms';
 
 export function getConfigError(): string | null {
   if (LIVEKIT_URL === '') {

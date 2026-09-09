@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useCallback, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   DISPLAY_NAME_MAX_LENGTH,
@@ -8,12 +8,16 @@ import {
   validateDisplayName,
   validateRoomId,
 } from '@telecord/shared';
+import { ActiveRoomsList } from '../components/ActiveRoomsList';
 import { AmbientGradient } from '../components/AmbientGradient';
+import { useActiveRooms } from '../hooks/useActiveRooms';
 import { useDisplayName } from '../hooks/useDisplayName';
+import { useMicrophonePermission } from '../hooks/useMicrophonePermission';
 import { generateRoomId } from '../lib/media';
+import { readLastRoom, writeLastRoom } from '../lib/storage';
 import styles from './JoinPage.module.css';
 
-const NOTES = ['entra mutado', 'uma tela por vez', 'sem gravação'];
+const NOTES = ['entra mutado', 'várias telas', 'sem gravação'];
 
 export function JoinPage(): JSX.Element {
   const navigate = useNavigate();
@@ -24,28 +28,37 @@ export function JoinPage(): JSX.Element {
   const [room, setRoom] = useState(() => searchParams.get('sala') ?? '');
   const [error, setError] = useState<string | null>(null);
 
+  const activeRooms = useActiveRooms();
+  const microphone = useMicrophonePermission();
+  const [lastRoom] = useState(() => readLastRoom());
+
   const previewSlug = room.trim() === '' ? '' : slugifyRoomId(room);
+
+  /** Caminho comum de entrada: valida o nome, guarda e navega. */
+  const enterRoom = useCallback(
+    (slug: string): void => {
+      const displayName = normalizeDisplayName(name);
+      const nameError = validateDisplayName(displayName);
+      if (nameError !== null) {
+        setError(nameError);
+        return;
+      }
+      const roomError = validateRoomId(slug);
+      if (roomError !== null) {
+        setError(roomError);
+        return;
+      }
+      storeName(displayName);
+      writeLastRoom(slug);
+      setError(null);
+      navigate(`/sala/${slug}`);
+    },
+    [name, storeName, navigate],
+  );
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-
-    const displayName = normalizeDisplayName(name);
-    const nameError = validateDisplayName(displayName);
-    if (nameError !== null) {
-      setError(nameError);
-      return;
-    }
-
-    const slug = room.trim() === '' ? generateRoomId() : slugifyRoomId(room);
-    const roomError = validateRoomId(slug);
-    if (roomError !== null) {
-      setError(roomError);
-      return;
-    }
-
-    storeName(displayName);
-    setError(null);
-    navigate(`/sala/${slug}`);
+    enterRoom(room.trim() === '' ? generateRoomId() : slugifyRoomId(room));
   }
 
   return (
@@ -95,6 +108,12 @@ export function JoinPage(): JSX.Element {
               </p>
             </label>
 
+            {lastRoom !== '' && lastRoom !== previewSlug ? (
+              <button type="button" className={styles.recall} onClick={() => setRoom(lastRoom)}>
+                voltar para <span className={styles.hintSlug}>{lastRoom}</span>
+              </button>
+            ) : null}
+
             <label className={styles.field}>
               <span className={styles.label}>Seu nome</span>
               <input
@@ -108,10 +127,50 @@ export function JoinPage(): JSX.Element {
               <p className={styles.hint}>Fica salvo neste navegador para a próxima vez.</p>
             </label>
 
+            <div className={styles.permission}>
+              {microphone.status === 'granted' ? (
+                <p className={styles.permissionOk}>
+                  <span className={styles.dot} aria-hidden="true" />
+                  Microfone já autorizado neste navegador.
+                </p>
+              ) : microphone.status === 'denied' ? (
+                <p className={styles.permissionWarn}>
+                  Microfone bloqueado. Libere no cadeado da barra de endereços — dá para entrar
+                  assim mesmo, só não vai dar para falar.
+                </p>
+              ) : (
+                <>
+                  <p className={styles.permissionAsk}>
+                    Autorize o microfone uma vez e o navegador não pergunta mais neste
+                    dispositivo.
+                  </p>
+                  <button
+                    type="button"
+                    className={styles.permissionButton}
+                    onClick={microphone.request}
+                    disabled={microphone.isRequesting}
+                  >
+                    {microphone.isRequesting ? 'Aguardando…' : 'Autorizar microfone'}
+                  </button>
+                </>
+              )}
+              {microphone.error !== null ? (
+                <p className={styles.permissionWarn}>{microphone.error}</p>
+              ) : null}
+            </div>
+
             <button type="submit" className={styles.submit}>
               Entrar na sala
             </button>
           </form>
+
+          <ActiveRoomsList
+            rooms={activeRooms.rooms}
+            isLoading={activeRooms.isLoading}
+            error={activeRooms.error}
+            onEnter={enterRoom}
+            onRefresh={activeRooms.refresh}
+          />
 
           <ul className={styles.notes}>
             {NOTES.map((note) => (

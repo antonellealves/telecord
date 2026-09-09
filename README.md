@@ -9,6 +9,7 @@ A especificação técnica completa — incluindo as decisões e os limites conh
 ├── apps/web/          Vite + React + TS (SPA)
 ├── packages/shared/   contrato e validação usados pelos dois lados
 ├── api/token.ts       função serverless da Vercel: emite o JWT do LiveKit
+├── api/rooms.ts       lista as salas ativas para a página de entrada
 ├── scripts/           guard-rail que barra credencial no bundle
 ├── vercel.json
 └── pnpm-workspace.yaml
@@ -137,6 +138,8 @@ curl -s -X POST https://SEU-APP.vercel.app/api/token \
 Se o token vier certo mas a sala não conectar, o problema é a URL do servidor: confira o default em [config.ts](apps/web/src/lib/config.ts) (ou a `VITE_LIVEKIT_URL`, se você tiver definido uma). Como é valor de build, mudá-la exige um novo deploy.
 
 ## Notas de operação
+
+- **A lista de salas ativas é pública.** Qualquer visitante da página inicial vê o nome de toda sala com gente dentro e entra com um clique. Antes dela, a sala só era alcançável por quem tivesse a URL. Se isso não servir, as saídas são autenticação, senha por sala, ou listar só as salas que a pessoa já visitou — nenhuma está implementada. Ver §9 do SPEC.
 
 - **Todo mundo entra mutado.** O microfone só é publicado no primeiro clique em "Falar" — é aí que o navegador pede permissão.
 - **Áudio de aba** só existe em Chromium no desktop. Firefox e Safari não entregam áudio no `getDisplayMedia`.

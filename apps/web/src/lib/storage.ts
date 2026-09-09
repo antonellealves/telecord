@@ -59,3 +59,67 @@ export function writeNoiseSuppression(enabled: boolean): void {
     // Storage indisponível: vale só para esta aba.
   }
 }
+
+// ---------------------------------------------------------------------------
+// Volta do usuário
+// ---------------------------------------------------------------------------
+
+const LAST_ROOM_KEY = 'telecord.lastRoom';
+const MIC_GRANTED_KEY = 'telecord.micGranted';
+const DEVICE_KEY_PREFIX = 'telecord.device.';
+
+export function readLastRoom(): string {
+  try {
+    return window.localStorage.getItem(LAST_ROOM_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function writeLastRoom(roomId: string): void {
+  try {
+    window.localStorage.setItem(LAST_ROOM_KEY, roomId);
+  } catch {
+    // Storage indisponível.
+  }
+}
+
+/**
+ * Lembrete de que o microfone já foi autorizado neste navegador.
+ *
+ * É uma DICA, não a fonte de verdade: quem decide é o navegador, e a pessoa
+ * pode revogar a permissão a qualquer momento sem avisar a página. Serve para
+ * a interface não pedir de novo quem já autorizou, e é sempre conferida contra
+ * a Permissions API quando ela existe.
+ */
+export function readMicrophoneGranted(): boolean {
+  try {
+    return window.localStorage.getItem(MIC_GRANTED_KEY) === 'yes';
+  } catch {
+    return false;
+  }
+}
+
+export function writeMicrophoneGranted(granted: boolean): void {
+  try {
+    window.localStorage.setItem(MIC_GRANTED_KEY, granted ? 'yes' : 'no');
+  } catch {
+    // Storage indisponível.
+  }
+}
+
+export function readPreferredDevice(kind: MediaDeviceKind): string {
+  try {
+    return window.localStorage.getItem(DEVICE_KEY_PREFIX + kind) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function writePreferredDevice(kind: MediaDeviceKind, deviceId: string): void {
+  try {
+    window.localStorage.setItem(DEVICE_KEY_PREFIX + kind, deviceId);
+  } catch {
+    // Storage indisponível.
+  }
+}

@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,14 +8,17 @@ import { defineConfig, loadEnv, type Plugin } from 'vite';
 const webDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(webDir, '../..');
 const sharedEntry = path.resolve(repoRoot, 'packages/shared/src/index.ts');
-const apiHandlerPath = path.resolve(repoRoot, 'api/token.ts');
+const apiDir = path.resolve(repoRoot, 'api');
+
+/** Só nomes simples viram caminho de arquivo — nada de "../". */
+const API_ROUTE = /^\/api\/([a-z0-9-]{1,32})\/?$/;
 
 type NodeHandler = (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
 
 /**
- * `vite dev` não executa as funções da Vercel. Este plugin monta o mesmo
- * handler de `api/token.ts` no middleware do próprio Vite, então dev e produção
- * falam com a mesma origem e o mesmo código. Só existe em `serve`.
+ * `vite dev` não executa as funções da Vercel. Este plugin monta os handlers de
+ * `api/*.ts` no middleware do próprio Vite, então dev e produção falam com a
+ * mesma origem e o mesmo código. Só existe em `serve`.
  *
  * As credenciais entram via process.env (lidas com loadEnv) e NUNCA por
  * `define` — nada disso pode encostar no bundle do navegador.
@@ -31,10 +35,31 @@ function apiDevPlugin(env: Record<string, string>): Plugin {
         }
       }
 
-      server.middlewares.use('/api/token', (req, res, next) => {
+      server.middlewares.use((req, res, next) => {
+        const match = API_ROUTE.exec((req.url ?? '').split('?')[0] ?? '');
+        if (match === null) {
+          next();
+          return;
+        }
+        const handlerPath = path.join(apiDir, `${match[1] ?? ''}.ts`);
+        // Sem handler, responde 404 aqui mesmo. Deixar seguir cairia no
+        // fallback da SPA e devolveria o index.html com status 200 — em
+        // produção o rewrite do vercel.json dá 404, e dev tem que espelhar
+        // isso: 200 com HTML vira erro de JSON parse do outro lado.
+        if (!existsSync(handlerPath)) {
+          res.statusCode = 404;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.end(
+            JSON.stringify({
+              error: { code: 'NOT_FOUND', message: `Nenhum handler para ${req.url ?? ''}.` },
+            }),
+          );
+          return;
+        }
+
         void (async () => {
           try {
-            const loaded = await server.ssrLoadModule(apiHandlerPath);
+            const loaded = await server.ssrLoadModule(handlerPath);
             const handler: unknown = (loaded as { default?: unknown }).default;
             if (typeof handler !== 'function') {
               next();
@@ -43,7 +68,7 @@ function apiDevPlugin(env: Record<string, string>): Plugin {
             await (handler as NodeHandler)(req, res);
           } catch (error) {
             server.config.logger.error(
-              `[telecord:api-dev] falha ao executar api/token.ts: ${String(error)}`,
+              `[telecord:api-dev] falha ao executar ${handlerPath}: ${String(error)}`,
             );
             if (!res.headersSent) {
               res.statusCode = 500;
@@ -52,8 +77,8 @@ function apiDevPlugin(env: Record<string, string>): Plugin {
             res.end(
               JSON.stringify({
                 error: {
-                  code: 'TOKEN_SIGN_FAILED',
-                  message: 'Falha ao executar /api/token em dev. Veja o terminal do Vite.',
+                  code: 'DEV_HANDLER_FAILED',
+                  message: `Falha ao executar ${req.url ?? '/api'} em dev. Veja o terminal do Vite.`,
                 },
               }),
             );

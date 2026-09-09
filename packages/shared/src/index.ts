@@ -279,3 +279,47 @@ export function parseRoomMessage(raw: unknown): RoomMessage | null {
 
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// Host do LiveKit
+// ---------------------------------------------------------------------------
+
+/**
+ * Host do projeto LiveKit, sem esquema.
+ *
+ * Fica aqui porque os dois lados precisam dele em formatos diferentes — o
+ * navegador conecta em `wss://`, a API de servidor fala `https://` — e manter
+ * duas cópias do mesmo host é como elas divergem. É um endereço público: o
+ * navegador o expõe de qualquer forma.
+ */
+export const LIVEKIT_HOST = 'telecord-rjk64f88.livekit.cloud';
+
+// ---------------------------------------------------------------------------
+// Contrato de GET /api/rooms
+// ---------------------------------------------------------------------------
+
+export interface ActiveRoom {
+  roomId: string;
+  participants: number;
+  /** Epoch em milissegundos. */
+  startedAt: number;
+}
+
+export interface RoomsSuccessResponse {
+  rooms: ActiveRoom[];
+}
+
+export type RoomsErrorCode = 'METHOD_NOT_ALLOWED' | 'SERVER_MISCONFIGURED' | 'UPSTREAM_UNAVAILABLE';
+
+export interface RoomsErrorResponse {
+  error: {
+    code: RoomsErrorCode;
+    message: string;
+  };
+}
+
+export type RoomsResponse = RoomsSuccessResponse | RoomsErrorResponse;
+
+export function isRoomsErrorResponse(value: RoomsResponse): value is RoomsErrorResponse {
+  return 'error' in value;
+}

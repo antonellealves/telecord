@@ -47,7 +47,8 @@ Convenções: pacotes sob o escopo `@telecord/*`; o app web se chama `web`.
 | Peça | Onde | Por quê |
 |---|---|---|
 | SPA | CDN da Vercel (estático) | Sem SSR, sem dado por request. É um bundle burro; todo estado vem do SFU. |
-| `/api/token` | Função serverless Node na Vercel | É o único lugar que pode tocar no `LIVEKIT_API_SECRET`. Assinatura HS256 é CPU puro: sem rede, sem disco, sem banco — cabe folgado em qualquer timeout do Hobby. |
+| `/api/token` | Função serverless Node na Vercel | É um dos dois lugares que podem tocar no `LIVEKIT_API_SECRET`. Assinatura HS256 é CPU puro: sem rede, sem disco, sem banco — cabe folgado em qualquer timeout do Hobby. |
+| `/api/rooms` | Função serverless Node na Vercel | **Emenda.** Lista as salas ativas para a página de entrada. Quebra duas premissas originais — "a única função é o token" e "sem I/O externo" — porque quem sabe quais salas existem é o LiveKit, e essa informação só sai pela API de servidor, que exige credenciais. A função de token continua pura: são arquivos separados. Ver §2.3 e §9. |
 | Sinalização + mídia | LiveKit Cloud | WebRTC exige conexão longa e stateful. Função serverless não mantém socket, então o SFU **não pode** rodar na Vercel. |
 | Estado da sala | Memória do SFU | Sala é efêmera por definição: existe enquanto houver gente. Persistir seria inventar uma fonte de verdade concorrente. |
 | Preferência de nome | `localStorage` do browser | É preferência do usuário, não estado da sala. |
@@ -158,6 +159,26 @@ Notas que valem como regra:
 
 ---
 
+### 2.3 `GET /api/rooms` (emenda pós-implementação)
+
+Devolve as salas com gente agora, para a página de entrada.
+
+```jsonc
+{ "rooms": [ { "roomId": "dota", "participants": 3, "startedAt": 1788989655000 } ] }
+```
+
+| HTTP | `code` | Quando |
+|---|---|---|
+| 405 | `METHOD_NOT_ALLOWED` | método ≠ GET |
+| 500 | `SERVER_MISCONFIGURED` | credenciais ausentes |
+| 502 | `UPSTREAM_UNAVAILABLE` | a API do LiveKit não respondeu |
+
+Usa `RoomServiceClient.listRooms()` e **filtra salas vazias**: o LiveKit mantém a sala viva durante o `emptyTimeout` depois que o último sai, e sala sem ninguém não é "ativa" para quem está escolhendo onde entrar.
+
+Cache de borda curto (`s-maxage=5`): protege a API do LiveKit de quem fica atualizando a página, sem deixar a lista velha o bastante para enganar. O cliente ainda recarrega a cada 15 s, e só com a aba visível.
+
+---
+
 ## 3. Modelo de dados em memória
 
 Não há persistência em lugar nenhum. **A fonte de verdade é o SFU**; o estado React é um cache derivado dos eventos do `Room`, reconstruível a qualquer momento a partir do objeto `room`.
@@ -178,7 +199,7 @@ Regras:
 
 - **Em `Reconnected`, re-derivar tudo do objeto `room`**, sem confiar em deltas: durante a reconexão eventos se perdem.
 - **A sala nasce no primeiro join e morre sozinha.** Nenhum código nosso cria ou destrói sala; quem faz isso é o LiveKit, com o `emptyTimeout` configurado no projeto do Cloud. Se todos saem, a sala deixa de existir; a URL continua válida e recria a sala no próximo join.
-- **`localStorage` guarda só preferências do usuário**: `telecord.displayName`, `telecord.talkMode` e `telecord.noiseSuppression`. Nada de sala, token, participantes ou histórico de chat — nenhum estado que o SFU seja dono.
+- **`localStorage` guarda só preferências do usuário e pistas de volta**: `displayName`, `talkMode`, `noiseSuppression`, `lastRoom`, `micGranted` e `device.*`. Nada de token, participantes ou histórico de chat — nenhum estado que o SFU seja dono. `micGranted` é **dica**, não verdade: quem decide a permissão é o navegador, e a Permissions API sempre vence a dica quando existe. `device.*` só é aplicado se o dispositivo ainda existir na enumeração — fone desconectado deixa preferência órfã.
 - Reload da página = nova identity, novo token, participante novo do ponto de vista do SFU.
 
 ---
@@ -482,6 +503,7 @@ Ordem que importa: a Vercel roda o `buildCommand` **antes** de compilar as funç
 
 **Sem autenticação**
 
+- **As salas ativas são públicas.** Com `/api/rooms` na página de entrada, qualquer visitante vê o nome de toda sala com gente e entra em qualquer uma com um clique. Antes disso, uma sala só era alcançável por quem tivesse a URL — proteção fraca, mas era alguma. Agora não há nenhuma. É consequência aceita do recurso, não descuido; fechar exigiria autenticação, ou restringir a lista às salas que a pessoa já visitou (o `lastRoom` do localStorage), ou uma senha por sala. Nenhuma dessas está implementada.
 - Quem tem a URL entra. `displayName` é auto-declarado e falsificável.
 - Não há expulsar, silenciar, nem lista de moderação.
 - `/api/token` não tem rate limit: dá para gerar tokens em volume. Limitar por IP exige estado (KV/Redis) — fora do MVP.
