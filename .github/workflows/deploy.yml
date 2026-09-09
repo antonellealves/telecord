@@ -1,7 +1,8 @@
 name: Deploy
 
 # O deploy automático da Vercel está desligado em vercel.json
-# (git.deploymentEnabled: false). Quem publica é este workflow.
+# (git.deploymentEnabled: false), que só bloqueia deploy disparado por evento
+# do git. Quem publica é este workflow, pela API.
 on:
   push:
     branches: [main]
@@ -57,7 +58,7 @@ jobs:
     #
     # Cada valor aceita as duas formas: `secrets` tem precedência, `vars` é o
     # fallback. Guardar credencial como *variable* funciona, mas variable é
-    # texto plano e NÃO é mascarada nos logs — o lugar certo de VERCEL_TOKEN e
+    # texto plano e NÃO é mascarada nos logs — o lugar de VERCEL_TOKEN e
     # LIVEKIT_API_SECRET é em Environment secrets. Escrito assim, mover os dois
     # para lá não exige tocar neste arquivo.
     env:
@@ -74,97 +75,22 @@ jobs:
           if [ -n "${MASK_TOKEN:-}" ]; then echo "::add-mask::$MASK_TOKEN"; fi
           if [ -n "${MASK_SECRET:-}" ]; then echo "::add-mask::$MASK_SECRET"; fi
 
-      # A CLI da Vercel resolve a conta antes de qualquer comando. Um token com
-      # escopo de projeto (prefixo vcp_) lê o projeto pela API mas não resolve
-      # usuário nem time, e a CLI então falha com "Could not retrieve Project
-      # Settings" — mensagem que não diz nada sobre a causa. Este passo troca
-      # esse erro por um que aponta o problema.
-      - name: Confere o token da Vercel
-        run: |
-          set -euo pipefail
-
-          if [ -z "${VERCEL_TOKEN:-}" ]; then
-            echo "::error::VERCEL_TOKEN não chegou. Cadastre no Environment 'Production', como secret (recomendado) ou variable."
-            exit 1
-          fi
-
-          if ! curl -sSf -o /dev/null \
-              -H "Authorization: Bearer $VERCEL_TOKEN" \
-              https://api.vercel.com/v2/user 2>/dev/null; then
-            echo "::error::VERCEL_TOKEN não é um token de conta — a CLI da Vercel não consegue resolver o usuário com ele. Tokens de projeto (prefixo vcp_) não servem aqui. Gere um em https://vercel.com/account/tokens, com escopo no time dono do projeto, e cadastre como Environment secret."
-            exit 1
-          fi
-
-          echo "Token de conta válido."
-
       - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9.15.0
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
 
-      - name: Instala a CLI da Vercel
-        run: npm install --global vercel@latest
-
-      # A função lê LIVEKIT_API_KEY/SECRET de process.env em runtime, e runtime
-      # é a plataforma da Vercel — deploy prebuilt não carrega .env para dentro
-      # do Lambda. Então os segredos do GitHub são empurrados para o projeto
-      # antes de publicar. A CLI não tem upsert: remove e adiciona.
-      - name: Injeta as credenciais no projeto da Vercel
+      # Sem CLI da Vercel e sem dependências: o script fala com a API REST
+      # usando só o fetch do Node. A CLI resolve a conta antes de qualquer
+      # comando, o que exige token de conta; a API aceita token de projeto.
+      - name: Sincroniza credenciais e publica
+        id: deploy
         env:
           LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY || vars.LIVEKIT_API_KEY }}
           LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET || vars.LIVEKIT_API_SECRET }}
-        run: |
-          set -euo pipefail
-
-          if [ -z "${VERCEL_TOKEN:-}" ]; then
-            echo "::error::VERCEL_TOKEN não chegou. Cadastre no Environment 'Production' do GitHub, como secret (recomendado) ou variable."
-            exit 1
-          fi
-          if [ -z "${LIVEKIT_API_KEY:-}" ] || [ -z "${LIVEKIT_API_SECRET:-}" ]; then
-            echo "::error::Faltam LIVEKIT_API_KEY e/ou LIVEKIT_API_SECRET no Environment 'Production'."
-            exit 1
-          fi
-
-          sync_env() {
-            name="$1"
-            value="$2"
-            # Sem stdout: o valor nunca aparece no log, mesmo que a CLI mude de
-            # comportamento. (O Actions também mascara secrets, é cinto duplo.)
-            vercel env rm "$name" production --yes --token="$VERCEL_TOKEN" >/dev/null 2>&1 || true
-            printf '%s' "$value" | vercel env add "$name" production --token="$VERCEL_TOKEN" >/dev/null
-            echo "  $name sincronizada"
-          }
-
-          echo "Sincronizando credenciais em production:"
-          sync_env LIVEKIT_API_KEY "$LIVEKIT_API_KEY"
-          sync_env LIVEKIT_API_SECRET "$LIVEKIT_API_SECRET"
-
-      - name: Puxa as configurações do projeto
-        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
-
-      # VITE_LIVEKIT_URL é opcional: o código tem default versionado. Quando a
-      # variável existe, ela ganha do default — o Vite dá precedência ao que já
-      # está no ambiente do processo.
-      - name: Build de produção
-        env:
           VITE_LIVEKIT_URL: ${{ vars.VITE_LIVEKIT_URL }}
-        run: vercel build --prod --token="$VERCEL_TOKEN"
-
-      - name: Publica
-        id: deploy
-        run: |
-          set -euo pipefail
-          url=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
-          echo "url=$url" >> "$GITHUB_OUTPUT"
-          echo "Publicado em $url"
-          echo "### Deploy publicado" >> "$GITHUB_STEP_SUMMARY"
-          echo "$url" >> "$GITHUB_STEP_SUMMARY"
+        run: node scripts/vercel-deploy.mjs
 
       # Fecha o ciclo: sem isto, um deploy "verde" ainda pode estar sem
       # credencial e devolvendo 500 em toda entrada de sala.
@@ -196,5 +122,8 @@ jobs:
           echo "3. rota de API inexistente deve dar 404, não o HTML da SPA"
           code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$URL/api/nada")
           if [ "$code" = "404" ]; then echo "   ok (404)"; else echo "::error::/api/nada respondeu $code"; fail=1; fi
+
+          echo "### Deploy verificado" >> "$GITHUB_STEP_SUMMARY"
+          echo "$URL" >> "$GITHUB_STEP_SUMMARY"
 
           exit $fail

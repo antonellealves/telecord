@@ -82,13 +82,15 @@ push na main
    │
    ├─ verify ─── typecheck + build, sem nenhuma credencial
    │
-   └─ deploy ─── injeta as credenciais no projeto da Vercel
-                 vercel pull  →  vercel build --prod
-                 vercel deploy --prebuilt --prod
-                 verifica /api/token, rewrite de SPA e 404 de API
+   └─ deploy ─── scripts/vercel-deploy.mjs
+                 · grava as credenciais no projeto da Vercel
+                 · cria o deployment do commit exato e espera ficar READY
+                 · verifica /api/token, rewrite de SPA e 404 de API
 ```
 
 O passo de verificação no fim é o que impede um deploy "verde" mas quebrado: se `/api/token` não devolver 200, o job falha.
+
+O deploy fala com a **API REST da Vercel**, não com a CLI, e sem nenhuma dependência além do `fetch` do Node. Isso não é preferência de estilo: a CLI resolve a conta antes de qualquer comando, então exige um token de conta. A API aceita também token com escopo de projeto (prefixo `vcp_`), que é o tipo gerado nas configurações do projeto.
 
 ### Por que as credenciais são empurradas para a Vercel
 
@@ -98,9 +100,7 @@ Os valores não passam pelo log — a saída dos comandos é descartada, e o Act
 
 ### Configuração, uma vez só
 
-1. **Gere um token de conta** em <https://vercel.com/account/tokens>, com o *scope* apontando para o time dono do projeto.
-
-   > Precisa ser um **token de conta**. Token com escopo de projeto (prefixo `vcp_`, gerado nas configurações do projeto) lê a API do projeto mas não resolve usuário nem time — e a CLI resolve a conta antes de qualquer comando. Com ele, todo comando morre em `Could not retrieve Project Settings`, mensagem que não diz nada sobre a causa. O workflow checa isso logo no começo e falha com um recado claro.
+1. **Gere um token da Vercel** — serve tanto um token de conta (<https://vercel.com/account/tokens>) quanto um com escopo de projeto, gerado nas configurações do próprio projeto.
 
 2. **Cadastre 3 valores** no GitHub Environment chamado **`Production`** (*Settings → Environments → Production*). O nome precisa bater com o `environment:` do workflow.
 
