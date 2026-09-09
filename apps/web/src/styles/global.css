@@ -20,21 +20,21 @@
   /* Azul claro vintage. Suave, mas azul de verdade — sem componente cinza,
      que no escuro apaga a cor e deixa tudo com cara de fumaça. O triplete RGB
      existe para compor tintas com rgba() sem espalhar hex pelos módulos. */
-  --accent: #bfe1fc;
-  --accent-rgb: 191, 225, 252;
-  --accent-deep: #92c6ee;
-  --accent-soft: #e8f4ff;
+  --accent: #8ecdff;
+  --accent-rgb: 142, 205, 255;
+  --accent-deep: #62b4f2;
+  --accent-soft: #ddf0ff;
   --accent-ink: #0b1a26;
 
   /* Roxo suave, o outro extremo do degradê. O azul acende embaixo, o roxo
      preenche o resto — é o contraste entre os dois que dá cor à composição.
      Dessaturado o suficiente para continuar "dark soft" e não virar neon. */
-  --accent-2: #7b6aa6;
-  --accent-2-rgb: 123, 106, 166;
+  --accent-2: #7256c9;
+  --accent-2-rgb: 114, 86, 201;
 
   /* Ponto médio entre os dois. Sem ele a transição azul→roxo passa por um
      cinza sujo, porque a interpolação em sRGB corta o meio do arco. */
-  --accent-mid-rgb: 157, 166, 209;
+  --accent-mid-rgb: 128, 145, 228;
 
   --danger: #f0888a;
   --danger-rgb: 240, 136, 138;
@@ -44,8 +44,8 @@
   /* Ação: azul claro na quina superior, roxo escuro na inferior. O texto fica
      sobre a faixa média (roxo médio a escuro), que é onde o branco tem
      contraste — por isso o azul se resolve já nos primeiros 26%. */
-  --gradient-action: linear-gradient(120deg, #bfe1fc 0%, #8a92c4 28%, #5c5688 64%, #3a3459 100%);
-  --gradient-action-hover: linear-gradient(120deg, #d3ecff 0%, #9aa2d3 28%, #6b6499 64%, #464067 100%);
+  --gradient-action: linear-gradient(120deg, #8ecdff 0%, #7f8ae4 28%, #6a56c4 64%, #46349a 100%);
+  --gradient-action-hover: linear-gradient(120deg, #a8dbff 0%, #929bf0 28%, #7a66d6 64%, #5443ad 100%);
   --gradient-action-ink: #ffffff;
 
   --radius: 14px;

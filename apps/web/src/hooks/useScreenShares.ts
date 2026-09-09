@@ -11,10 +11,9 @@ export interface ScreenShareEntry {
   publication: TrackPublication;
 }
 
-export interface ScreenShareLock {
-  /** Publicação vencedora, a única que deve aparecer no palco. */
-  active: ScreenShareEntry | null;
-  isLocalOwner: boolean;
+export interface ScreenShares {
+  entries: ScreenShareEntry[];
+  isLocalSharing: boolean;
   isBusy: boolean;
   /** `null` = botão habilitado; string = motivo do bloqueio (vira tooltip). */
   disabledReason: string | null;
@@ -40,9 +39,11 @@ function participantLabel(participant: Participant): string {
 }
 
 /**
- * Todas as telas publicadas na sala, em ordem total determinística: menor
- * `trackSid` primeiro. O sid é atribuído pelo servidor e é visível para todo
- * mundo, então todos os clientes calculam o mesmo vencedor (SPEC §4.2).
+ * Todas as telas publicadas na sala, em ordem estável por `trackSid`.
+ *
+ * A ordenação existe para o palco não reembaralhar sozinho: o sid é atribuído
+ * pelo servidor e é o mesmo para todo mundo, então todos veem os quadros na
+ * mesma ordem, e um participante entrando não muda a posição dos demais.
  */
 function collectScreenShares(room: Room): ScreenShareEntry[] {
   const participants: { participant: Participant; isLocal: boolean }[] = [
@@ -87,7 +88,7 @@ function sameEntries(a: ScreenShareEntry[], b: ScreenShareEntry[]): boolean {
       other.owner.trackSid === entry.owner.trackSid &&
       other.publication === entry.publication &&
       // O objeto da publicação não muda quando a track é assinada: só o campo
-      // `.track` sai de undefined. Sem comparar isso, o palco nunca receberia
+      // `.track` sai de undefined. Sem comparar isso, o quadro nunca receberia
       // a track e dependeria de outro hook re-renderizar por acaso.
       other.publication.track === entry.publication.track
     );
@@ -95,16 +96,18 @@ function sameEntries(a: ScreenShareEntry[], b: ScreenShareEntry[]): boolean {
 }
 
 /**
- * Regra de tela única (SPEC §4): checagem client-side + desempate
- * determinístico. Não fecha a corrida — converge depois dela.
+ * Compartilhamento de tela, sem limite de quantas ao mesmo tempo.
+ *
+ * A versão anterior impunha uma tela por vez com desempate por menor sid.
+ * Isso caiu: várias pessoas podem publicar, e o palco vira grade. O custo é
+ * de banda — cada tela extra multiplica o egress do SFU (SPEC §6.5).
  */
-export function useScreenShareLock(notify: (kind: ToastKind, message: string) => void): ScreenShareLock {
+export function useScreenShares(notify: (kind: ToastKind, message: string) => void): ScreenShares {
   const room = useRoomContext();
   const [entries, setEntries] = useState<ScreenShareEntry[]>(() => collectScreenShares(room));
   const [isBusy, setIsBusy] = useState(false);
 
   const busyRef = useRef(false);
-  const resolvingRef = useRef(false);
   const notifyRef = useRef(notify);
   notifyRef.current = notify;
 
@@ -127,38 +130,12 @@ export function useScreenShareLock(notify: (kind: ToastKind, message: string) =>
     };
   }, [room]);
 
-  const active = entries[0] ?? null;
-  const localEntry = entries.find((entry) => entry.owner.isLocal) ?? null;
-  const isLocalOwner = active !== null && active.owner.isLocal;
-
-  // Desempate: perdi para um sid menor, recolho minha tela.
-  useEffect(() => {
-    if (entries.length < 2 || active === null || localEntry === null) {
-      return;
-    }
-    if (localEntry.owner.trackSid === active.owner.trackSid || resolvingRef.current) {
-      return;
-    }
-
-    resolvingRef.current = true;
-    const winnerName = active.owner.displayName;
-    void room.localParticipant
-      .setScreenShareEnabled(false)
-      .catch(() => undefined)
-      .finally(() => {
-        resolvingRef.current = false;
-        notifyRef.current(
-          'info',
-          `${winnerName} entrou primeiro com a tela. Seu compartilhamento foi encerrado.`,
-        );
-      });
-  }, [entries, active, localEntry, room]);
+  const isLocalSharing = entries.some((entry) => entry.owner.isLocal);
 
   const start = useCallback(() => {
     if (busyRef.current) {
       return;
     }
-    // Lock otimista: desabilita antes do await, para não haver duplo clique.
     busyRef.current = true;
     setIsBusy(true);
     void room.localParticipant
@@ -195,11 +172,9 @@ export function useScreenShareLock(notify: (kind: ToastKind, message: string) =>
   let disabledReason: string | null = null;
   if (isBusy) {
     disabledReason = 'Aguarde…';
-  } else if (!isLocalOwner && active !== null) {
-    disabledReason = `${active.owner.displayName} já está compartilhando a tela.`;
-  } else if (!isLocalOwner && !isScreenShareSupported()) {
+  } else if (!isLocalSharing && !isScreenShareSupported()) {
     disabledReason = 'Este navegador não compartilha tela. Use Chrome, Edge ou Firefox no computador.';
   }
 
-  return { active, isLocalOwner, isBusy, disabledReason, start, stop };
+  return { entries, isLocalSharing, isBusy, disabledReason, start, stop };
 }

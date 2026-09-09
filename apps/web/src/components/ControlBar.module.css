@@ -106,3 +106,47 @@
   background: rgba(255, 255, 255, 0.06);
   color: var(--accent-soft);
 }
+
+.badge {
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: #08131f;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  display: grid;
+  place-items: center;
+}
+
+/*
+ * Responsivo: com seis botões, o rótulo é a primeira coisa a sair. Some abaixo
+ * de 1080px e o ícone assume — cada botão mantém `title`, então o significado
+ * não se perde.
+ */
+@media (max-width: 1080px) {
+  .text {
+    display: none;
+  }
+
+  .button {
+    padding: 10px 13px;
+  }
+}
+
+@media (max-width: 620px) {
+  .bar {
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .button {
+    padding: 9px 11px;
+  }
+
+  .hint {
+    font-size: 11px;
+  }
+}

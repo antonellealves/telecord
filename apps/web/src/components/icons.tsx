@@ -92,3 +92,43 @@ export function SlidersIcon(props: IconProps): JSX.Element {
     </Icon>
   );
 }
+
+export function ExpandIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g>
+        <path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5" />
+      </g>
+    </Icon>
+  );
+}
+
+export function ShrinkIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g>
+        <path d="M4 9h5V4M20 9h-5V4M4 15h5v5M20 15h-5v5" />
+      </g>
+    </Icon>
+  );
+}
+
+export function ChatIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g>
+        <path d="M20.5 12.5a7.5 7.5 0 0 1-7.5 7.5H8l-4 3v-4.4A7.5 7.5 0 0 1 13 5a7.5 7.5 0 0 1 7.5 7.5z" />
+      </g>
+    </Icon>
+  );
+}
+
+export function SoundIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g>
+        <path d="M4 14v-4M8 18V6M12 15V9M16 19V5M20 13v-2" />
+      </g>
+    </Icon>
+  );
+}

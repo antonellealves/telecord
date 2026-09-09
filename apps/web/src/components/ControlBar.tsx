@@ -1,6 +1,6 @@
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { TalkMode } from '../lib/storage';
-import { LeaveIcon, MicIcon, MicOffIcon, ScreenIcon, SlidersIcon } from './icons';
+import { ChatIcon, LeaveIcon, MicIcon, MicOffIcon, ScreenIcon, SlidersIcon, SoundIcon } from './icons';
 import styles from './ControlBar.module.css';
 
 interface ControlBarProps {
@@ -13,10 +13,15 @@ interface ControlBarProps {
   isSharingScreen: boolean;
   shareDisabledReason: string | null;
   onToggleScreenShare: () => void;
-  onLeave: () => void;
-  disabled: boolean;
+  isSoundboardOpen: boolean;
+  onToggleSoundboard: () => void;
+  isChatOpen: boolean;
+  unreadCount: number;
+  onToggleChat: () => void;
   isSettingsOpen: boolean;
   onToggleSettings: () => void;
+  onLeave: () => void;
+  disabled: boolean;
 }
 
 export function ControlBar({
@@ -29,10 +34,15 @@ export function ControlBar({
   isSharingScreen,
   shareDisabledReason,
   onToggleScreenShare,
-  onLeave,
-  disabled,
+  isSoundboardOpen,
+  onToggleSoundboard,
+  isChatOpen,
+  unreadCount,
+  onToggleChat,
   isSettingsOpen,
   onToggleSettings,
+  onLeave,
+  disabled,
 }: ControlBarProps): JSX.Element {
   const shareBlocked = !isSharingScreen && shareDisabledReason !== null;
 
@@ -70,7 +80,9 @@ export function ControlBar({
           title="Segure para falar — ou segure a barra de espaço"
         >
           {isMicrophoneEnabled ? <MicIcon /> : <MicOffIcon />}
-          {isMicrophoneEnabled ? 'Falando…' : 'Segure para falar'}
+          <span className={styles.text}>
+            {isMicrophoneEnabled ? 'Falando…' : 'Segure para falar'}
+          </span>
         </button>
       ) : (
         <button
@@ -82,7 +94,7 @@ export function ControlBar({
           title={isMicrophoneEnabled ? 'Desligar o microfone' : 'Ligar o microfone'}
         >
           {isMicrophoneEnabled ? <MicIcon /> : <MicOffIcon />}
-          {isMicrophoneEnabled ? 'Microfone ligado' : 'Falar'}
+          <span className={styles.text}>{isMicrophoneEnabled ? 'Microfone ligado' : 'Falar'}</span>
         </button>
       )}
 
@@ -94,7 +106,36 @@ export function ControlBar({
         title={shareDisabledReason ?? (isSharingScreen ? 'Parar de compartilhar' : 'Compartilhar tela')}
       >
         <ScreenIcon />
-        {isSharingScreen ? 'Parar de compartilhar' : 'Compartilhar tela'}
+        <span className={styles.text}>
+          {isSharingScreen ? 'Parar de compartilhar' : 'Compartilhar tela'}
+        </span>
+      </button>
+
+      <button
+        type="button"
+        className={`${styles.button} ${isSoundboardOpen ? styles.toggled : ''}`}
+        onClick={onToggleSoundboard}
+        disabled={disabled}
+        aria-expanded={isSoundboardOpen}
+        aria-haspopup="dialog"
+        title="Tocar um som para a sala"
+      >
+        <SoundIcon />
+        <span className={styles.text}>Sons</span>
+      </button>
+
+      <button
+        type="button"
+        className={`${styles.button} ${isChatOpen ? styles.toggled : ''}`}
+        onClick={onToggleChat}
+        aria-expanded={isChatOpen}
+        title={isChatOpen ? 'Esconder o chat' : 'Mostrar o chat'}
+      >
+        <ChatIcon />
+        <span className={styles.text}>Chat</span>
+        {!isChatOpen && unreadCount > 0 ? (
+          <span className={styles.badge}>{unreadCount > 9 ? '9+' : unreadCount}</span>
+        ) : null}
       </button>
 
       {/* Fica habilitado mesmo desconectado: escolher dispositivo enquanto a
@@ -108,12 +149,17 @@ export function ControlBar({
         title="Modo de voz, dispositivos e teste de microfone"
       >
         <SlidersIcon />
-        Áudio
+        <span className={styles.text}>Áudio</span>
       </button>
 
-      <button type="button" className={`${styles.button} ${styles.danger}`} onClick={onLeave}>
+      <button
+        type="button"
+        className={`${styles.button} ${styles.danger}`}
+        onClick={onLeave}
+        title="Sair da sala"
+      >
         <LeaveIcon />
-        Sair
+        <span className={styles.text}>Sair</span>
       </button>
 
       {shareBlocked ? <p className={styles.hint}>{shareDisabledReason}</p> : null}

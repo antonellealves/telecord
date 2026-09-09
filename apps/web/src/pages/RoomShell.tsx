@@ -1,17 +1,20 @@
-import { useCallback, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { RoomAudioRenderer, useRoomContext } from '@livekit/components-react';
 import { AmbientGradient } from '../components/AmbientGradient';
 import { AudioPlaybackGate } from '../components/AudioPlaybackGate';
+import { ChatPanel } from '../components/ChatPanel';
 import { ConnectionBanner } from '../components/ConnectionBanner';
 import { ControlBar } from '../components/ControlBar';
 import { DeviceSettings } from '../components/DeviceSettings';
 import { ParticipantSidebar } from '../components/ParticipantSidebar';
 import { ScreenStage } from '../components/ScreenStage';
+import { Soundboard } from '../components/Soundboard';
 import { ToastStack } from '../components/ToastStack';
 import { useParticipantViews } from '../hooks/useParticipantViews';
 import { useResizableSidebar } from '../hooks/useResizableSidebar';
 import { useRoomConnectionStatus } from '../hooks/useRoomConnection';
-import { useScreenShareLock } from '../hooks/useScreenShareLock';
+import { useRoomMessages } from '../hooks/useRoomMessages';
+import { useScreenShares } from '../hooks/useScreenShares';
 import { useTalkControls } from '../hooks/useTalkControls';
 import { useToasts } from '../hooks/useToasts';
 import styles from './RoomPage.module.css';
@@ -29,16 +32,27 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
   const status = useRoomConnectionStatus();
   const participants = useParticipantViews();
   const { toasts, push, dismiss } = useToasts();
-  const share = useScreenShareLock(push);
+  const shares = useScreenShares(push);
   const talk = useTalkControls((message) => push('error', message));
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const controlsRef = useRef<HTMLDivElement | null>(null);
+  const { messages, unread, sendChat, playSound, markRead } = useRoomMessages();
 
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSoundboardOpen, setIsSoundboardOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+
+  const controlsRef = useRef<HTMLDivElement | null>(null);
   const mainRef = useRef<HTMLDivElement | null>(null);
   const sidebar = useResizableSidebar(mainRef);
 
   const local = participants.find((participant) => participant.isLocal) ?? null;
   const isMicrophoneEnabled = local?.isMicrophoneEnabled ?? false;
+
+  // Chat aberto não acumula não-lidas.
+  useEffect(() => {
+    if (isChatOpen) {
+      markRead();
+    }
+  }, [isChatOpen, messages.length, markRead]);
 
   const leave = useCallback(() => {
     onLeaveIntent();
@@ -76,7 +90,14 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
           <div className={styles.resizer} {...sidebar.handleProps}>
             <span className={styles.grip} aria-hidden="true" />
           </div>
-          <ScreenStage entry={share.active} />
+          <ScreenStage entries={shares.entries} />
+          {isChatOpen ? (
+            <ChatPanel
+              messages={messages}
+              onSend={sendChat}
+              onClose={() => setIsChatOpen(false)}
+            />
+          ) : null}
         </div>
 
         <div className={styles.controls} ref={controlsRef}>
@@ -90,6 +111,14 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
             />
           ) : null}
 
+          {isSoundboardOpen ? (
+            <Soundboard
+              containerRef={controlsRef}
+              onPlay={playSound}
+              onClose={() => setIsSoundboardOpen(false)}
+            />
+          ) : null}
+
           <ControlBar
             talkMode={talk.mode}
             isMicrophoneEnabled={isMicrophoneEnabled}
@@ -97,13 +126,24 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
             onToggleMicrophone={talk.toggleOpenMic}
             onPressToTalk={talk.pressToTalk}
             onReleaseToTalk={talk.releaseToTalk}
-            isSharingScreen={share.isLocalOwner}
-            shareDisabledReason={share.disabledReason}
-            onToggleScreenShare={share.isLocalOwner ? share.stop : share.start}
+            isSharingScreen={shares.isLocalSharing}
+            shareDisabledReason={shares.disabledReason}
+            onToggleScreenShare={shares.isLocalSharing ? shares.stop : shares.start}
+            isSoundboardOpen={isSoundboardOpen}
+            onToggleSoundboard={() => {
+              setIsSoundboardOpen((open) => !open);
+              setIsSettingsOpen(false);
+            }}
+            isChatOpen={isChatOpen}
+            unreadCount={unread}
+            onToggleChat={() => setIsChatOpen((open) => !open)}
+            isSettingsOpen={isSettingsOpen}
+            onToggleSettings={() => {
+              setIsSettingsOpen((open) => !open);
+              setIsSoundboardOpen(false);
+            }}
             onLeave={leave}
             disabled={status !== 'connected'}
-            isSettingsOpen={isSettingsOpen}
-            onToggleSettings={() => setIsSettingsOpen((open) => !open)}
           />
         </div>
 

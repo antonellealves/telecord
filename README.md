@@ -1,6 +1,6 @@
 # Telecord
 
-Sala de reunião web, efêmera e sem cadastro: **uma pessoa compartilha a tela, até 20 participantes falam e ouvem**. Sem banco de dados, sem estado no servidor além do próprio SFU.
+Sala de reunião web, efêmera e sem cadastro: **até 20 participantes falam, ouvem, compartilham tela e conversam por texto**. Sem banco de dados, sem estado no servidor além do próprio SFU.
 
 A especificação técnica completa — incluindo as decisões e os limites conhecidos — está em [SPEC.md](./SPEC.md).
 
@@ -139,8 +139,9 @@ Se o token vier certo mas a sala não conectar, o problema é a URL do servidor:
 ## Notas de operação
 
 - **Todo mundo entra mutado.** O microfone só é publicado no primeiro clique em "Falar" — é aí que o navegador pede permissão.
-- **Uma tela por vez.** A regra é resolvida no cliente e tem uma corrida conhecida: se duas pessoas clicarem quase juntas, as duas publicam por ~1 segundo, e então todos os clientes aplicam o mesmo desempate (menor `trackSid` vence) e a segunda tela é recolhida sozinha. Fechar isso de verdade exige estado no servidor — ver §4 do SPEC.
 - **Áudio de aba** só existe em Chromium no desktop. Firefox e Safari não entregam áudio no `getDisplayMedia`.
 - **iOS** não compartilha tela (`getDisplayMedia` não existe lá): dá para ouvir e falar, não para apresentar.
 - **Banda.** Com 20 pessoas e a tela em 1080p@15fps, o SFU envia ~26 GB por hora de reunião. Se a cota do plano free apertar, troque o preset para `h720fps15` em `apps/web/src/lib/media.ts`.
+- **Sons do soundboard** ficam em `apps/web/public/sons/` e são listados em `apps/web/src/lib/sounds.ts`. Os cinco que vêm no repositório são sintetizados, para o recurso funcionar de saída — troque pelos seus arquivos e ajuste a lista. O som não trafega pela sala: cada cliente toca o próprio arquivo ao receber o aviso, então todo mundo precisa estar na mesma versão do app.
+- **Várias pessoas podem compartilhar tela ao mesmo tempo.** Cada tela extra multiplica o egress do SFU — com o preset atual, duas telas já dobram a conta de banda acima.
 - **Trocar de servidor LiveKit** (Cloud → self-host) é mudar `VITE_LIVEKIT_URL` e as credenciais, e refazer o deploy. O código não muda.

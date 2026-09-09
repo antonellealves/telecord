@@ -207,3 +207,75 @@ export interface ScreenShareOwner {
   isLocal: boolean;
   trackSid: string;
 }
+
+// ---------------------------------------------------------------------------
+// Mensagens pelo canal de dados do LiveKit (SPEC §6.7)
+// ---------------------------------------------------------------------------
+
+export const MAX_CHAT_LENGTH = 400;
+
+/** Limite de mensagens guardadas em memória por cliente. */
+export const CHAT_HISTORY_LIMIT = 200;
+
+export interface ChatMessage {
+  type: 'chat';
+  /** Único por mensagem; usado como key e para deduplicar. */
+  id: string;
+  body: string;
+  sentAt: number;
+}
+
+export interface SoundCue {
+  type: 'sound';
+  id: string;
+  /** Id do som no catálogo de apps/web/public/sons. */
+  soundId: string;
+  sentAt: number;
+}
+
+export type RoomMessage = ChatMessage | SoundCue;
+
+/**
+ * Valida uma mensagem recebida pelo canal de dados.
+ *
+ * O canal é aberto a qualquer participante, e participante é só quem tem o
+ * token — ou seja, conteúdo daqui é entrada não confiável e passa pelas mesmas
+ * regras de tamanho e formato que a API aplica.
+ */
+export function parseRoomMessage(raw: unknown): RoomMessage | null {
+  if (typeof raw !== 'object' || raw === null) {
+    return null;
+  }
+  // Forma solta de propósito: `Partial<ChatMessage & SoundCue>` faria o campo
+  // `type` intersectar 'chat' com 'sound' e virar `never`, o que apaga todos os
+  // outros campos junto.
+  const value = raw as {
+    type?: unknown;
+    id?: unknown;
+    sentAt?: unknown;
+    body?: unknown;
+    soundId?: unknown;
+  };
+  if (typeof value.id !== 'string' || value.id.length === 0 || value.id.length > 64) {
+    return null;
+  }
+  if (typeof value.sentAt !== 'number' || !Number.isFinite(value.sentAt)) {
+    return null;
+  }
+
+  if (value.type === 'chat') {
+    if (typeof value.body !== 'string') return null;
+    const body = value.body.trim();
+    if (body.length === 0 || body.length > MAX_CHAT_LENGTH) return null;
+    return { type: 'chat', id: value.id, body, sentAt: value.sentAt };
+  }
+
+  if (value.type === 'sound') {
+    if (typeof value.soundId !== 'string' || !/^[a-z0-9-]{1,32}$/.test(value.soundId)) {
+      return null;
+    }
+    return { type: 'sound', id: value.id, soundId: value.soundId, sentAt: value.sentAt };
+  }
+
+  return null;
+}

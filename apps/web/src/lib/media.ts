@@ -39,7 +39,10 @@ export const screenShareCaptureOptions: ScreenShareCaptureOptions = {
   resolution: ScreenSharePresets.h1080fps15.resolution,
   selfBrowserSurface: 'exclude',
   surfaceSwitching: 'include',
-  systemAudio: 'include',
+  // 'exclude' faz o navegador oferecer só o áudio da aba/janela escolhida,
+  // em vez do som do sistema inteiro — sem isso, notificação e qualquer outro
+  // programa entram junto na sala.
+  systemAudio: 'exclude',
 };
 
 /** Slug curto e digitável para quando o campo de sala vem vazio. */

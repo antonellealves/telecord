@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRoomContext } from '@livekit/components-react';
-import { Room, RoomEvent, supportsAudioOutputSelection } from 'livekit-client';
+import { LocalAudioTrack, Room, RoomEvent, Track, supportsAudioOutputSelection } from 'livekit-client';
 import { describeMicrophoneError } from '../lib/errors';
+import { readNoiseSuppression, writeNoiseSuppression } from '../lib/storage';
 
 export interface DeviceOption {
   deviceId: string;
@@ -18,6 +19,8 @@ export interface MediaDeviceSettings {
   /** O navegador só revela os nomes depois da permissão de microfone. */
   labelsHidden: boolean;
   isSwitching: boolean;
+  noiseSuppression: boolean;
+  setNoiseSuppression: (enabled: boolean) => void;
   selectAudioInput: (deviceId: string) => void;
   selectAudioOutput: (deviceId: string) => void;
   revealLabels: () => void;
@@ -54,6 +57,7 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
   const [activeAudioOutput, setActiveAudioOutput] = useState(DEFAULT_DEVICE);
   const [labelsHidden, setLabelsHidden] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
+  const [noiseSuppression, setNoiseSuppressionState] = useState(() => readNoiseSuppression());
 
   const outputSelectionSupported = supportsAudioOutputSelection();
   const onErrorRef = useRef(onError);
@@ -122,6 +126,36 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
   const selectAudioInput = useCallback((deviceId: string) => select('audioinput', deviceId), [select]);
   const selectAudioOutput = useCallback((deviceId: string) => select('audiooutput', deviceId), [select]);
 
+  /**
+   * Supressão de ruído.
+   *
+   * Duas frentes, porque o ajuste precisa valer nos dois momentos: os defaults
+   * do Room governam a PRÓXIMA publicação (o app entra mutado, então quase
+   * sempre é esse o caso), e `restartTrack` reabre a captura quando já existe
+   * microfone no ar. Só o primeiro deixaria a mudança sem efeito para quem já
+   * está falando.
+   */
+  const setNoiseSuppression = useCallback(
+    (enabled: boolean) => {
+      setNoiseSuppressionState(enabled);
+      writeNoiseSuppression(enabled);
+
+      const defaults = {
+        ...room.options.audioCaptureDefaults,
+        noiseSuppression: enabled,
+      };
+      room.options.audioCaptureDefaults = defaults;
+
+      const track = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.audioTrack;
+      if (track instanceof LocalAudioTrack) {
+        void track.restartTrack(defaults).catch((error: unknown) => {
+          onErrorRef.current(describeMicrophoneError(error));
+        });
+      }
+    },
+    [room],
+  );
+
   const revealLabels = useCallback(() => {
     void Room.getLocalDevices('audioinput', true)
       .then(() => refresh())
@@ -138,6 +172,8 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
     outputSelectionSupported,
     labelsHidden,
     isSwitching,
+    noiseSuppression,
+    setNoiseSuppression,
     selectAudioInput,
     selectAudioOutput,
     revealLabels,

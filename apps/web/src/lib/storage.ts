@@ -40,3 +40,22 @@ export function writeTalkMode(mode: TalkMode): void {
     // Storage indisponível: o modo vale só para esta aba.
   }
 }
+
+const NOISE_SUPPRESSION_KEY = 'telecord.noiseSuppression';
+
+export function readNoiseSuppression(): boolean {
+  try {
+    // Ligado é o padrão: sala de voz com ruído de fundo cansa rápido.
+    return window.localStorage.getItem(NOISE_SUPPRESSION_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+export function writeNoiseSuppression(enabled: boolean): void {
+  try {
+    window.localStorage.setItem(NOISE_SUPPRESSION_KEY, enabled ? 'on' : 'off');
+  } catch {
+    // Storage indisponível: vale só para esta aba.
+  }
+}

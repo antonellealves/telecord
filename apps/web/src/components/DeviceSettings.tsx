@@ -162,6 +162,25 @@ export function DeviceSettings({
         </span>
       </div>
 
+      <div className={styles.field}>
+        <label className={styles.switchRow}>
+          <input
+            type="checkbox"
+            className={styles.checkbox}
+            checked={devices.noiseSuppression}
+            onChange={(event) => devices.setNoiseSuppression(event.target.checked)}
+          />
+          <span className={styles.switchTrack} aria-hidden="true">
+            <span className={styles.switchThumb} />
+          </span>
+          <span className={styles.switchLabel}>Supressão de ruído</span>
+        </label>
+        <span className={styles.hint}>
+          Corta ventilador, teclado e barulho de fundo. Desligue se estiver tocando ou cantando —
+          o filtro trata música como ruído.
+        </span>
+      </div>
+
       <label className={styles.field}>
         <span className={styles.label}>
           <SpeakerIcon className={styles.icon} />

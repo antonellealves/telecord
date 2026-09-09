@@ -2,10 +2,11 @@
   position: relative;
   flex: 1;
   min-width: 0;
+  min-height: 0;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   /* Translúcido de propósito: sem tela compartilhada, é por aqui que a luz de
-     fundo aparece. Com vídeo, o próprio elemento cobre tudo. */
+     fundo aparece. Com vídeo, o próprio quadro cobre. */
   background: rgba(8, 10, 14, 0.42);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -14,6 +15,44 @@
   align-items: center;
   justify-content: center;
   box-shadow: var(--shadow-soft);
+}
+
+/*
+ * Grade de telas. `auto-fit` com mínimo generoso evita quadro espremido:
+ * abaixo de ~300px de largura, tela compartilhada não é legível de qualquer
+ * forma, então é melhor empilhar.
+ */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  /* Sem isto as linhas se ajustam ao conteúdo e os quadros ficam boiando no
+     meio, com faixa morta em cima e embaixo. */
+  grid-auto-rows: minmax(180px, 1fr);
+  align-content: stretch;
+  gap: 8px;
+  padding: 8px;
+  background: rgba(8, 10, 14, 0.32);
+  overflow: auto;
+}
+
+/* Com um único quadro não há por que dividir a altura. */
+.grid[data-count='1'] {
+  grid-template-columns: 1fr;
+}
+
+.tile {
+  position: relative;
+  min-height: 180px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: #000;
+  border: 1px solid var(--border);
+}
+
+/* Em tela cheia o quadro vira a tela: sem borda, sem canto arredondado. */
+.tileFullscreen {
+  border: none;
+  border-radius: 0;
 }
 
 .video {
@@ -26,12 +65,12 @@
 
 .label {
   position: absolute;
-  left: 14px;
-  bottom: 14px;
+  left: 10px;
+  bottom: 10px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px;
+  padding: 5px 11px;
   border-radius: var(--radius-pill);
   background: rgba(8, 10, 14, 0.72);
   border: 1px solid var(--border);
@@ -41,14 +80,54 @@
   color: var(--text-dim);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  max-width: calc(100% - 70px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .live {
   width: 6px;
   height: 6px;
+  flex: none;
   border-radius: 50%;
   background: var(--accent);
   box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.9);
+}
+
+.expand {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: rgba(8, 10, 14, 0.7);
+  color: var(--text-dim);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  opacity: 0;
+  transition: opacity 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+/* Aparece no hover, mas nunca some para quem navega por teclado ou toque. */
+.tile:hover .expand,
+.expand:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .expand {
+    opacity: 1;
+  }
+}
+
+.expand:hover {
+  border-color: rgba(var(--accent-rgb), 0.6);
+  color: var(--accent-soft);
 }
 
 /* ---- estado vazio --------------------------------------------------- */
@@ -57,7 +136,7 @@
   position: relative;
   width: 100%;
   height: 100%;
-  padding: 40px;
+  padding: 32px 24px;
   display: flex;
   flex-direction: column;
   align-items: center;

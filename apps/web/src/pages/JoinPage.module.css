@@ -42,7 +42,7 @@
   letter-spacing: 0.16em;
   text-indent: 0.16em;
   text-transform: uppercase;
-  background: linear-gradient(102deg, #ffffff 0%, var(--accent) 46%, #93a6d8 100%);
+  background: linear-gradient(102deg, #ffffff 0%, var(--accent) 44%, #8f7ae8 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: var(--accent);
@@ -75,7 +75,7 @@
 
 .titleAccent {
   display: block;
-  background: linear-gradient(104deg, #dff0ff 0%, #a6cdee 38%, #a892ea 100%);
+  background: linear-gradient(104deg, #eaf7ff 0%, #8ecdff 38%, #8a6ee8 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: var(--accent);
@@ -266,4 +266,41 @@
   font-size: 11px;
   letter-spacing: 0.07em;
   color: var(--accent-soft);
+}
+
+/* ---- responsivo ------------------------------------------------------ */
+
+@media (max-width: 560px) {
+  .page {
+    padding: 28px 16px;
+  }
+
+  .shell {
+    gap: 22px;
+  }
+
+  .card {
+    padding: 20px;
+  }
+
+  .wordmark {
+    letter-spacing: 0.1em;
+    text-indent: 0.1em;
+  }
+}
+
+/* Telefone deitado: a altura é o recurso escasso, então o herói encolhe. */
+@media (max-height: 560px) and (orientation: landscape) {
+  .page {
+    padding: 20px 16px;
+  }
+
+  .shell {
+    gap: 16px;
+  }
+
+  .lead,
+  .tagline {
+    display: none;
+  }
 }

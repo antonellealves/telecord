@@ -1,7 +1,8 @@
 # SPEC.md — Sala de voz + screen share (MVP)
 
 Especificação técnica. Nenhum código de aplicação foi escrito ainda.
-Escopo: sala efêmera, sem banco, sem autenticação, 1 tela + até 20 áudios.
+Escopo: sala efêmera, sem banco, sem autenticação, até 20 áudios + telas compartilhadas.
+(Documento com emendas pós-implementação; a §4 foi revogada.)
 
 Convenções: pacotes sob o escopo `@telecord/*`; o app web se chama `web`.
 
@@ -134,7 +135,7 @@ at.addGrant({
   canSubscribe: true,
   canPublish: true,
   canPublishSources: ['microphone', 'screen_share', 'screen_share_audio'], // sem 'camera'
-  canPublishData: false,
+  canPublishData: true,   // chat e soundboard
   canUpdateOwnMetadata: false,
   roomCreate: false,
   roomAdmin: false,
@@ -152,6 +153,7 @@ Notas que valem como regra:
 - **O TTL de 10 min governa só o join.** Depois de conectado, o próprio servidor LiveKit entrega token renovado pelo canal de sinalização, então a reconexão automática não quebra. Ainda assim o cliente trata falha por token expirado refazendo `POST /api/token` e reconectando.
 - **Sem CORS**: front e função na mesma origem em produção; em dev o handler é montado dentro do próprio Vite (§8.3).
 - **Logs**: só `{ roomId, identity, code, durationMs }`. Nunca key, secret, token ou corpo cru.
+- **`canPublishData` ligado** para o chat e o soundboard (§6.7). Quem tem o token pode publicar dados na sala; o conteúdo é validado no cliente que recebe, como qualquer entrada não confiável.
 - **Sem rate limit** — limitação consciente, registrada em §9.
 
 ---
@@ -176,12 +178,20 @@ Regras:
 
 - **Em `Reconnected`, re-derivar tudo do objeto `room`**, sem confiar em deltas: durante a reconexão eventos se perdem.
 - **A sala nasce no primeiro join e morre sozinha.** Nenhum código nosso cria ou destrói sala; quem faz isso é o LiveKit, com o `emptyTimeout` configurado no projeto do Cloud. Se todos saem, a sala deixa de existir; a URL continua válida e recria a sala no próximo join.
-- **`localStorage` guarda só preferências do usuário**: `telecord.displayName` e `telecord.talkMode`. Nada de sala, token ou participantes — nenhum estado que o SFU seja dono.
+- **`localStorage` guarda só preferências do usuário**: `telecord.displayName`, `telecord.talkMode` e `telecord.noiseSuppression`. Nada de sala, token, participantes ou histórico de chat — nenhum estado que o SFU seja dono.
 - Reload da página = nova identity, novo token, participante novo do ponto de vista do SFU.
 
 ---
 
-## 4. Regra de tela única
+## 4. Regra de tela única — REVOGADA
+
+> **Emenda (pós-implementação).** A regra caiu: **várias pessoas podem compartilhar tela ao mesmo tempo**, e o palco virou grade. Saíram a checagem client-side, o lock otimista e o desempate por menor `trackSid`; com isso some também a corrida descrita em §4.3, que só existia por causa da restrição.
+>
+> O que entra no lugar é custo, não regra: cada tela extra multiplica o egress do SFU. Com o preset atual, duas telas simultâneas já dobram a conta de §6.5 — o limite prático agora é a banda, e ele não é imposto por código.
+>
+> A seção abaixo fica como registro da análise original e do motivo de cada alternativa ter sido descartada; ela descreve o comportamento ANTERIOR.
+
+## 4. Regra de tela única (histórico)
 
 ### 4.1 Alternativas avaliadas
 
@@ -306,7 +316,7 @@ await localParticipant.setScreenShareEnabled(true, {
   resolution: ScreenSharePresets.h1080fps15.resolution,
   selfBrowserSurface: 'exclude',                 // evita o efeito túnel de compartilhar a própria aba
   surfaceSwitching: 'include',                   // trocar de janela sem republicar
-  systemAudio: 'include',
+  systemAudio: 'exclude',   // só o áudio da aba/janela escolhida
 });
 ```
 
@@ -347,6 +357,27 @@ Dois limites do navegador, não do app:
 **Modo de voz.** Além da voz aberta, há aperte-para-falar (barra de espaço ou o botão da barra). `setMicrophoneEnabled` é assíncrono e a tecla pode ser solta durante a chamada, então o cliente guarda o estado *desejado* e reconcilia ao fim de cada troca — uma chamada por evento deixaria o microfone aberto sempre que o "liga" resolvesse depois do "desliga". Perder o foco da janela corta a transmissão: alt-tab com a tecla apertada nunca gera `keyup`.
 
 **Teste de microfone.** Grava alguns segundos e toca de volta, em vez de monitorar ao vivo. Monitoração ao vivo em quem está de caixa de som vira microfonia imediata; gravar e reproduzir é o único jeito de "ouvir você mesmo" sem exigir fone. A reprodução usa `setSinkId` quando disponível, então o mesmo teste cobre a saída escolhida. O teste usa `getUserMedia` próprio e **não** publica nada na sala.
+
+**Supressão de ruído.** Ajustável em tempo de execução, em duas frentes: os defaults do `Room` governam a próxima publicação (o app entra mutado, então é quase sempre esse o caso) e `restartTrack` reabre a captura quando já existe microfone no ar. Só a primeira deixaria a mudança sem efeito para quem já está falando.
+
+### 6.7 Chat e sons pelo canal de dados
+
+Chat e soundboard usam `publishData` (`reliable: true`), não mídia.
+
+O som **não trafega como áudio**: vai um aviso de algumas dezenas de bytes e cada cliente toca o arquivo que já tem em `apps/web/public/sons`. Mandar o áudio pela sala custaria banda por ouvinte e chegaria fora de sincronia entre as pessoas.
+
+Duas consequências de o canal ser aberto a qualquer participante:
+
+- **Toda mensagem recebida é entrada não confiável.** `parseRoomMessage` valida tipo, tamanho e charset antes de qualquer coisa chegar à tela — as mesmas regras que a API aplica no token.
+- **O canal não devolve o que a própria pessoa publicou**, então o remetente insere a própria mensagem localmente.
+
+Nada é persistido: o histórico vive em memória, some com a sala, e quem entra depois não vê o que passou. É a mesma regra do resto do app (§3).
+
+### 6.8 Áudio da tela e retorno
+
+`systemAudio: 'exclude'` faz o navegador oferecer só o áudio da aba ou janela escolhida — sem isso, notificação e qualquer outro programa do sistema entram junto na sala.
+
+**Nenhum elemento de vídeo do palco toca áudio.** Todos são `muted`, e o áudio da tela sai exclusivamente pelo `RoomAudioRenderer`, que só renderiza tracks remotas. É isso que garante que quem compartilha não ouve o próprio áudio de volta, e que quem assiste não ouve dobrado — com várias telas simultâneas, um único elemento não-mudo bastaria para criar as duas coisas.
 
 ---
 

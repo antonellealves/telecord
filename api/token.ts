@@ -159,14 +159,15 @@ export default async function handler(
       canSubscribe: true,
       canPublish: true,
       // Câmera fica de fora: é a única restrição de mídia imposta pelo
-      // servidor no MVP (SPEC §2.2). A regra de tela única continua no
-      // cliente (SPEC §4).
+      // servidor (SPEC §2.2).
       canPublishSources: [
         TrackSource.MICROPHONE,
         TrackSource.SCREEN_SHARE,
         TrackSource.SCREEN_SHARE_AUDIO,
       ],
-      canPublishData: false,
+      // Chat e soundboard passam pelo canal de dados. Sem isto o servidor
+      // recusa qualquer publishData.
+      canPublishData: true,
       canUpdateOwnMetadata: false,
       roomCreate: false,
       roomAdmin: false,
