@@ -70,7 +70,7 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
 
         <header className={styles.header}>
           <div className={styles.identity}>
-            <p className="eyebrow">Sala</p>
+            <span className={styles.brand}>Telecord</span>
             <h1 className={styles.title}>{roomId}</h1>
           </div>
           <ConnectionBanner status={status} />

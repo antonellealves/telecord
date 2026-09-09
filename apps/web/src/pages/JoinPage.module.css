@@ -24,14 +24,53 @@
   gap: 16px;
 }
 
+/*
+ * Marca. Orbitron só aqui e no cabeçalho da sala: é uma fonte larga e de
+ * caixa alta, ótima para uma palavra curta e péssima para frase — o título
+ * abaixo continua na fonte de interface.
+ *
+ * O tracking generoso é o que faz o nome ler como marca em vez de palavra; o
+ * text-indent compensa o espaço que o tracking acrescenta depois da última
+ * letra, senão o conjunto fica visivelmente descentralizado.
+ */
+.wordmark {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(30px, 6.6vw, 44px);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.16em;
+  text-indent: 0.16em;
+  text-transform: uppercase;
+  background: linear-gradient(102deg, #ffffff 0%, var(--accent) 46%, #93a6d8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: var(--accent);
+  -webkit-text-fill-color: transparent;
+  /* drop-shadow em vez de text-shadow: com o preenchimento transparente do
+     background-clip, text-shadow desenharia atrás do recorte e não apareceria. */
+  filter: drop-shadow(0 0 22px rgba(var(--accent-rgb), 0.28));
+}
+
+.tagline {
+  margin: -6px 0 2px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.34em;
+  text-indent: 0.34em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
 .title {
   margin: 0;
-  font-size: clamp(34px, 7.2vw, 46px);
-  font-weight: 700;
-  line-height: 1.04;
+  font-size: clamp(26px, 5.2vw, 34px);
+  font-weight: 600;
+  line-height: 1.12;
   /* Título grande pede tracking negativo: no tamanho de display, o espaçamento
      padrão da fonte parece frouxo. */
-  letter-spacing: -0.038em;
+  letter-spacing: -0.022em;
 }
 
 .titleAccent {
@@ -208,4 +247,23 @@
   border-radius: 50%;
   background: var(--accent);
   box-shadow: 0 0 10px rgba(var(--accent-rgb), 1);
+}
+
+/*
+ * Assinatura. Fica sobre a parte mais clara do degradê, então texto solto
+ * some — a placa translúcida é o que garante contraste sem depender da
+ * altura da viewport.
+ */
+.signature {
+  margin: 2px auto 0;
+  padding: 7px 16px;
+  border-radius: var(--radius-pill);
+  background: rgba(10, 14, 26, 0.42);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  color: var(--accent-soft);
 }

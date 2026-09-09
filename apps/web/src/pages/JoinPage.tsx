@@ -55,11 +55,12 @@ export function JoinPage(): JSX.Element {
       <div className={styles.page}>
         <div className={styles.shell}>
           <header className={styles.hero}>
-            <p className="eyebrow">Telecord — Criar sala</p>
-            <h1 className={styles.title}>
+            <h1 className={styles.wordmark}>Telecord</h1>
+            <p className={styles.tagline}>criar sala</p>
+            <p className={styles.title}>
               Entre, fale e
               <span className={styles.titleAccent}>mostre a tela.</span>
-            </h1>
+            </p>
             <p className={styles.lead}>
               Supra sumo do entretenimento de dota 2 — entre, fale e mostre a tela.
             </p>
@@ -120,6 +121,8 @@ export function JoinPage(): JSX.Element {
               </li>
             ))}
           </ul>
+
+          <p className={styles.signature}>feito com carinho para a galera do dota teleton</p>
         </div>
       </div>
     </>

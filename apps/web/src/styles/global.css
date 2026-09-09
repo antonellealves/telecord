@@ -20,21 +20,21 @@
   /* Azul claro vintage. Suave, mas azul de verdade — sem componente cinza,
      que no escuro apaga a cor e deixa tudo com cara de fumaça. O triplete RGB
      existe para compor tintas com rgba() sem espalhar hex pelos módulos. */
-  --accent: #a6cdee;
-  --accent-rgb: 166, 205, 238;
-  --accent-deep: #7fb2d8;
-  --accent-soft: #deeefb;
+  --accent: #bfe1fc;
+  --accent-rgb: 191, 225, 252;
+  --accent-deep: #92c6ee;
+  --accent-soft: #e8f4ff;
   --accent-ink: #0b1a26;
 
   /* Roxo suave, o outro extremo do degradê. O azul acende embaixo, o roxo
      preenche o resto — é o contraste entre os dois que dá cor à composição.
      Dessaturado o suficiente para continuar "dark soft" e não virar neon. */
-  --accent-2: #a892ea;
-  --accent-2-rgb: 168, 146, 234;
+  --accent-2: #7b6aa6;
+  --accent-2-rgb: 123, 106, 166;
 
   /* Ponto médio entre os dois. Sem ele a transição azul→roxo passa por um
      cinza sujo, porque a interpolação em sRGB corta o meio do arco. */
-  --accent-mid-rgb: 167, 176, 236;
+  --accent-mid-rgb: 157, 166, 209;
 
   --danger: #f0888a;
   --danger-rgb: 240, 136, 138;
@@ -44,15 +44,16 @@
   /* Ação: azul claro na quina superior, roxo escuro na inferior. O texto fica
      sobre a faixa média (roxo médio a escuro), que é onde o branco tem
      contraste — por isso o azul se resolve já nos primeiros 26%. */
-  --gradient-action: linear-gradient(120deg, #a6cdee 0%, #8e7fd8 26%, #5d4fae 62%, #3f3585 100%);
-  --gradient-action-hover: linear-gradient(120deg, #b9d9f5 0%, #9c8fe2 26%, #6c5dc0 62%, #4b409a 100%);
+  --gradient-action: linear-gradient(120deg, #bfe1fc 0%, #8a92c4 28%, #5c5688 64%, #3a3459 100%);
+  --gradient-action-hover: linear-gradient(120deg, #d3ecff 0%, #9aa2d3 28%, #6b6499 64%, #464067 100%);
   --gradient-action-ink: #ffffff;
 
   --radius: 14px;
   --radius-sm: 10px;
   --radius-pill: 999px;
 
-  --font-sans: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Orbitron', 'Chakra Petch', system-ui, sans-serif;
+  --font-sans: 'Chakra Petch', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --shadow-soft: 0 24px 70px -30px rgba(0, 0, 0, 0.9);
@@ -81,17 +82,6 @@ body {
   letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-}
-
-/* Rótulo monoespaçado em caixa alta: ancora a hierarquia sem pedir peso
-   visual, e é o que dá o ar técnico do layout. */
-.eyebrow {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--accent);
 }
 
 button {
