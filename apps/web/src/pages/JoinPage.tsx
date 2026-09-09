@@ -61,8 +61,7 @@ export function JoinPage(): JSX.Element {
               <span className={styles.titleAccent}>mostre a tela.</span>
             </h1>
             <p className={styles.lead}>
-              Uma pessoa compartilha a tela, até 20 ouvem e falam. Sem cadastro, sem instalar nada
-              — e a sala deixa de existir quando o último sai.
+              Supra sumo do entretenimento de dota 2 — entre, fale e mostre a tela.
             </p>
           </header>
 

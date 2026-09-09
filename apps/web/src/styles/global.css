@@ -20,16 +20,21 @@
   /* Azul claro vintage. Suave, mas azul de verdade — sem componente cinza,
      que no escuro apaga a cor e deixa tudo com cara de fumaça. O triplete RGB
      existe para compor tintas com rgba() sem espalhar hex pelos módulos. */
-  --accent: #aed0ea;
-  --accent-rgb: 174, 208, 234;
+  --accent: #a6cdee;
+  --accent-rgb: 166, 205, 238;
   --accent-deep: #7fb2d8;
   --accent-soft: #deeefb;
   --accent-ink: #0b1a26;
 
-  /* Companheiro mais fundo, ainda azul: dá profundidade ao degradê sem
-     introduzir uma segunda família de cor. */
-  --accent-2: #8dbde2;
-  --accent-2-rgb: 141, 189, 226;
+  /* Roxo suave, o outro extremo do degradê. O azul acende embaixo, o roxo
+     preenche o resto — é o contraste entre os dois que dá cor à composição.
+     Dessaturado o suficiente para continuar "dark soft" e não virar neon. */
+  --accent-2: #a892ea;
+  --accent-2-rgb: 168, 146, 234;
+
+  /* Ponto médio entre os dois. Sem ele a transição azul→roxo passa por um
+     cinza sujo, porque a interpolação em sRGB corta o meio do arco. */
+  --accent-mid-rgb: 167, 176, 236;
 
   --danger: #f0888a;
   --danger-rgb: 240, 136, 138;
