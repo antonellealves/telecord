@@ -1,5 +1,6 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState, type CSSProperties } from 'react';
 import { RoomAudioRenderer, useRoomContext } from '@livekit/components-react';
+import { AmbientGradient } from '../components/AmbientGradient';
 import { AudioPlaybackGate } from '../components/AudioPlaybackGate';
 import { ConnectionBanner } from '../components/ConnectionBanner';
 import { ControlBar } from '../components/ControlBar';
@@ -7,6 +8,7 @@ import { ParticipantSidebar } from '../components/ParticipantSidebar';
 import { ScreenStage } from '../components/ScreenStage';
 import { ToastStack } from '../components/ToastStack';
 import { useParticipantViews } from '../hooks/useParticipantViews';
+import { useResizableSidebar } from '../hooks/useResizableSidebar';
 import { useRoomConnectionStatus } from '../hooks/useRoomConnection';
 import { useScreenShareLock } from '../hooks/useScreenShareLock';
 import { useToasts } from '../hooks/useToasts';
@@ -18,6 +20,8 @@ interface RoomShellProps {
   onLeaveIntent: () => void;
 }
 
+type SidebarWidthStyle = CSSProperties & { '--sidebar-width': string };
+
 /** Interior da sala. Só existe dentro do contexto do LiveKitRoom. */
 export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Element {
   const room = useRoomContext();
@@ -26,6 +30,9 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
   const { toasts, push, dismiss } = useToasts();
   const share = useScreenShareLock(push);
   const [isMicrophoneBusy, setIsMicrophoneBusy] = useState(false);
+
+  const mainRef = useRef<HTMLDivElement | null>(null);
+  const sidebar = useResizableSidebar(mainRef);
 
   const local = participants.find((participant) => participant.isLocal) ?? null;
   const isMicrophoneEnabled = local?.isMicrophoneEnabled ?? false;
@@ -49,38 +56,53 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
     void room.disconnect();
   }, [room, onLeaveIntent]);
 
+  // A largura vai como custom property, não como `width` inline: assim o
+  // layout empilhado do mobile consegue sobrescrevê-la pelo CSS.
+  const mainStyle: SidebarWidthStyle = { '--sidebar-width': `${sidebar.width}px` };
+
   return (
-    <div className={styles.shell}>
-      {/* Sem isto ninguém ouve nada — e a falha é silenciosa. */}
-      <RoomAudioRenderer />
+    <>
+      <AmbientGradient variant="subtle" />
 
-      <header className={styles.header}>
-        <div className={styles.identity}>
-          <p className="eyebrow">Sala</p>
-          <h1 className={styles.title}>{roomId}</h1>
+      <div className={styles.shell}>
+        {/* Sem isto ninguém ouve nada — e a falha é silenciosa. */}
+        <RoomAudioRenderer />
+
+        <header className={styles.header}>
+          <div className={styles.identity}>
+            <p className="eyebrow">Sala</p>
+            <h1 className={styles.title}>{roomId}</h1>
+          </div>
+          <ConnectionBanner status={status} />
+        </header>
+
+        <AudioPlaybackGate />
+
+        <div
+          ref={mainRef}
+          className={`${styles.main} ${sidebar.isResizing ? styles.resizing : ''}`}
+          style={mainStyle}
+        >
+          <ParticipantSidebar participants={participants} />
+          <div className={styles.resizer} {...sidebar.handleProps}>
+            <span className={styles.grip} aria-hidden="true" />
+          </div>
+          <ScreenStage entry={share.active} />
         </div>
-        <ConnectionBanner status={status} />
-      </header>
 
-      <AudioPlaybackGate />
+        <ControlBar
+          isMicrophoneEnabled={isMicrophoneEnabled}
+          isMicrophoneBusy={isMicrophoneBusy}
+          onToggleMicrophone={toggleMicrophone}
+          isSharingScreen={share.isLocalOwner}
+          shareDisabledReason={share.disabledReason}
+          onToggleScreenShare={share.isLocalOwner ? share.stop : share.start}
+          onLeave={leave}
+          disabled={status !== 'connected'}
+        />
 
-      <div className={styles.main}>
-        <ScreenStage entry={share.active} />
-        <ParticipantSidebar participants={participants} />
+        <ToastStack toasts={toasts} onDismiss={dismiss} />
       </div>
-
-      <ControlBar
-        isMicrophoneEnabled={isMicrophoneEnabled}
-        isMicrophoneBusy={isMicrophoneBusy}
-        onToggleMicrophone={toggleMicrophone}
-        isSharingScreen={share.isLocalOwner}
-        shareDisabledReason={share.disabledReason}
-        onToggleScreenShare={share.isLocalOwner ? share.stop : share.start}
-        onLeave={leave}
-        disabled={status !== 'connected'}
-      />
-
-      <ToastStack toasts={toasts} onDismiss={dismiss} />
-    </div>
+    </>
   );
 }

@@ -49,30 +49,30 @@
 /* Estado ligado — o único elemento saturado da barra, então não há dúvida
    sobre o que está aberto. */
 .active {
-  background: linear-gradient(180deg, #6ff0da 0%, #2dd4bf 100%);
-  border-color: rgba(94, 234, 212, 0.35);
+  background: linear-gradient(180deg, var(--accent-soft) 0%, var(--accent-deep) 100%);
+  border-color: rgba(var(--accent-rgb), 0.35);
   color: var(--accent-ink);
   font-weight: 600;
   box-shadow:
-    0 10px 26px -14px rgba(45, 212, 191, 0.75),
+    0 10px 26px -14px rgba(var(--accent-rgb), 0.75),
     inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
 .active:hover:not(:disabled) {
-  background: linear-gradient(180deg, #7df3df 0%, #34ddc7 100%);
-  border-color: rgba(94, 234, 212, 0.5);
+  background: linear-gradient(180deg, #e4eef7 0%, #9abcd8 100%);
+  border-color: rgba(var(--accent-rgb), 0.5);
   color: var(--accent-ink);
 }
 
 .danger {
-  border-color: rgba(248, 113, 113, 0.28);
-  color: rgba(248, 113, 113, 0.9);
+  border-color: rgba(var(--danger-rgb), 0.28);
+  color: rgba(var(--danger-rgb), 0.9);
 }
 
 .danger:hover:not(:disabled) {
-  background: rgba(248, 113, 113, 0.12);
-  border-color: rgba(248, 113, 113, 0.55);
-  color: #fca5a5;
+  background: rgba(var(--danger-rgb), 0.12);
+  border-color: rgba(var(--danger-rgb), 0.55);
+  color: #f2b0b1;
 }
 
 .hint {

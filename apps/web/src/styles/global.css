@@ -17,12 +17,22 @@
   --text-dim: #a4abb8;
   --text-faint: #6a7180;
 
-  --accent: #5eead4;
-  --accent-deep: #2dd4bf;
-  --accent-ink: #04211c;
-  --accent-2: #8b93f8;
-  --danger: #f87171;
-  --warn: #fbbf24;
+  /* Azul bebê vintage, puxado para o cinza: dessaturado o bastante para não
+     brilhar como neon no escuro. O triplete RGB existe para compor tintas com
+     rgba() sem espalhar hex literal pelos módulos. */
+  --accent: #a9c5dc;
+  --accent-rgb: 169, 197, 220;
+  --accent-deep: #86aac8;
+  --accent-soft: #d5e2ee;
+  --accent-ink: #0d1a24;
+
+  --accent-2: #b3bccb;
+  --accent-2-rgb: 179, 188, 203;
+
+  --danger: #f0888a;
+  --danger-rgb: 240, 136, 138;
+  --warn: #e7c07a;
+  --warn-rgb: 231, 192, 122;
 
   --radius: 14px;
   --radius-sm: 10px;
@@ -96,7 +106,7 @@ a {
 }
 
 ::selection {
-  background: rgba(94, 234, 212, 0.25);
+  background: rgba(var(--accent-rgb), 0.28);
   color: #fff;
 }
 

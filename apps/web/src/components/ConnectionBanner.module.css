@@ -23,35 +23,35 @@
 
 .connected {
   color: var(--text-dim);
-  border-color: rgba(94, 234, 212, 0.22);
+  border-color: rgba(var(--accent-rgb), 0.22);
 }
 
 .connected .dot {
   background: var(--accent);
-  box-shadow: 0 0 10px rgba(94, 234, 212, 0.9);
+  box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.9);
 }
 
 .connecting,
 .reconnecting {
   color: var(--text);
-  border-color: rgba(251, 191, 36, 0.3);
+  border-color: rgba(var(--warn-rgb), 0.3);
 }
 
 .connecting .dot,
 .reconnecting .dot {
   background: var(--warn);
-  box-shadow: 0 0 10px rgba(251, 191, 36, 0.8);
+  box-shadow: 0 0 10px rgba(var(--warn-rgb), 0.8);
   animation: pulse 1.2s ease-in-out infinite;
 }
 
 .disconnected {
   color: var(--text);
-  border-color: rgba(248, 113, 113, 0.35);
+  border-color: rgba(var(--danger-rgb), 0.35);
 }
 
 .disconnected .dot {
   background: var(--danger);
-  box-shadow: 0 0 10px rgba(248, 113, 113, 0.8);
+  box-shadow: 0 0 10px rgba(var(--danger-rgb), 0.8);
 }
 
 @keyframes pulse {

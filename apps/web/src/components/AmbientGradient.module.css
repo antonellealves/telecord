@@ -1,146 +1,163 @@
 /*
- * Fundo em camadas. A ordem importa:
- *   bed → grid → aura → halo → core → grain → vignette
+ * Luz ancorada no centro inferior, em camadas:
+ *   bed → grid → bloom → halo → core → grain → vignette
  *
- * Cada halo usa uma queda em 6 paradas aproximando uma gaussiana. Gradiente
- * radial de duas paradas cai linearmente, e no escuro isso vira um disco com
- * borda visível — o efeito "adesivo". As paradas intermediárias são o que
- * transforma o disco em luz.
+ * `--glow` (0..1) e `--sway` (-1..1) vêm do ponteiro. Cada camada reage com um
+ * coeficiente diferente: o núcleo abre e fecha muito, a base quase não muda —
+ * é isso que faz a luz parecer ganhar corpo em vez de só piscar junto.
+ *
+ * Cada degradê usa uma queda em 6 paradas aproximando uma gaussiana. Radial de
+ * duas paradas cai linear e, no escuro, deixa a borda do disco visível.
  */
 
 .root {
+  --glow: 0.5;
+  --sway: 0;
+  /* Multiplicador global de força, reduzido na variante da sala. */
+  --strength: 1;
+
   position: fixed;
   inset: 0;
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
-  /* Isola o blending: os halos somam luz entre si e com o bed, nunca com o
-     conteúdo da página, que fica acima deste stacking context. */
+  /* Isola o blending: as camadas somam luz entre si, nunca com o conteúdo. */
   isolation: isolate;
 }
 
-/* Base estática: sustenta a composição antes de o ponteiro existir. */
+/* Na sala o conteúdo cobre quase toda a tela, então a luz precisa de mais
+   força para ainda ser percebida por baixo dos painéis. */
+.subtle {
+  --strength: 0.9;
+}
+
+/* Base estática — sustenta a composição antes de o ponteiro existir. */
 .bed {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(80% 55% at 50% -8%, rgba(45, 212, 191, 0.07), transparent 70%),
-    radial-gradient(70% 60% at 12% 104%, rgba(139, 147, 248, 0.06), transparent 72%),
-    radial-gradient(90% 70% at 88% 96%, rgba(94, 234, 212, 0.035), transparent 70%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.022) 0%, transparent 22%),
+    radial-gradient(120% 62% at 50% 108%, rgba(var(--accent-rgb), 0.1), transparent 68%),
+    radial-gradient(80% 45% at 50% 100%, rgba(var(--accent-2-rgb), 0.05), transparent 70%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018) 0%, transparent 24%),
     var(--bg-deep);
 }
 
-/* Malha técnica, quase imperceptível: dá escala e textura sem virar padrão. */
+/* Malha técnica, mascarada para morrer antes do topo. */
 .grid {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
   background-size: 64px 64px;
-  background-position: center;
-  -webkit-mask-image: radial-gradient(ellipse 85% 65% at 50% 42%, #000 0%, transparent 72%);
-  mask-image: radial-gradient(ellipse 85% 65% at 50% 42%, #000 0%, transparent 72%);
-  opacity: 0.85;
+  background-position: center bottom;
+  -webkit-mask-image: radial-gradient(115% 78% at 50% 104%, #000 0%, transparent 74%);
+  mask-image: radial-gradient(115% 78% at 50% 104%, #000 0%, transparent 74%);
+  opacity: calc((0.5 + var(--glow) * 0.5) * var(--strength));
 }
 
-.orb {
-  position: absolute;
-  left: 0;
-  top: 0;
-  border-radius: 50%;
-  mix-blend-mode: screen;
-  will-change: transform;
-  /* Posição de repouso enquanto o efeito não assume (e sob motion reduzido). */
-  transform: translate3d(50vw, 42vh, 0);
-}
-
-/* Camada mais lenta e mais larga: o "volume" da luz. */
-.aura {
-  width: 1240px;
-  height: 1240px;
-  margin: -620px 0 0 -620px;
-  background: radial-gradient(
-    circle at center,
-    rgba(139, 147, 248, 0.16) 0%,
-    rgba(139, 147, 248, 0.115) 20%,
-    rgba(124, 131, 240, 0.072) 35%,
-    rgba(109, 116, 232, 0.038) 50%,
-    rgba(99, 102, 241, 0.016) 65%,
-    rgba(99, 102, 241, 0.005) 80%,
-    transparent 100%
-  );
-}
-
-/* Camada principal: é ela que se lê como "o gradiente". */
-.halo {
-  width: 820px;
-  height: 820px;
-  margin: -410px 0 0 -410px;
-  background: radial-gradient(
-    circle at center,
-    rgba(94, 234, 212, 0.25) 0%,
-    rgba(94, 234, 212, 0.18) 20%,
-    rgba(72, 220, 197, 0.112) 35%,
-    rgba(45, 212, 191, 0.06) 50%,
-    rgba(45, 212, 191, 0.02) 65%,
-    rgba(45, 212, 191, 0.006) 80%,
-    transparent 100%
-  );
-}
-
-/* Núcleo quente e rápido: cola o efeito ao cursor sem precisar de opacidade. */
+.bloom,
+.halo,
 .core {
-  width: 320px;
-  height: 320px;
-  margin: -160px 0 0 -160px;
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  mix-blend-mode: screen;
+  will-change: opacity, transform;
+}
+
+/*
+ * Faixa larga e baixa: a "linha do horizonte". Reage pouco ao ponteiro, porque
+ * é ela que segura a composição quando a luz está fraca.
+ */
+.bloom {
+  width: 165vw;
+  height: 76vh;
+  border-radius: 50%;
+  transform: translate(calc(-50% + var(--sway) * 1.1vw), 42%);
+  opacity: calc((0.52 + var(--glow) * 0.48) * var(--strength));
+  background: radial-gradient(
+    ellipse at center,
+    rgba(var(--accent-rgb), 0.15) 0%,
+    rgba(var(--accent-rgb), 0.108) 20%,
+    rgba(var(--accent-2-rgb), 0.066) 35%,
+    rgba(var(--accent-2-rgb), 0.034) 50%,
+    rgba(var(--accent-2-rgb), 0.014) 65%,
+    rgba(var(--accent-2-rgb), 0.004) 80%,
+    transparent 100%
+  );
+}
+
+/* Camada principal — é ela que se lê como "o gradiente". */
+.halo {
+  width: min(1000px, 118vw);
+  height: min(1000px, 118vw);
+  border-radius: 50%;
+  transform: translate(calc(-50% + var(--sway) * 2.4vw), 46%);
+  opacity: calc((0.3 + var(--glow) * 0.7) * var(--strength));
   background: radial-gradient(
     circle at center,
-    rgba(214, 255, 246, 0.19) 0%,
-    rgba(190, 250, 238, 0.12) 22%,
-    rgba(160, 245, 230, 0.058) 40%,
-    rgba(140, 240, 225, 0.018) 60%,
+    rgba(var(--accent-rgb), 0.24) 0%,
+    rgba(var(--accent-rgb), 0.172) 20%,
+    rgba(var(--accent-rgb), 0.108) 35%,
+    rgba(var(--accent-rgb), 0.058) 50%,
+    rgba(var(--accent-rgb), 0.024) 65%,
+    rgba(var(--accent-rgb), 0.007) 80%,
+    transparent 100%
+  );
+}
+
+/* Núcleo quase branco: o que mais abre e fecha com o ponteiro. */
+.core {
+  width: min(420px, 62vw);
+  height: min(420px, 62vw);
+  border-radius: 50%;
+  transform: translate(calc(-50% + var(--sway) * 3.6vw), 52%);
+  opacity: calc((0.12 + var(--glow) * 0.88) * var(--strength));
+  background: radial-gradient(
+    circle at center,
+    rgba(226, 238, 250, 0.2) 0%,
+    rgba(210, 227, 243, 0.126) 22%,
+    rgba(193, 214, 235, 0.06) 40%,
+    rgba(180, 204, 228, 0.02) 60%,
     transparent 82%
   );
 }
 
-/* Respiração lenta, para o fundo não ficar morto quando ninguém mexe o mouse. */
+/* Respiração lenta, para o fundo não morrer parado. */
 .drift {
   position: absolute;
   inset: 0;
-  animation: drift 26s ease-in-out infinite alternate;
+  animation: drift 30s ease-in-out infinite alternate;
 }
 
 @keyframes drift {
   from {
-    transform: translate3d(-2.2%, -1.4%, 0) scale(1);
+    transform: translate3d(-1.6%, 0, 0) scale(1);
   }
   to {
-    transform: translate3d(2.2%, 1.4%, 0) scale(1.06);
+    transform: translate3d(1.6%, 0, 0) scale(1.05);
   }
 }
 
 /*
- * Grão. É o detalhe que separa um gradiente bom de um gradiente estourado:
- * em 8 bits por canal, transições longas no escuro criam faixas visíveis.
- * O ruído quebra a quantização e o banding some.
+ * Grão. Em 8 bits por canal, transição longa no escuro cria faixas visíveis;
+ * o ruído quebra a quantização. soft-light em vez de overlay porque overlay
+ * amplifica o ruído nas sombras e o grão vira mancha.
  */
 .grain {
   position: absolute;
   inset: -50%;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.92' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
   opacity: 0.032;
-  /* soft-light em vez de overlay: overlay amplifica o ruído nas sombras e o
-     grão vira mancha. Frequência alta e poucas oitavas mantêm o grão fino. */
   mix-blend-mode: soft-light;
 }
 
-/* Fecha a composição: escurece as bordas e empurra o olho para o centro. */
+/* Fecha a composição e protege o topo, onde fica o conteúdo. */
 .vignette {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(120% 95% at 50% 40%, transparent 35%, rgba(4, 5, 8, 0.62) 100%),
-    linear-gradient(180deg, transparent 55%, rgba(4, 5, 8, 0.5) 100%);
+    radial-gradient(125% 88% at 50% 100%, transparent 30%, rgba(4, 5, 8, 0.6) 100%),
+    linear-gradient(180deg, rgba(4, 5, 8, 0.55) 0%, transparent 34%);
 }

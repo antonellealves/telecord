@@ -26,7 +26,7 @@
 }
 
 .error {
-  border-color: rgba(248, 113, 113, 0.45);
+  border-color: rgba(var(--danger-rgb), 0.45);
   background: rgba(30, 14, 16, 0.9);
 }
 
@@ -37,7 +37,7 @@
 }
 
 .error .message {
-  color: #fecaca;
+  color: #f6cdce;
 }
 
 .close {

@@ -234,10 +234,11 @@ main.tsx
     │       ├── AudioPlaybackGate        botão "Ativar áudio" quando o browser bloqueia autoplay
     │       ├── RoomAudioRenderer        (@livekit/components-react) toca todo áudio remoto
     │       ├── Stage
+    │       │   ├── ParticipantSidebar   à ESQUERDA, largura arrastável (208–440 px)
+    │       │   │   └── ParticipantRow[] nome, anel de "falando", ícone de mutado, badge "apresentando"
+    │       │   ├── Resizer              divisória com pointer capture; setas e duplo clique também ajustam
     │       │   ├── ScreenStage          <VideoTrack> da tela ativa + nome de quem apresenta
     │       │   └── EmptyStage           estado vazio: "Ninguém está compartilhando"
-    │       ├── ParticipantSidebar
-    │       │   └── ParticipantRow[]     nome, anel de "falando", ícone de mutado, badge "apresentando"
     │       ├── ControlBar
     │       │   ├── MicToggle            entra mutado; 1º clique dispara o prompt de permissão
     │       │   ├── ShareScreenButton    desabilitado + tooltip conforme §4

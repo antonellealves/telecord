@@ -4,17 +4,12 @@
 
 .shell {
   position: relative;
+  z-index: 1;
   height: 100%;
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 16px;
-  /* Halo estático e discreto: na sala o conteúdo é a tela compartilhada,
-     então o fundo apenas ancora a composição — não compete com ela. */
-  background:
-    radial-gradient(90% 55% at 50% -10%, rgba(45, 212, 191, 0.05), transparent 68%),
-    radial-gradient(70% 60% at 100% 110%, rgba(139, 147, 248, 0.045), transparent 70%),
-    var(--bg);
 }
 
 .header {
@@ -44,10 +39,65 @@
 }
 
 .main {
+  --sidebar-width: 268px;
+
   flex: 1;
   min-height: 0;
   display: flex;
-  gap: 12px;
+  /* A lista fica à esquerda; a divisória separa ela do palco. */
+  gap: 0;
+}
+
+/* Enquanto arrasta, nada de selecionar texto nem trocar o cursor por cima de
+   cada elemento que o ponteiro atravessa. */
+.resizing {
+  user-select: none;
+  cursor: col-resize;
+}
+
+.resizing * {
+  cursor: col-resize !important;
+}
+
+/* ---- divisória ------------------------------------------------------ */
+
+.resizer {
+  flex: none;
+  width: 12px;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  /* Alvo de 12px para o ponteiro, traço de 2px para o olho. */
+  touch-action: none;
+}
+
+.grip {
+  width: 2px;
+  height: 34px;
+  border-radius: 2px;
+  background: var(--border);
+  transition: background 0.18s ease, height 0.18s ease;
+}
+
+.resizer:hover .grip,
+.resizer:focus-visible .grip {
+  background: rgba(var(--accent-rgb), 0.75);
+  height: 56px;
+}
+
+.resizer:focus-visible {
+  outline: none;
+}
+
+.resizer:focus-visible .grip {
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.18);
+}
+
+.resizing .grip {
+  background: var(--accent);
+  height: 72px;
 }
 
 @media (max-width: 780px) {
@@ -57,10 +107,17 @@
 
   .main {
     flex-direction: column;
+    gap: 12px;
   }
 
+  /* Empilhado, a largura arrastada não faz sentido — o CSS vence a custom
+     property, que fica só esperando a volta do layout largo. */
   .main > aside {
     width: 100%;
     max-height: 176px;
+  }
+
+  .resizer {
+    display: none;
   }
 }

@@ -1,73 +1,62 @@
 import { useEffect, useRef } from 'react';
 import styles from './AmbientGradient.module.css';
 
-interface Layer {
-  el: HTMLDivElement | null;
-  /** 0..1 — quanto menor, mais o halo arrasta atrás do cursor. */
-  ease: number;
-  x: number;
-  y: number;
+interface AmbientGradientProps {
+  /** `subtle` reduz a força para o fundo não competir com a tela compartilhada. */
+  variant?: 'full' | 'subtle';
 }
 
+/** Estado de repouso: nem apagado, nem no máximo. */
+const REST_GLOW = 0.5;
+
 /**
- * Composição de fundo: halos circulares que seguem o ponteiro com inércia.
+ * Luz de fundo ancorada no centro inferior da tela.
  *
- * Três camadas com constantes de suavização diferentes — a maior e mais lenta
- * atrás, o núcleo pequeno e rápido na frente. É essa diferença que cria
- * paralaxe e faz o brilho parecer volume, e não um disco colado no cursor.
+ * A posição é fixa; o que responde ao ponteiro é a INTENSIDADE. Quanto mais
+ * perto o cursor chega da base, mais o degradê acende — e a mancha oscila
+ * alguns viewport-widths na horizontal, o bastante para o fundo parecer vivo
+ * sem sair do lugar.
  *
- * Só `transform` é animado, então tudo fica no compositor: nenhum reflow,
- * nenhum repaint por frame. O loop também para sozinho quando o movimento
- * termina, em vez de girar rAF à toa.
+ * O ponteiro alimenta duas variáveis CSS (`--glow` e `--sway`) suavizadas por
+ * rAF. Elas movem só `opacity` e `transform`, que ficam no compositor; o loop
+ * para sozinho quando o valor alcança o alvo.
  */
-export function AmbientGradient(): JSX.Element {
-  const haloRef = useRef<HTMLDivElement | null>(null);
-  const auraRef = useRef<HTMLDivElement | null>(null);
-  const coreRef = useRef<HTMLDivElement | null>(null);
+export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX.Element {
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const restX = (): number => window.innerWidth / 2;
-    const restY = (): number => window.innerHeight * 0.42;
+    const root = rootRef.current;
+    if (root === null) {
+      return;
+    }
 
-    const layers: Layer[] = [
-      { el: auraRef.current, ease: 0.026, x: restX(), y: restY() },
-      { el: haloRef.current, ease: 0.062, x: restX(), y: restY() },
-      { el: coreRef.current, ease: 0.125, x: restX(), y: restY() },
-    ];
+    let glow = REST_GLOW;
+    let sway = 0;
+    let targetGlow = REST_GLOW;
+    let targetSway = 0;
+    let frame = 0;
+    let running = false;
 
-    const place = (layer: Layer): void => {
-      if (layer.el !== null) {
-        layer.el.style.transform = `translate3d(${layer.x.toFixed(1)}px, ${layer.y.toFixed(1)}px, 0)`;
-      }
+    const apply = (): void => {
+      root.style.setProperty('--glow', glow.toFixed(3));
+      root.style.setProperty('--sway', sway.toFixed(3));
     };
 
-    for (const layer of layers) {
-      place(layer);
-    }
+    apply();
 
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       return;
     }
 
-    let targetX = restX();
-    let targetY = restY();
-    let pointerSeen = false;
-    let frame = 0;
-    let running = false;
-
     const tick = (): void => {
-      let moving = false;
-      for (const layer of layers) {
-        const dx = targetX - layer.x;
-        const dy = targetY - layer.y;
-        if (Math.abs(dx) > 0.25 || Math.abs(dy) > 0.25) {
-          layer.x += dx * layer.ease;
-          layer.y += dy * layer.ease;
-          place(layer);
-          moving = true;
-        }
-      }
-      if (moving) {
+      const deltaGlow = targetGlow - glow;
+      const deltaSway = targetSway - sway;
+      if (Math.abs(deltaGlow) > 0.0015 || Math.abs(deltaSway) > 0.0015) {
+        // A intensidade sobe mais depressa do que a mancha se desloca: a luz
+        // responde ao gesto, o deslocamento fica para trás.
+        glow += deltaGlow * 0.085;
+        sway += deltaSway * 0.05;
+        apply();
         frame = requestAnimationFrame(tick);
       } else {
         running = false;
@@ -82,48 +71,50 @@ export function AmbientGradient(): JSX.Element {
     };
 
     const handlePointerMove = (event: PointerEvent): void => {
-      pointerSeen = true;
-      targetX = event.clientX;
-      targetY = event.clientY;
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+
+      // Distância normalizada até a âncora (centro inferior). O eixo horizontal
+      // pesa menos: a luz nasce da base, então subir o cursor apaga mais do que
+      // afastá-lo para o lado.
+      const horizontal = (event.clientX - width / 2) / (width / 2);
+      const vertical = (height - event.clientY) / height;
+      const distance = Math.min(1, Math.hypot(horizontal * 0.6, vertical));
+
+      targetGlow = 1 - distance * 0.8;
+      targetSway = horizontal;
       start();
     };
 
-    // Sem ponteiro (toque, teclado) o brilho volta para o repouso, no centro.
     const handlePointerLeave = (): void => {
-      targetX = restX();
-      targetY = restY();
+      targetGlow = REST_GLOW;
+      targetSway = 0;
       start();
-    };
-
-    const handleResize = (): void => {
-      if (!pointerSeen) {
-        targetX = restX();
-        targetY = restY();
-        start();
-      }
     };
 
     window.addEventListener('pointermove', handlePointerMove, { passive: true });
     document.addEventListener('pointerleave', handlePointerLeave);
-    window.addEventListener('resize', handleResize);
 
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener('pointermove', handlePointerMove);
       document.removeEventListener('pointerleave', handlePointerLeave);
-      window.removeEventListener('resize', handleResize);
     };
   }, []);
 
   return (
-    <div className={styles.root} aria-hidden="true">
+    <div
+      ref={rootRef}
+      className={`${styles.root} ${variant === 'subtle' ? styles.subtle : ''}`}
+      aria-hidden="true"
+    >
       <div className={styles.bed} />
       <div className={styles.grid} />
       <div className={styles.drift}>
-        <div ref={auraRef} className={`${styles.orb} ${styles.aura}`} />
+        <div className={styles.bloom} />
       </div>
-      <div ref={haloRef} className={`${styles.orb} ${styles.halo}`} />
-      <div ref={coreRef} className={`${styles.orb} ${styles.core}`} />
+      <div className={styles.halo} />
+      <div className={styles.core} />
       <div className={styles.grain} />
       <div className={styles.vignette} />
     </div>

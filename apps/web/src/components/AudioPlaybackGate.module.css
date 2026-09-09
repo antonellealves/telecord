@@ -5,15 +5,15 @@
   gap: 14px;
   padding: 11px 16px;
   border-radius: var(--radius-sm);
-  border: 1px solid rgba(251, 191, 36, 0.35);
-  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(var(--warn-rgb), 0.35);
+  background: rgba(var(--warn-rgb), 0.08);
   font-size: 13px;
-  color: #fde68a;
+  color: #f0ddb2;
   flex-wrap: wrap;
 }
 
 .button {
-  border: 1px solid rgba(251, 191, 36, 0.5);
+  border: 1px solid rgba(var(--warn-rgb), 0.5);
   background: var(--warn);
   color: #241a02;
   font-weight: 600;

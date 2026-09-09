@@ -1,5 +1,6 @@
 .sidebar {
-  width: 264px;
+  /* Largura vem do container, ajustada pela divisória arrastável. */
+  width: var(--sidebar-width, 268px);
   flex: none;
   padding: 16px 14px;
   border-radius: var(--radius);
@@ -55,9 +56,9 @@
 /* Falando: anel + halo na cor de destaque. Só borda seria fraco demais para
    ser percebido de relance numa lista de 20 nomes. */
 .speaking {
-  border-color: rgba(94, 234, 212, 0.4);
-  background: rgba(94, 234, 212, 0.07);
-  box-shadow: 0 0 22px -12px rgba(94, 234, 212, 0.9);
+  border-color: rgba(var(--accent-rgb), 0.4);
+  background: rgba(var(--accent-rgb), 0.07);
+  box-shadow: 0 0 22px -12px rgba(var(--accent-rgb), 0.9);
 }
 
 .avatar {
@@ -77,7 +78,7 @@
 }
 
 .speaking .avatar {
-  border-color: rgba(94, 234, 212, 0.55);
+  border-color: rgba(var(--accent-rgb), 0.55);
   color: var(--accent);
 }
 
@@ -108,9 +109,9 @@
 }
 
 .sharing {
-  border-color: rgba(139, 147, 248, 0.45);
+  border-color: rgba(var(--accent-2-rgb), 0.45);
   color: var(--accent-2);
-  background: rgba(139, 147, 248, 0.1);
+  background: rgba(var(--accent-2-rgb), 0.1);
 }
 
 .icon {
@@ -125,5 +126,5 @@
 }
 
 .muted .icon {
-  color: rgba(248, 113, 113, 0.75);
+  color: rgba(var(--danger-rgb), 0.75);
 }
