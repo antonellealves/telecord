@@ -100,15 +100,19 @@ Os valores não passam pelo log — a saída dos comandos é descartada, e o Act
 
 1. **Gere um token** em <https://vercel.com/account/tokens> com escopo no projeto.
 
-2. **Cadastre 3 secrets** no GitHub, em *Settings → Secrets and variables → Actions*:
+2. **Cadastre 3 valores** no GitHub Environment chamado **`Production`** (*Settings → Environments → Production*). O nome precisa bater com o `environment:` do workflow.
 
-   | Secret | De onde vem |
-   |---|---|
-   | `VERCEL_TOKEN` | o token do passo 1 |
-   | `LIVEKIT_API_KEY` | LiveKit Cloud → Settings → Keys |
-   | `LIVEKIT_API_SECRET` | idem (só aparece na criação da chave) |
+   | Nome | Onde cadastrar | De onde vem |
+   |---|---|---|
+   | `VERCEL_TOKEN` | **secret** | o token do passo 1 |
+   | `LIVEKIT_API_SECRET` | **secret** | LiveKit Cloud → Settings → Keys (só aparece na criação) |
+   | `LIVEKIT_API_KEY` | secret ou variable | idem |
 
-   > `orgId` e `projectId` **não** são secrets: são identificadores, e estão versionados em [.vercel/project.json](.vercel/project.json) — o mesmo arquivo que `vercel link` gera. Com ele no repositório, a CLI já sabe em qual projeto está operando. Apontar para outro projeto é editar esse arquivo (ou rodar `npx vercel link` de novo).
+   Opcional: `VITE_LIVEKIT_URL` como *variable*, para sobrescrever o default versionado em [config.ts](apps/web/src/lib/config.ts).
+
+   > **Secret e variable não são a mesma coisa.** Variables são texto plano: aparecem legíveis na tela de configuração e **não são mascaradas nos logs** do Actions. Credencial vai em *Environment secrets*. O workflow aceita as duas formas — `secrets` tem precedência e `vars` é o fallback —, e mascara à mão os valores sensíveis que chegarem como variable, mas isso é remendo: o lugar do token e do secret é em secrets.
+
+   > `orgId` e `projectId` **não** precisam ser cadastrados: são identificadores, e estão versionados em [.vercel/project.json](.vercel/project.json) — o mesmo arquivo que `vercel link` gera. Com ele no repositório, a CLI já sabe em qual projeto está operando. Apontar para outro projeto é editar esse arquivo (ou rodar `npx vercel link` de novo).
 
 3. Em **Settings → General** do projeto na Vercel, confira que **Root Directory** é a raiz (`./`) e o **Node.js Version** é 22.x. Se apontar para `apps/web`, o diretório `api/` não é detectado e a função de token não existe.
 

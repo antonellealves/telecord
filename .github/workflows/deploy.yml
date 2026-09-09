@@ -49,14 +49,31 @@ jobs:
     needs: verify
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    # O nome tem que bater com o Environment configurado no GitHub.
     environment:
-      name: production
+      name: Production
       url: ${{ steps.deploy.outputs.url }}
     # orgId e projectId vêm de .vercel/project.json, versionado no repositório.
-    # Só o token precisa ser secret.
+    #
+    # Cada valor aceita as duas formas: `secrets` tem precedência, `vars` é o
+    # fallback. Guardar credencial como *variable* funciona, mas variable é
+    # texto plano e NÃO é mascarada nos logs — o lugar certo de VERCEL_TOKEN e
+    # LIVEKIT_API_SECRET é em Environment secrets. Escrito assim, mover os dois
+    # para lá não exige tocar neste arquivo.
     env:
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN || vars.VERCEL_TOKEN }}
     steps:
+      # O Actions mascara `secrets` sozinho, mas não mascara `vars`. Enquanto
+      # os valores sensíveis estiverem como variables, esta etapa registra o
+      # mascaramento à mão para eles não vazarem em log de erro.
+      - name: Mascara valores sensíveis
+        env:
+          MASK_TOKEN: ${{ secrets.VERCEL_TOKEN || vars.VERCEL_TOKEN }}
+          MASK_SECRET: ${{ secrets.LIVEKIT_API_SECRET || vars.LIVEKIT_API_SECRET }}
+        run: |
+          if [ -n "${MASK_TOKEN:-}" ]; then echo "::add-mask::$MASK_TOKEN"; fi
+          if [ -n "${MASK_SECRET:-}" ]; then echo "::add-mask::$MASK_SECRET"; fi
+
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
@@ -77,13 +94,17 @@ jobs:
       # antes de publicar. A CLI não tem upsert: remove e adiciona.
       - name: Injeta as credenciais no projeto da Vercel
         env:
-          LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
-          LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
+          LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY || vars.LIVEKIT_API_KEY }}
+          LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET || vars.LIVEKIT_API_SECRET }}
         run: |
           set -euo pipefail
 
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "::error::VERCEL_TOKEN não chegou. Cadastre no Environment 'Production' do GitHub, como secret (recomendado) ou variable."
+            exit 1
+          fi
           if [ -z "${LIVEKIT_API_KEY:-}" ] || [ -z "${LIVEKIT_API_SECRET:-}" ]; then
-            echo "::error::Faltam os secrets LIVEKIT_API_KEY e/ou LIVEKIT_API_SECRET no repositório."
+            echo "::error::Faltam LIVEKIT_API_KEY e/ou LIVEKIT_API_SECRET no Environment 'Production'."
             exit 1
           fi
 
@@ -104,7 +125,12 @@ jobs:
       - name: Puxa as configurações do projeto
         run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
 
+      # VITE_LIVEKIT_URL é opcional: o código tem default versionado. Quando a
+      # variável existe, ela ganha do default — o Vite dá precedência ao que já
+      # está no ambiente do processo.
       - name: Build de produção
+        env:
+          VITE_LIVEKIT_URL: ${{ vars.VITE_LIVEKIT_URL }}
         run: vercel build --prod --token="$VERCEL_TOKEN"
 
       - name: Publica
