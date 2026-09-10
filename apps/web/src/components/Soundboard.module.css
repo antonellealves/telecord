@@ -17,6 +17,13 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /*
+   * Teto de altura porque o catálogo vem da pasta: o número de sons é do
+   * usuário, não do código, e sem isso a grade cresce até sair da tela — que
+   * foi o que aconteceu ao passar de vinte sons. Só a grade rola; cabeçalho,
+   * volume e dica ficam sempre visíveis.
+   */
+  max-height: min(70vh, 560px);
   animation: rise 0.16s cubic-bezier(0.2, 0.8, 0.3, 1);
 }
 
@@ -28,6 +35,7 @@
 }
 
 .header {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -58,12 +66,55 @@
 }
 
 .grid {
+  flex: 1 1 auto;
+  /* Sem isso o item flex não encolhe abaixo do conteúdo e o overflow nunca
+     entra em ação — a grade continuaria empurrando o painel. */
+  min-height: 0;
+  overflow-y: auto;
+  /* Reserva a canaleta: a barra aparecendo não reflui a grade inteira. */
+  scrollbar-gutter: stable;
+  /* Chegando ao fim da lista, o embalo não vai rolar a página atrás. */
+  overscroll-behavior: contain;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
   gap: 8px;
+  align-content: start;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.grid::-webkit-scrollbar {
+  width: 10px;
+}
+
+.grid::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* A borda transparente com `background-clip` afina o polegar sem afinar a
+   área de arraste, que é o que torna a barra difícil de pegar. */
+.grid::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  background-clip: padding-box;
+  border: 3px solid transparent;
+  border-radius: 999px;
+}
+
+.grid::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.26);
+  background-clip: padding-box;
+}
+
+/* Envolve o som e o botão de parar. Botão dentro de botão é HTML inválido, daí
+   os dois serem irmãos dentro deste contêiner posicionado. */
+.tile {
+  position: relative;
+  display: grid;
 }
 
 .sound {
+  position: relative;
+  width: 100%;
   padding: 12px 10px;
   border-radius: var(--radius-sm);
   border: 1px solid rgba(var(--accent-rgb), 0.28);
@@ -82,6 +133,75 @@
   transform: translateY(1px);
 }
 
+/* ---- som tocando ----------------------------------------------------- */
+
+.playing .sound {
+  /* Abre espaço para o botão de parar, que fica acima do nome. Só o tile que
+     está tocando cresce — e isso ajuda a achá-lo na lista. */
+  padding-top: 30px;
+  border-color: rgba(var(--accent-rgb), 0.85);
+  background: rgba(var(--accent-rgb), 0.24);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.25);
+}
+
+.stop {
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(var(--danger-rgb), 0.6);
+  background: rgba(var(--danger-rgb), 0.9);
+  color: #fff;
+  transition: transform 0.12s ease, background 0.16s ease;
+}
+
+.stop svg {
+  width: 12px;
+  height: 12px;
+}
+
+.stop:hover {
+  background: rgb(var(--danger-rgb));
+  transform: translateX(-50%) scale(1.12);
+}
+
+.stop:active {
+  transform: translateX(-50%) scale(0.94);
+}
+
+/* Anel pulsando: com a lista rolável, a cor sozinha some da vista quando o
+   tile que toca está fora do trecho visível — o movimento é o que o denuncia
+   ao rolar até ele. */
+.playing .sound::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(var(--accent-rgb), 0.7);
+  animation: pulse 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .playing .sound::after {
+    animation: none;
+  }
+}
+
 /* Ocupa a grade inteira: a pasta vazia e um estado alcancavel agora que o
    catalogo vem dela, nao de uma lista fixa no codigo. */
 .empty {
@@ -95,6 +215,7 @@
 }
 
 .hint {
+  flex: none;
   margin: 0;
   font-size: 11.5px;
   line-height: 1.55;
@@ -113,6 +234,7 @@
 /* ---- volume ---------------------------------------------------------- */
 
 .volumeRow {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 10px;

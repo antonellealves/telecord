@@ -42,7 +42,8 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
   const cameras = useCameras(push);
   const talk = useTalkControls((message) => push('error', message));
   const sound = useSoundVolume();
-  const { messages, unread, sendChat, playSound, markRead } = useRoomMessages(() => sound.effective);
+  const { messages, unread, sendChat, playSound, playingSoundId, stopSound, markRead } =
+    useRoomMessages(() => sound.effective);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSoundboardOpen, setIsSoundboardOpen] = useState(false);
@@ -154,6 +155,8 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
             <Soundboard
               containerRef={controlsRef}
               onPlay={playSound}
+              playingSoundId={playingSoundId}
+              onStop={stopSound}
               onClose={() => setIsSoundboardOpen(false)}
               volume={sound.volume}
               muted={sound.muted}

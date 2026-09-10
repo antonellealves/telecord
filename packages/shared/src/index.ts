@@ -233,7 +233,24 @@ export interface SoundCue {
   sentAt: number;
 }
 
-export type RoomMessage = ChatMessage | SoundCue;
+/**
+ * Pedido de parar o som que está tocando.
+ *
+ * Carrega o `soundId` de propósito: sem ele, um pedido que chegasse atrasado
+ * cortaria o som seguinte, que já tinha começado. Cada cliente só para se o
+ * que estiver tocando ali for esse mesmo som.
+ */
+export interface SoundStop {
+  type: 'sound-stop';
+  id: string;
+  soundId: string;
+  sentAt: number;
+}
+
+export type RoomMessage = ChatMessage | SoundCue | SoundStop;
+
+/** Formato do id de som, gerado assim pelo catálogo e validado aqui. */
+const SOUND_ID_PATTERN = /^[a-z0-9-]{1,32}$/;
 
 /**
  * Valida uma mensagem recebida pelo canal de dados.
@@ -270,11 +287,14 @@ export function parseRoomMessage(raw: unknown): RoomMessage | null {
     return { type: 'chat', id: value.id, body, sentAt: value.sentAt };
   }
 
-  if (value.type === 'sound') {
-    if (typeof value.soundId !== 'string' || !/^[a-z0-9-]{1,32}$/.test(value.soundId)) {
+  if (value.type === 'sound' || value.type === 'sound-stop') {
+    if (typeof value.soundId !== 'string' || !SOUND_ID_PATTERN.test(value.soundId)) {
       return null;
     }
-    return { type: 'sound', id: value.id, soundId: value.soundId, sentAt: value.sentAt };
+    const soundId = value.soundId;
+    return value.type === 'sound'
+      ? { type: 'sound', id: value.id, soundId, sentAt: value.sentAt }
+      : { type: 'sound-stop', id: value.id, soundId, sentAt: value.sentAt };
   }
 
   return null;

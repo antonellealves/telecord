@@ -155,3 +155,15 @@ export function CameraOffIcon(props: IconProps): JSX.Element {
     </Icon>
   );
 }
+
+export function StopIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g>
+        {/* Preenchido: num alvo pequeno o quadrado só de contorno vira borrão
+            e deixa de ler como "parar". */}
+        <rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" stroke="none" />
+      </g>
+    </Icon>
+  );
+}

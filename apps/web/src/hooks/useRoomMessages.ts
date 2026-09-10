@@ -23,6 +23,10 @@ export interface RoomMessaging {
   unread: number;
   sendChat: (body: string) => void;
   playSound: (soundId: string) => void;
+  /** Som tocando agora neste cliente, ou null. Um por vez. */
+  playingSoundId: string | null;
+  /** Corta o som na sala inteira, não só aqui. */
+  stopSound: (soundId: string) => void;
   markRead: () => void;
 }
 
@@ -47,9 +51,13 @@ export function useRoomMessages(getVolume: () => number): RoomMessaging {
   const room = useRoomContext();
   const [messages, setMessages] = useState<ChatEntry[]>([]);
   const [unread, setUnread] = useState(0);
+  const [playingSoundId, setPlayingSoundId] = useState<string | null>(null);
 
   const seenRef = useRef(new Set<string>());
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Espelho do que está tocando: os eventos do <audio> disparam fora do ciclo
+  // do React e precisam decidir sem depender do que já foi renderizado.
+  const playingRef = useRef<string | null>(null);
   const getVolumeRef = useRef(getVolume);
   getVolumeRef.current = getVolume;
 
@@ -71,7 +79,34 @@ export function useRoomMessages(getVolume: () => number): RoomMessaging {
     const audio = new Audio(sound.file);
     audio.volume = Math.min(1, volume);
     audioRef.current = audio;
-    void audio.play().catch(() => undefined);
+    playingRef.current = soundId;
+    setPlayingSoundId(soundId);
+
+    // Só limpa se este ainda for o áudio corrente: um som disparado por cima
+    // do outro faria o `ended` do antigo apagar o estado do novo.
+    const clear = (): void => {
+      if (audioRef.current !== audio) {
+        return;
+      }
+      audioRef.current = null;
+      playingRef.current = null;
+      setPlayingSoundId(null);
+    };
+    audio.addEventListener('ended', clear, { once: true });
+    audio.addEventListener('error', clear, { once: true });
+    void audio.play().catch(clear);
+  }, []);
+
+  const stopLocally = useCallback((soundId: string) => {
+    // Pedido atrasado, para um som que já terminou ou já foi substituído: não
+    // pode cortar o que está tocando agora.
+    if (playingRef.current !== soundId) {
+      return;
+    }
+    audioRef.current?.pause();
+    audioRef.current = null;
+    playingRef.current = null;
+    setPlayingSoundId(null);
   }, []);
 
   const append = useCallback((entry: ChatEntry, countUnread: boolean) => {
@@ -107,6 +142,11 @@ export function useRoomMessages(getVolume: () => number): RoomMessaging {
         return;
       }
 
+      if (message.type === 'sound-stop') {
+        stopLocally(message.soundId);
+        return;
+      }
+
       const author =
         participant?.name !== undefined && participant.name !== ''
           ? participant.name
@@ -123,7 +163,7 @@ export function useRoomMessages(getVolume: () => number): RoomMessaging {
       room.off(RoomEvent.DataReceived, handleData);
       audioRef.current?.pause();
     };
-  }, [room, append, playLocally]);
+  }, [room, append, playLocally, stopLocally]);
 
   const publish = useCallback(
     (message: RoomMessage) => {
@@ -171,7 +211,17 @@ export function useRoomMessages(getVolume: () => number): RoomMessaging {
     [publish, playLocally],
   );
 
+  const stopSound = useCallback(
+    (soundId: string) => {
+      // Publica antes de parar aqui: quem clicou já sabe o resultado, quem
+      // está ouvindo é que precisa do aviso o quanto antes.
+      publish({ type: 'sound-stop', id: newId(), soundId, sentAt: Date.now() });
+      stopLocally(soundId);
+    },
+    [publish, stopLocally],
+  );
+
   const markRead = useCallback(() => setUnread(0), []);
 
-  return { messages, unread, sendChat, playSound, markRead };
+  return { messages, unread, sendChat, playSound, playingSoundId, stopSound, markRead };
 }
