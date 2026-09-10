@@ -4,9 +4,11 @@
   gap: 10px;
 }
 
+/* `center`, não `baseline`: o alinhamento por linha de base valia para dois
+   textos; com um ícone de um lado, ele pendura o botão abaixo do título. */
 .header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 0 2px;
@@ -27,20 +29,49 @@
 }
 
 .refresh {
-  background: none;
-  border: none;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
   padding: 0;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.08em;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--accent);
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
+}
+
+.refresh svg {
+  width: 15px;
+  height: 15px;
+}
+
+.refresh:hover:not(:disabled) {
+  border-color: rgba(var(--accent-rgb), 0.55);
+  background: rgba(var(--accent-rgb), 0.12);
 }
 
 .refresh:disabled {
   color: var(--text-faint);
-  text-decoration: none;
+}
+
+/*
+ * Só o ícone gira. Girar o botão levaria a borda junto, e um círculo girando
+ * dentro de outro círculo não mostra giro nenhum.
+ *
+ * Fica de pé mesmo com movimento reduzido: não é enfeite, é o único retorno de
+ * que o clique pegou. A duração é a mesma do `SPIN_MS` do componente, e é isso
+ * que faz o giro sempre fechar a volta em vez de parar torto.
+ */
+.spinning svg {
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .message {

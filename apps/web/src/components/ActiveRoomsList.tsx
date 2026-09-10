@@ -1,5 +1,13 @@
+import { useEffect, useState } from 'react';
 import type { ActiveRoom } from '@telecord/shared';
+import { RefreshIcon } from './icons';
 import styles from './ActiveRoomsList.module.css';
+
+/*
+ * Uma volta inteira do ícone. O mesmo número está no CSS: é o que garante que
+ * a animação nunca pare no meio de um giro.
+ */
+const SPIN_MS = 700;
 
 interface ActiveRoomsListProps {
   rooms: ActiveRoom[];
@@ -24,14 +32,39 @@ export function ActiveRoomsList({
   onEnter,
   onRefresh,
 }: ActiveRoomsListProps): JSX.Element {
+  /*
+   * Giro mínimo de uma volta, independente da resposta. A lista costuma voltar
+   * em poucos milissegundos e, preso só ao `isLoading`, o ícone dava um
+   * espasmo — o clique parecia não ter feito nada.
+   */
+  const [spinning, setSpinning] = useState(false);
+
+  useEffect(() => {
+    if (!spinning) return undefined;
+    const timer = window.setTimeout(() => setSpinning(false), SPIN_MS);
+    return () => window.clearTimeout(timer);
+  }, [spinning]);
+
+  const isSpinning = spinning || isLoading;
+
   return (
     <section className={styles.block} aria-label="Salas ativas">
       <div className={styles.header}>
         <h2 className={styles.heading}>
           Salas ativas {rooms.length > 0 ? <span className={styles.count}>{rooms.length}</span> : null}
         </h2>
-        <button type="button" className={styles.refresh} onClick={onRefresh} disabled={isLoading}>
-          {isLoading ? 'carregando…' : 'atualizar'}
+        <button
+          type="button"
+          className={`${styles.refresh} ${isSpinning ? styles.spinning : ''}`}
+          onClick={() => {
+            setSpinning(true);
+            onRefresh();
+          }}
+          disabled={isLoading}
+          title={isLoading ? 'Procurando salas…' : 'Atualizar a lista'}
+          aria-label="Atualizar a lista de salas"
+        >
+          <RefreshIcon />
         </button>
       </div>
 

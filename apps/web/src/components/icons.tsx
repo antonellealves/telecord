@@ -180,3 +180,16 @@ export function InfoIcon(props: IconProps): JSX.Element {
     </Icon>
   );
 }
+
+export function RefreshIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g>
+        {/* Arco aberto, não círculo fechado: é a falta do pedaço que faz a
+            seta ler como "de novo" em vez de "carregando". */}
+        <path d="M20 12a8 8 0 1 1-2.6-5.9" />
+        <path d="M20 4v4.5h-4.5" />
+      </g>
+    </Icon>
+  );
+}
