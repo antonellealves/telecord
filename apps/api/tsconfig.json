@@ -1,0 +1,39 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    /*
+     * O Nest resolve dependência lendo o tipo dos parâmetros do construtor em
+     * tempo de execução. Sem estes dois, todo `@Injectable` recebe `undefined`
+     * e o erro só aparece no boot, sem apontar a causa.
+     */
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    /* `verbatimModuleSyntax` do base é para ESM; aqui a saída é CommonJS. */
+    "verbatimModuleSyntax": false,
+    "outDir": "dist",
+    "rootDir": ".",
+    /*
+     * Emite os tipos junto: a função `api/[...nest].ts` importa a saída
+     * compilada, e sem declaração ela entraria como `any` — perdendo a
+     * checagem justo na costura entre os dois lados do deploy.
+     */
+    "declaration": true
+    /*
+     * Sem `paths` para `@telecord/shared`: o pacote é resolvido pelo
+     * node_modules, como qualquer dependência, e entrega a saída CommonJS que
+     * ele passou a emitir junto com a ESM. Mapear para a fonte faria o `tsc`
+     * compilar o pacote aqui dentro e ainda assim emitir
+     * `require("@telecord/shared")` — que resolveria para a saída ESM e
+     * estouraria no boot.
+     *
+     * Consequência: `@telecord/shared` precisa estar CONSTRUÍDO antes de
+     * compilar este serviço. O Dockerfile e o CI fazem isso na ordem.
+     */
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "exclude": ["dist", "node_modules"]
+}

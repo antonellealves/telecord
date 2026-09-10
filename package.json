@@ -9,12 +9,17 @@
   },
   "scripts": {
     "dev": "pnpm --filter web dev",
-    "build": "pnpm --filter @telecord/shared build && pnpm --filter web build && node scripts/check-bundle.mjs",
-    "typecheck": "pnpm --recursive typecheck && tsc --project tsconfig.api.json --noEmit",
-    "lint": "pnpm run typecheck"
+    "build": "pnpm --filter @telecord/shared build && pnpm --filter @telecord/api build && pnpm --filter web build && node scripts/check-bundle.mjs",
+    "typecheck": "pnpm --filter @telecord/shared build && pnpm --filter @telecord/api build && pnpm --recursive typecheck && tsc --project tsconfig.api.json --noEmit",
+    "lint": "pnpm run typecheck",
+    "test": "pnpm --filter @telecord/api test",
+    "api:dev": "docker compose up",
+    "api:build": "pnpm --filter @telecord/api build",
+    "auth:keys": "node scripts/gen-auth-keys.mjs"
   },
   "dependencies": {
     "@telecord/shared": "workspace:*",
+    "jose": "^5.9.0",
     "livekit-server-sdk": "^2.9.0"
   },
   "devDependencies": {

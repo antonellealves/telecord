@@ -74,6 +74,131 @@ A URL do servidor LiveKit tem default versionado em [config.ts](apps/web/src/lib
 >
 > O `pnpm build` roda `scripts/check-bundle.mjs`, que falha o build se encontrar `LIVEKIT_API_` ou o valor do secret dentro de `apps/web/dist`.
 
+## Contas (opcional)
+
+O telecord funciona sem contas, e continua funcionando: digitar um nome e entrar
+é o caminho principal. Ligar a autenticação acrescenta a possibilidade de entrar
+com Google ou e-mail e senha, e nesse caso o nome deixa de ser auto-declarado —
+o servidor passa a afirmá-lo (SPEC §2.4).
+
+**Enquanto `VITE_API_URL` estiver vazia, nada disso existe no app publicado:**
+nenhuma requisição sai, nenhum botão de entrar aparece. É seguro publicar este
+código com o serviço de autenticação ainda fora do ar.
+
+### Desenvolvimento local, com Docker
+
+```bash
+cp .env.example .env
+node scripts/gen-auth-keys.mjs >> .env    # par de chaves Ed25519
+docker compose up                          # TiDB + serviço de autenticação
+pnpm dev                                   # front, noutra janela
+```
+
+O `docker-compose.yml` sobe **TiDB de verdade**, não MySQL. O protocolo é o
+mesmo, mas as diferenças que interessam não são de protocolo: `AUTO_INCREMENT`
+não monotônico, ausência de foreign key efetiva, sintaxe de TTL. Desenvolver
+contra MySQL esconderia exatamente o que quebra em produção.
+
+O front fica no host, e não no contêiner: o Vite dentro de um bind mount no
+Windows só detecta alteração com polling, o que gasta CPU à toa e deixa o
+recarregamento lento.
+
+Sem credencial do Google e sem provedor de e-mail o serviço sobe assim mesmo —
+o login social responde 503, o botão some da tela, e o link de confirmação de
+e-mail é escrito no log em vez de enviado:
+
+```bash
+docker compose logs -f api      # o link de verificação sai aqui
+```
+
+### Criando as credenciais do Google
+
+1. [Google Cloud Console](https://console.cloud.google.com) → crie ou escolha um projeto.
+2. **APIs & Services → OAuth consent screen**: tipo *External*, preencha nome do
+   app e e-mail de contato. Em desenvolvimento, adicione seu e-mail em *Test users*.
+3. **APIs & Services → Credentials → Create credentials → OAuth client ID**,
+   tipo *Web application*.
+4. Em **Authorized redirect URIs**, ponha exatamente — sem barra no fim:
+   ```
+   http://localhost:3000/auth/google/callback     (local)
+   https://api.seu-dominio.com/auth/google/callback  (produção)
+   ```
+   O Google compara caractere a caractere. Um `/` sobrando já recusa o login.
+5. Copie o *Client ID* e o *Client secret* para `GOOGLE_CLIENT_ID` e
+   `GOOGLE_CLIENT_SECRET` no `.env`. As duas vão juntas: metade da credencial
+   faz o serviço recusar subir, de propósito.
+
+### Criando o cluster no TiDB Cloud
+
+1. [tidbcloud.com](https://tidbcloud.com) → **Create Cluster** → *Starter*
+   (gratuito e permanente).
+2. **Connect** → *Prisma* ou *General*. O host termina em `.tidbcloud.com` e a
+   porta é **4000**, não 3306.
+3. O usuário vem com o prefixo do cluster antes do ponto
+   (`2abcXYZ.raiz`) — copie inteiro.
+4. Monte a `DATABASE_URL`; `sslaccept=strict` e `connection_limit` não são
+   opcionais:
+   ```
+   mysql://<prefixo>.<usuario>:<senha>@<host>:4000/telecord?sslaccept=strict&connection_limit=5
+   ```
+5. Aplique o schema:
+   ```bash
+   pnpm --filter @telecord/api exec prisma migrate deploy
+   ```
+
+### Publicando o serviço de autenticação
+
+**Tudo na Vercel: app e API na mesma origem.** O serviço NestJS roda como
+função, atrás de `api/[...nest].ts`, que captura tudo sob `/api/` que não tenha
+função própria — `token` e `rooms` continuam sendo arquivos separados, porque
+rota com segmento fixo tem precedência sobre rota dinâmica.
+
+Isso resolve de graça o problema que era o maior risco do desenho: com a mesma
+origem, o cookie de refresh é `SameSite=Lax` e não há cookie de terceiro para o
+Safari bloquear. Não é preciso domínio próprio.
+
+Em troca, volta o problema de conexão que um processo persistente não teria:
+cada instância fria abre o próprio pool. Por isso **`connection_limit=1`** na
+`DATABASE_URL` de produção — a invocação é curta e não tem o que reaproveitar.
+
+O `apps/api/Dockerfile` continua no repositório, mas só para o desenvolvimento
+local com Docker.
+
+Todas as variáveis se criam no GitHub. **Elas se criam no GitHub, não na
+Vercel**: o deploy por git está desligado e quem grava o ambiente do projeto é
+`scripts/vercel-deploy.mjs`, a cada publicação. Editar direto no painel da
+Vercel funciona até o próximo deploy sobrescrever.
+
+Em **Settings → Secrets and variables → Actions**:
+
+**Aba Secrets** — segredo de verdade:
+
+| Nome | Valor |
+|---|---|
+| `DATABASE_URL` | a URL do TiDB, com a senha dentro |
+| `AUTH_JWT_PRIVATE_KEY` | a metade que **assina** |
+| `GOOGLE_CLIENT_SECRET` | do OAuth Client |
+| `RESEND_API_KEY` | só se `MAIL_DRIVER=resend` |
+
+**Aba Variables** — não são segredo:
+
+| Nome | Valor |
+|---|---|
+| `AUTH_JWT_PUBLIC_KEY` | a metade **pública**: valida o token, não emite nenhum |
+| `APP_URL` | `https://telecord.vercel.app` |
+| `API_URL` | `https://telecord.vercel.app/api` |
+| `VITE_API_URL` | `https://telecord.vercel.app/api` |
+| `GOOGLE_CLIENT_ID` | do OAuth Client |
+| `MAIL_DRIVER` / `MAIL_FROM` | `log` enquanto não houver provedor |
+
+Todas são opcionais. Sem elas o app publicado simplesmente não tem contas, que é
+o estado anterior a este trabalho — e o passo de verificação do deploy pula o
+teste do serviço de autenticação sozinho.
+
+`VITE_API_URL` e `API_URL` têm o mesmo valor aqui porque app e API dividem a
+origem. Continuam separadas porque uma é lida no navegador, em tempo de build, e
+a outra no servidor, em tempo de execução.
+
 ## Deploy
 
 Quem publica é o **GitHub Actions**, não a Vercel. O deploy automático dela está desligado em [vercel.json](./vercel.json) (`git.deploymentEnabled: false`), e o pipeline está em [.github/workflows/deploy.yml](.github/workflows/deploy.yml).

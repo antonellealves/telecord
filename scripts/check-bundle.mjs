@@ -24,9 +24,23 @@ async function walk(dir) {
 }
 
 /** @type {{ label: string, needle: string }[]} */
-const needles = [{ label: 'nome de variável privada', needle: 'LIVEKIT_API_' }];
+const needles = [
+  { label: 'nome de variável privada', needle: 'LIVEKIT_API_' },
+  { label: 'nome de variável privada', needle: 'GOOGLE_CLIENT_SECRET' },
+  { label: 'nome de variável privada', needle: 'AUTH_JWT_PRIVATE_KEY' },
+  { label: 'nome de variável privada', needle: 'RESEND_API_KEY' },
+  // O cabeçalho do PEM: pega qualquer chave privada que vaze para o bundle,
+  // inclusive uma colada à mão em algum arquivo do front.
+  { label: 'chave privada em PEM', needle: 'BEGIN PRIVATE KEY' },
+];
 
-for (const name of ['LIVEKIT_API_SECRET', 'LIVEKIT_API_KEY']) {
+for (const name of [
+  'LIVEKIT_API_SECRET',
+  'LIVEKIT_API_KEY',
+  'GOOGLE_CLIENT_SECRET',
+  'AUTH_JWT_PRIVATE_KEY',
+  'RESEND_API_KEY',
+]) {
   const value = process.env[name];
   if (value && value.length >= 8) {
     needles.push({ label: `valor de ${name}`, needle: value });

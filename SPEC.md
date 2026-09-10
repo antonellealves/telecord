@@ -180,6 +180,28 @@ Cache de borda curto (`s-maxage=5`): protege a API do LiveKit de quem fica atual
 
 ---
 
+### 2.4 Autenticação (emenda pós-implementação)
+
+Entrar continua **sem conta**. A autenticação é opcional e não fica na frente da sala — quem digita um nome e clica entra como sempre entrou. O que a conta muda é quem afirma o nome.
+
+**Tudo na Vercel, mesma origem.** `apps/api` é um NestJS que roda como função, atrás da captura `api/[...nest].ts`; `api/token.ts` e `api/rooms.ts` continuam sendo funções próprias, porque rota com segmento fixo tem precedência sobre rota dinâmica. Não existe gateway de signaling próprio para hospedar — quem faz isso é o LiveKit Cloud —, então o NestJS está aqui pelo guard declarativo, não por WebSocket.
+
+Mesma origem é o que faz o cookie de refresh ser `SameSite=Lax` sem cookie de terceiro no caminho. O preço é serverless: `connection_limit=1` porque cada instância fria abre o próprio pool, e o limitador de requisições, que conta em memória, passa a valer por instância — segura o caso comum, não quem distribui a tentativa.
+
+A função importa a saída **compilada** de `apps/api`, não a fonte: o compilador de funções da Vercel não liga `emitDecoratorMetadata`, e sem isso a injeção de dependência do Nest recebe `undefined` em todo construtor.
+
+**Par de chaves, não segredo compartilhado.** O access token é assinado com Ed25519. A função `/api/token` precisa VALIDAR o token para saber quem entra na sala; com HS256 ela teria a chave de assinatura, e um vazamento do lado da Vercel viraria emissão de sessão para qualquer identidade. Ela recebe só a pública, em `AUTH_JWT_PUBLIC_KEY`, e a variável é opcional: sem ela todo mundo entra anônimo.
+
+**O que a sessão muda em `/api/token`:** com Bearer válido, `identity` passa a ser o id do usuário — estável entre reconexões, em vez de um UUID novo a cada emissão — e `name` vem da conta, ignorando o texto do cliente. Sem Bearer, o caminho é idêntico ao anterior.
+
+**Refresh rotativo com detecção de reuso.** O refresh é opaco (não JWT, porque precisa ser revogável) e só o hash SHA-256 fica no banco. Cada uso queima o token e emite outro; reapresentar um token já substituído significa cópia em circulação, e a família inteira cai. O access token nunca vai para `localStorage` — vive em memória, porque XSS lê `localStorage`.
+
+**Pré-vinculação de conta.** Suportar Google e senha juntos abre um ataque conhecido: registrar por senha com o e-mail de outra pessoa e esperar que ela entre pelo Google. Por isso conta criada por senha nasce com `emailVerifiedAt` nulo e **nunca** é adotada por um login social; o Google só vincula com e-mail verificado dos dois lados.
+
+**Sem detecção de inatividade e sem impersonação.** Fora de escopo, deliberadamente.
+
+---
+
 ## 3. Modelo de dados em memória
 
 Não há persistência em lugar nenhum. **A fonte de verdade é o SFU**; o estado React é um cache derivado dos eventos do `Room`, reconstruível a qualquer momento a partir do objeto `room`.
@@ -548,7 +570,14 @@ Ordem que importa: a Vercel roda o `buildCommand` **antes** de compilar as funç
 - Ao estourar, o sintoma é join recusado na sinalização: o cliente cai no estado de erro de conexão. Nada de degradação silenciosa.
 - Mitigação imediata: baixar o preset para `h720fps15` ou `h720fps5` (~metade ou menos da banda). Mitigação real: self-host trocando `VITE_LIVEKIT_URL` e as credenciais — o código não muda.
 
-**Sem autenticação**
+**Autenticação é opcional, e por isso não fecha nada**
+
+- Existe conta (§2.4), mas ela **não protege a sala**: quem tem a URL entra sem conta, como sempre. O que a conta garante é que o nome de quem entrou com ela não é auto-declarado.
+- **A lista de salas ativas continua pública**, e continua sem senha por sala. Fechar isso exigiria tornar o login obrigatório, que é decisão de produto tomada no sentido contrário.
+- `/api/token` continua sem rate limit. O serviço de autenticação tem limite nas rotas de credencial; a emissão de token do LiveKit, não.
+- Não há expulsar, silenciar, nem lista de moderação.
+
+**Sem autenticação (histórico — anterior a §2.4)**
 
 - **As salas ativas são públicas.** Com `/api/rooms` na página de entrada, qualquer visitante vê o nome de toda sala com gente e entra em qualquer uma com um clique. Antes disso, uma sala só era alcançável por quem tivesse a URL — proteção fraca, mas era alguma. Agora não há nenhuma. É consequência aceita do recurso, não descuido; fechar exigiria autenticação, ou restringir a lista às salas que a pessoa já visitou (o `lastRoom` do localStorage), ou uma senha por sala. Nenhuma dessas está implementada.
 - Quem tem a URL entra. `displayName` é auto-declarado e falsificável.

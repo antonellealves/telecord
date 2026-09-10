@@ -8,12 +8,13 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "require": "./dist/cjs/index.js",
       "default": "./dist/index.js"
     }
   },
   "files": ["dist"],
   "scripts": {
-    "build": "tsc --project tsconfig.json",
+    "build": "tsc --project tsconfig.json && tsc --project tsconfig.cjs.json && node scripts/mark-cjs.mjs",
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "devDependencies": {

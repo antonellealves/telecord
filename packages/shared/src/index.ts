@@ -359,3 +359,87 @@ export type RoomsResponse = RoomsSuccessResponse | RoomsErrorResponse;
 export function isRoomsErrorResponse(value: RoomsResponse): value is RoomsErrorResponse {
   return 'error' in value;
 }
+
+// ---------------------------------------------------------------------------
+// Autenticação (emenda pós-implementação — SPEC §2.4)
+// ---------------------------------------------------------------------------
+
+export const EMAIL_MAX_LENGTH = 320;
+export const PASSWORD_MIN_LENGTH = 10;
+/*
+ * Teto porque a derivação processa a senha inteira: sem limite, um POST com um
+ * megabyte de senha vira negação de serviço barata.
+ */
+export const PASSWORD_MAX_LENGTH = 200;
+export const USERNAME_MAX_LENGTH = 32;
+
+/**
+ * Normalização de e-mail: só recorta e baixa a caixa.
+ *
+ * Nada de remover ponto ou sufixo `+tag` do Gmail: essas regras são de um
+ * provedor só, e aplicá-las a todos faria `a.b@outradominio.com` e
+ * `ab@outradominio.com` colidirem como se fossem a mesma pessoa — que é uma
+ * tomada de conta silenciosa.
+ */
+export function normalizeEmail(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+/*
+ * Deliberadamente frouxo. Validar e-mail por expressão regular é briga
+ * perdida — a gramática do RFC 5322 não cabe numa e toda versão "completa"
+ * rejeita endereço legítimo. Quem diz se o endereço existe é o e-mail de
+ * verificação; isto aqui só barra o que é obviamente errado.
+ */
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
+
+export function validateEmail(value: string): string | null {
+  const email = normalizeEmail(value);
+  if (email.length === 0) {
+    return 'Digite um e-mail.';
+  }
+  if (email.length > EMAIL_MAX_LENGTH) {
+    return `O e-mail pode ter no máximo ${EMAIL_MAX_LENGTH} caracteres.`;
+  }
+  if (!EMAIL_SHAPE.test(email)) {
+    return 'Esse e-mail não parece válido.';
+  }
+  return null;
+}
+
+/**
+ * Comprimento, e não composição.
+ *
+ * Exigir maiúscula, número e símbolo produz `Senha@123` — curta, previsível e
+ * no topo de qualquer dicionário. Comprimento é a única regra que aumenta o
+ * custo de quebrar de verdade.
+ */
+export function validatePassword(value: string): string | null {
+  if (value.length < PASSWORD_MIN_LENGTH) {
+    return `A senha precisa de pelo menos ${PASSWORD_MIN_LENGTH} caracteres.`;
+  }
+  if (value.length > PASSWORD_MAX_LENGTH) {
+    return `A senha pode ter no máximo ${PASSWORD_MAX_LENGTH} caracteres.`;
+  }
+  return null;
+}
+
+export type AuthProviderName = 'password' | 'google';
+
+/** Usuário autenticado, na forma que o cliente enxerga. */
+export interface AuthUser {
+  id: string;
+  email: string;
+  emailVerified: boolean;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  role: 'USER' | 'ADMIN';
+}
+
+export interface AuthSessionResponse {
+  user: AuthUser;
+  accessToken: string;
+  /** Segundos de vida do access token, para o cliente renovar antes de expirar. */
+  expiresIn: number;
+}

@@ -11,6 +11,7 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { AccessToken, TrackSource } from 'livekit-server-sdk';
+import { readSession } from './_session';
 import {
   MAX_TOKEN_REQUEST_BYTES,
   TOKEN_TTL_SECONDS,
@@ -144,12 +145,28 @@ export default async function handler(
   }
 
   const { roomId, displayName } = validation.value;
-  const identity = randomUUID();
+
+  /*
+   * Com sessão, quem manda é a conta; sem sessão, nada muda.
+   *
+   * Duas coisas melhoram para quem entrou: a `identity` passa a ser estável
+   * entre reconexões, em vez de um UUID novo a cada emissão — o que faz o SFU
+   * reconhecer a mesma pessoa voltando — e o `name` deixa de ser o texto que o
+   * cliente mandou. Hoje o servidor assina um token afirmando um nome que o
+   * próprio cliente inventou; para quem tem conta, isso acaba aqui.
+   *
+   * Anônimo continua exatamente como antes. Login é opcional no telecord, e
+   * esta função não pode ser o lugar onde isso deixa de valer — nem quando o
+   * serviço de autenticação está fora do ar.
+   */
+  const session = await readSession(req);
+  const identity = session === null ? randomUUID() : session.userId;
+  const name = session === null ? displayName : session.displayName;
 
   try {
     const accessToken = new AccessToken(apiKey, apiSecret, {
       identity,
-      name: displayName,
+      name,
       ttl: TOKEN_TTL_SECONDS,
     });
 

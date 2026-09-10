@@ -1,0 +1,22 @@
+{
+  /*
+   * Segunda saída, em CommonJS, para o serviço NestJS.
+   *
+   * O pacote é ESM ("type": "module") e o front e as funções da Vercel o
+   * consomem assim. O Nest compila para CommonJS, e `require()` de um módulo
+   * ESM é terreno movediço — funciona em algumas versões do Node e não em
+   * outras. Duas saídas do MESMO fonte custam um `tsc` a mais e mantêm um
+   * contrato só: validação que diverge entre cliente e servidor é exatamente o
+   * bug que este pacote existe para impedir.
+   */
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "outDir": "./dist/cjs",
+    /* Os tipos e os mapas saem só da build ESM; aqui seriam duplicata. */
+    "declaration": false,
+    "declarationMap": false,
+    "verbatimModuleSyntax": false
+  }
+}

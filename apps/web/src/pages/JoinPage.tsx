@@ -1,5 +1,5 @@
-import { useCallback, useState, type FormEvent } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   DISPLAY_NAME_MAX_LENGTH,
   ROOM_ID_MAX_LENGTH,
@@ -11,6 +11,7 @@ import {
 import { ActiveRoomsList } from '../components/ActiveRoomsList';
 import { AmbientGradient } from '../components/AmbientGradient';
 import { useActiveRooms } from '../hooks/useActiveRooms';
+import { useAuth } from '../hooks/useAuth';
 import { useDisplayName } from '../hooks/useDisplayName';
 import { useMicrophonePermission } from '../hooks/useMicrophonePermission';
 import { generateRoomId } from '../lib/media';
@@ -23,10 +24,23 @@ export function JoinPage(): JSX.Element {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [storedName, storeName] = useDisplayName();
+  const { status: authStatus, user, enabled: authEnabled, signOut } = useAuth();
 
   const [name, setName] = useState(storedName);
   const [room, setRoom] = useState(() => searchParams.get('sala') ?? '');
   const [error, setError] = useState<string | null>(null);
+
+  /*
+   * Com conta, o nome vem dela e o campo sai de cena. Não é enfeite: o
+   * `/api/token` ignora o nome mandado pelo cliente quando há sessão, então um
+   * campo editável aqui exibiria um valor que o servidor descarta.
+   */
+  const isSignedIn = authStatus === 'autenticado' && user !== null;
+  useEffect(() => {
+    if (user !== null) {
+      setName(user.displayName);
+    }
+  }, [user]);
 
   const activeRooms = useActiveRooms();
   const microphone = useMicrophonePermission();
@@ -114,18 +128,43 @@ export function JoinPage(): JSX.Element {
               </button>
             ) : null}
 
-            <label className={styles.field}>
-              <span className={styles.label}>Seu nome</span>
-              <input
-                className={styles.input}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Como as pessoas vão te ver"
-                maxLength={DISPLAY_NAME_MAX_LENGTH}
-                autoComplete="nickname"
-              />
-              <p className={styles.hint}>Fica salvo neste navegador para a próxima vez.</p>
-            </label>
+            {isSignedIn ? (
+              <div className={styles.account}>
+                <span className={styles.label}>Seu nome</span>
+                <p className={styles.accountName}>
+                  {user.displayName}
+                  <span className={styles.accountBadge}>confirmado</span>
+                </p>
+                <p className={styles.hint}>
+                  Vem da sua conta ({user.email}).{' '}
+                  <button type="button" className={styles.linkButton} onClick={() => void signOut()}>
+                    sair da conta
+                  </button>
+                </p>
+              </div>
+            ) : (
+              <label className={styles.field}>
+                <span className={styles.label}>Seu nome</span>
+                <input
+                  className={styles.input}
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  placeholder="Como as pessoas vão te ver"
+                  maxLength={DISPLAY_NAME_MAX_LENGTH}
+                  autoComplete="nickname"
+                />
+                <p className={styles.hint}>
+                  Fica salvo neste navegador para a próxima vez.
+                  {authEnabled ? (
+                    <>
+                      {' '}
+                      Com <Link className={styles.link} to="/entrar">uma conta</Link>, ele fica
+                      igual em toda sala e ninguém pode usá-lo.
+                    </>
+                  ) : null}
+                </p>
+              </label>
+            )}
 
             <div className={styles.permission}>
               {microphone.status === 'granted' ? (

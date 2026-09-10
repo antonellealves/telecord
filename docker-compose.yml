@@ -1,0 +1,77 @@
+# Desenvolvimento local.
+#
+# Sobe o banco e a API; o front continua no host, com `pnpm dev`. O Vite dentro
+# de um bind mount no Windows só detecta alteração com polling, o que gasta CPU
+# à toa e ainda deixa o recarregamento lento — e o servidor de desenvolvimento
+# do Vite não precisa de nada que só o contêiner ofereça.
+#
+#   docker compose up            # banco + API
+#   pnpm dev                     # front, noutra janela
+#
+# Uso:
+#   1. cp .env.example .env  e preencha o que a seção do serviço de auth pede
+#   2. node scripts/gen-auth-keys.mjs   (gera o par de chaves)
+#   3. docker compose up
+#
+# O link de confirmação de e-mail sai em `docker compose logs -f api`:
+# MAIL_DRIVER=log escreve a mensagem inteira no log em vez de enviar, o que
+# evita depender de provedor de e-mail para testar cadastro.
+
+services:
+  # TiDB de verdade, não MySQL.
+  #
+  # O protocolo é o mesmo, mas as diferenças que interessam não são de
+  # protocolo: AUTO_INCREMENT não monotônico, ausência de foreign key efetiva e
+  # a sintaxe de TTL. Desenvolver contra MySQL esconderia justamente o que
+  # quebra em produção.
+  #
+  # `--store=unistore` roda tudo num processo só, sem PD nem TiKV: é o modo de
+  # desenvolvimento, sem persistência entre recriações do contêiner.
+  tidb:
+    image: pingcap/tidb:v8.5.0
+    command: ["--store=unistore", "--path=", "--host=0.0.0.0"]
+    ports:
+      - "4000:4000"
+    healthcheck:
+      # O TiDB abre a porta antes de aceitar consulta; sem checar de fato, a
+      # migration da API corre cedo demais e falha na primeira subida.
+      test: ["CMD-SHELL", "/tidb-server -V > /dev/null 2>&1 && (echo > /dev/tcp/127.0.0.1/4000) 2>/dev/null"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: build
+    command: sh -c "pnpm --filter @telecord/api prisma:migrate && node apps/api/dist/src/main.js"
+    depends_on:
+      tidb:
+        condition: service_healthy
+    environment:
+      # `root` sem senha e sem TLS é o padrão do TiDB local. Em produção a URL
+      # traz usuário com prefixo do cluster e `sslaccept=strict` — ver README.
+      DATABASE_URL: mysql://root@tidb:4000/telecord?connection_limit=5
+      APP_URL: ${APP_URL:-http://localhost:5173}
+      API_URL: ${API_URL:-http://localhost:3000/api}
+      PORT: "3000"
+      AUTH_JWT_PRIVATE_KEY: ${AUTH_JWT_PRIVATE_KEY}
+      AUTH_JWT_PUBLIC_KEY: ${AUTH_JWT_PUBLIC_KEY}
+      AUTH_COOKIE_SAMESITE: ${AUTH_COOKIE_SAMESITE:-lax}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      MAIL_DRIVER: ${MAIL_DRIVER:-log}
+      MAIL_FROM: ${MAIL_FROM:-Telecord <nao-responda@localhost>}
+    ports:
+      - "3000:3000"
+    volumes:
+      # Fonte montada por cima para `tsc --watch` recompilar sem rebuild da
+      # imagem. Os dois volumes anônimos existem para o node_modules e o dist
+      # do contêiner não serem tapados pelos do host, que foram instalados para
+      # outro sistema operacional.
+      - ./apps/api/src:/app/apps/api/src
+      - ./packages/shared/src:/app/packages/shared/src
+      - /app/node_modules
+      - /app/apps/api/node_modules

@@ -1,0 +1,161 @@
+// Schema do telecord — fatia de autenticação (PLANO.md §4.1).
+//
+// Regras do TiDB que valem para todo model daqui em diante:
+//
+//  - `relationMode = "prisma"`: o TiDB não faz valer foreign key, então o
+//    Prisma resolve a relação na aplicação. A consequência é que ele NÃO cria
+//    índice de FK sozinho — toda coluna de FK abaixo tem `@@index` explícito.
+//  - Sem `autoincrement()`: o AUTO_INCREMENT do TiDB é distribuído e não
+//    monotônico, então os ids sairiam com buracos e fora de ordem. `cuid()`
+//    resolve, e ainda evita vazar contagem de linhas na URL.
+//  - Nada ordena por id. Ordenação é sempre `createdAt` com o id de desempate.
+
+generator client {
+  provider = "prisma-client-js"
+  /*
+   * O motor de query é um binário nativo, escolhido por sistema. `native`
+   * cobre a máquina de quem desenvolve; `rhel-openssl-3.0.x` é o runtime Node
+   * da Vercel (Amazon Linux 2023, OpenSSL 3). Sem o segundo, o build passa e o
+   * erro só aparece na primeira consulta em produção.
+   */
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider     = "mysql"
+  url          = env("DATABASE_URL")
+  relationMode = "prisma"
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+enum EmailTokenPurpose {
+  VERIFY
+  RESET
+}
+
+model User {
+  id       String  @id @default(cuid())
+  email    String  @unique @db.VarChar(320)
+  /// Nulo enquanto ninguém provou posse do e-mail. É o que impede a
+  /// pré-vinculação de conta descrita no PLANO.md §3: conta por senha com
+  /// e-mail não verificado nunca é adotada por um login social.
+  emailVerifiedAt DateTime?
+  username String  @unique @db.VarChar(32)
+  displayName String @db.VarChar(32)
+  avatarUrl   String? @db.VarChar(512)
+  /// Nulo para quem entrou só pelo Google e nunca definiu senha.
+  passwordHash String? @db.VarChar(255)
+
+  role   UserRole   @default(USER)
+  status UserStatus @default(ACTIVE)
+
+  lastSeenAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  /// Exclusão lógica. Nenhuma listagem pode devolver linha com isto preenchido.
+  deletedAt  DateTime?
+
+  settings      UserSettings?
+  oauthAccounts OAuthAccount[]
+  refreshTokens RefreshToken[]
+  emailTokens   EmailToken[]
+
+  @@index([createdAt, id])
+  @@index([status, createdAt])
+}
+
+model UserSettings {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  theme  String @default("dark") @db.VarChar(16)
+  locale String @default("pt-BR") @db.VarChar(16)
+
+  inputDeviceId  String? @db.VarChar(255)
+  outputDeviceId String? @db.VarChar(255)
+  videoDeviceId  String? @db.VarChar(255)
+
+  inputVolume  Int @default(100)
+  outputVolume Int @default(100)
+
+  noiseSuppression Boolean @default(true)
+  echoCancellation Boolean @default(true)
+
+  pushToTalk    Boolean @default(false)
+  pushToTalkKey String? @db.VarChar(32)
+
+  joinMuted        Boolean @default(true)
+  joinDeafened     Boolean @default(false)
+  defaultCameraOff Boolean @default(true)
+
+  notificationPrefs Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model OAuthAccount {
+  id                String @id @default(cuid())
+  userId            String
+  provider          String @db.VarChar(32)
+  providerAccountId String @db.VarChar(255)
+  createdAt         DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  /// Identidade no provedor. É por aqui que o login social encontra a conta —
+  /// nunca pelo e-mail, que pode ter mudado de dono no provedor.
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model RefreshToken {
+  id        String @id @default(cuid())
+  userId    String
+  /// SHA-256 do token. O valor cru só existe no cookie do dono; vazamento do
+  /// banco não dá sessão a ninguém.
+  tokenHash String @unique @db.Char(64)
+
+  expiresAt DateTime
+  revokedAt DateTime?
+  /// Token que substituiu este na rotação. Reapresentar um token já
+  /// substituído significa cópia em circulação: a família inteira cai.
+  replacedById String?
+
+  ip        String? @db.VarChar(45)
+  userAgent String? @db.VarChar(255)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([replacedById])
+}
+
+model EmailToken {
+  id        String            @id @default(cuid())
+  userId    String
+  tokenHash String            @unique @db.Char(64)
+  purpose   EmailTokenPurpose
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime          @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([expiresAt])
+}

@@ -1,0 +1,26 @@
+# Precisa ficar na RAIZ do contexto de build: o Docker não lê .dockerignore de
+# subpasta. Sem este arquivo, o `node_modules` do host — instalado para outro
+# sistema operacional — é copiado por cima do que a imagem instalou, e o build
+# quebra sem dizer por quê.
+node_modules
+**/node_modules
+dist
+**/dist
+*.tsbuildinfo
+
+.env
+.env.*
+!.env.example
+
+.git
+.github
+.vercel
+
+# O front não entra na imagem da API.
+apps/web/src
+apps/web/dist
+apps/web/index.html
+
+Dockerfile
+docker-compose.yml
+*.md

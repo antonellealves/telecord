@@ -4,6 +4,7 @@ import {
   type TokenResponse,
   type TokenSuccessResponse,
 } from '@telecord/shared';
+import { currentAccessToken } from './auth';
 import { TOKEN_ENDPOINT } from './config';
 
 export class TokenRequestError extends Error {
@@ -24,9 +25,20 @@ export async function requestToken(
 ): Promise<TokenSuccessResponse> {
   let response: Response;
   try {
+    /*
+     * O Bearer é opcional: com sessão, o servidor usa o nome e a identidade da
+     * conta e ignora o `displayName` daqui; sem sessão, entra anônimo como
+     * sempre. Por isso nada aqui espera a autenticação carregar — atrasar a
+     * entrada na sala para consultar sessão seria pagar por um recurso opcional
+     * no caminho crítico de quem nem conta tem.
+     */
+    const accessToken = currentAccessToken();
     response = await fetch(TOKEN_ENDPOINT, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken === null ? {} : { Authorization: `Bearer ${accessToken}` }),
+      },
       body: JSON.stringify({ roomId, displayName }),
       signal,
     });

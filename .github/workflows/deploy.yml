@@ -40,6 +40,19 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
 
+      # O serviço de autenticação precisa do cliente do Prisma gerado antes de
+      # compilar; o build dele já faz `prisma generate`.
+      - name: Build do serviço de autenticação
+        run: |
+          pnpm --filter @telecord/shared build
+          pnpm --filter @telecord/api build
+
+      # Sem banco e sem rede: são as regras que quebram calado — senha que
+      # valida à toa, token expirado que passa, assinatura de outra chave
+      # aceita. Teste que exige cluster não roda aqui e viraria decoração.
+      - name: Testes de autenticação
+        run: pnpm --filter @telecord/api test
+
       # Roda sem nenhuma credencial: se o build só passa com segredo presente,
       # é sinal de que algo virou dependência de ambiente sem necessidade.
       - name: Build
@@ -90,6 +103,26 @@ jobs:
           LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY || vars.LIVEKIT_API_KEY }}
           LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET || vars.LIVEKIT_API_SECRET }}
           VITE_LIVEKIT_URL: ${{ vars.VITE_LIVEKIT_URL }}
+
+          # Autenticação. Todas OPCIONAIS: sem elas o app publicado não tem
+          # contas, que é o estado anterior a este recurso.
+          #
+          # Segredos de verdade — senha do banco, chave que ASSINA, credencial
+          # do Google, chave do provedor de e-mail:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AUTH_JWT_PRIVATE_KEY: ${{ secrets.AUTH_JWT_PRIVATE_KEY }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+
+          # Não são segredo. A chave aqui é a PÚBLICA: valida o token, não
+          # emite nenhum. O resto é endereço e configuração.
+          AUTH_JWT_PUBLIC_KEY: ${{ vars.AUTH_JWT_PUBLIC_KEY }}
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+          APP_URL: ${{ vars.APP_URL }}
+          API_URL: ${{ vars.API_URL }}
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          MAIL_DRIVER: ${{ vars.MAIL_DRIVER }}
+          MAIL_FROM: ${{ vars.MAIL_FROM }}
         run: node scripts/vercel-deploy.mjs
 
       # Fecha o ciclo: sem isto, um deploy "verde" ainda pode estar sem
@@ -97,6 +130,8 @@ jobs:
       - name: Verifica o deploy
         env:
           URL: ${{ steps.deploy.outputs.url }}
+          # Vazia = autenticação não configurada; o passo 3 se pula sozinho.
+          AUTH_ON: ${{ vars.VITE_API_URL }}
         run: |
           set -euo pipefail
           fail=0
@@ -119,7 +154,21 @@ jobs:
           code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$URL/sala/ci-smoke")
           if [ "$code" = "200" ]; then echo "   ok (200)"; else echo "::error::rewrite de SPA respondeu $code"; fail=1; fi
 
-          echo "3. rota de API inexistente deve dar 404, não o HTML da SPA"
+          if [ -n "${AUTH_ON:-}" ]; then
+            echo "3. o serviço de autenticação deve responder"
+            code=$(curl -sS -o /tmp/prov.json -w '%{http_code}' --max-time 30 "$URL/api/auth/providers")
+            if [ "$code" = "200" ]; then
+              echo "   ok (200) $(cat /tmp/prov.json)"
+            else
+              echo "::error::/api/auth/providers respondeu $code"
+              cat /tmp/prov.json || true
+              fail=1
+            fi
+          else
+            echo "3. autenticação desligada (sem VITE_API_URL) — pulando"
+          fi
+
+          echo "4. rota de API inexistente deve dar 404, não o HTML da SPA"
           code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$URL/api/nada")
           if [ "$code" = "404" ]; then echo "   ok (404)"; else echo "::error::/api/nada respondeu $code"; fail=1; fi
 

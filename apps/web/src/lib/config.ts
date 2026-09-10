@@ -25,6 +25,22 @@ export const LIVEKIT_URL: string =
   configuredLivekitUrl === '' ? DEFAULT_LIVEKIT_URL : configuredLivekitUrl;
 
 export const TOKEN_ENDPOINT: string = import.meta.env.VITE_TOKEN_ENDPOINT ?? '/api/token';
+
+/**
+ * Origem do serviço de autenticação, sem barra no fim.
+ *
+ * Vazia por padrão, e isso é o desenho, não descuido: sem a variável, o app
+ * não tem contas e se comporta exatamente como antes da autenticação existir —
+ * nenhuma requisição sai, nenhum botão de entrar aparece. É o que permite
+ * publicar este código com o serviço ainda fora do ar.
+ *
+ * É público, como tudo com prefixo VITE_: é só um endereço.
+ */
+const configuredAuthUrl = import.meta.env.VITE_API_URL?.trim() ?? '';
+
+export const AUTH_API_URL: string = configuredAuthUrl.endsWith('/')
+  ? configuredAuthUrl.slice(0, -1)
+  : configuredAuthUrl;
 export const ROOMS_ENDPOINT = '/api/rooms';
 
 export function getConfigError(): string | null {

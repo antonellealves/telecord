@@ -95,6 +95,46 @@ if (process.env.VITE_LIVEKIT_URL) {
   await upsertEnv('VITE_LIVEKIT_URL', process.env.VITE_LIVEKIT_URL);
 }
 
+/*
+ * Autenticação.
+ *
+ * Todas OPCIONAIS, e a ausência delas é um estado válido: sem elas o app
+ * publicado não tem contas e se comporta como antes de a autenticação existir.
+ * Por isso nenhuma passa por `required()` — faltar não pode derrubar o deploy
+ * de quem ainda não ligou o recurso.
+ *
+ * `AUTH_JWT_PUBLIC_KEY` e `VITE_API_URL` não são segredo: a primeira é a
+ * metade pública do par, que VALIDA o access token e não emite nenhum; a
+ * segunda é um endereço, e vai para o bundle de qualquer forma. As demais são,
+ * e por isso saem de `secrets` no workflow.
+ *
+ * O PEM aceita quebra de linha de verdade ou `
+` escrito, que é o que cabe
+ * num campo de uma linha só.
+ */
+const AUTH_ENV = [
+  'DATABASE_URL',
+  'AUTH_JWT_PRIVATE_KEY',
+  'AUTH_JWT_PUBLIC_KEY',
+  'AUTH_ACCESS_TTL_SECONDS',
+  'AUTH_REFRESH_TTL_DAYS',
+  'AUTH_COOKIE_SAMESITE',
+  'GOOGLE_CLIENT_ID',
+  'GOOGLE_CLIENT_SECRET',
+  'MAIL_DRIVER',
+  'MAIL_FROM',
+  'RESEND_API_KEY',
+  'APP_URL',
+  'API_URL',
+  'VITE_API_URL',
+];
+
+for (const key of AUTH_ENV) {
+  if (process.env[key]) {
+    await upsertEnv(key, process.env[key]);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 3. Deploy do commit
 // ---------------------------------------------------------------------------
