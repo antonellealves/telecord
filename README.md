@@ -246,14 +246,42 @@ com o guard aplicado no nível da classe: rota nova nasce restrita.
 ### Fazendo a primeira conta virar administradora
 
 Não há tela para isso, de propósito: a primeira promoção tem que passar pelo
-banco.
+banco. Duas formas.
+
+**Pelo seed**, que é o caminho para uma instalação nova:
+
+```bash
+cp apps/api/prisma/seed.sample.mjs apps/api/prisma/seed.mjs
+# edite o bloco DADOS: e-mail, nome e senha
+pnpm --filter @telecord/api build          # o seed usa o mesmo hash do login
+DATABASE_URL="mysql://…" pnpm --filter @telecord/api prisma:seed
+```
+
+`seed.mjs` está no `.gitignore` junto com o `.env`, e pelo mesmo motivo: ele
+carrega a senha da conta administradora. O que se versiona é
+`seed.sample.mjs` — a FORMA do seed continua revisável, sem os valores de
+ninguém. É idempotente: rodar de novo atualiza em vez de duplicar.
+
+**Numa conta que já existe**, direto no banco:
 
 ```sql
 UPDATE `User` SET `role` = 'ADMIN' WHERE `email` = 'voce@exemplo.com';
 ```
 
-Depois entre de novo — o papel viaja dentro do access token, e o que já estava
-emitido continua dizendo `USER` até vencer.
+Nos dois casos, entre de novo depois — o papel viaja dentro do access token, e
+o que já estava emitido continua dizendo `USER` até vencer.
+
+### Migrações
+
+Rodam sozinhas no deploy, **antes** de publicar (job `migrate` do workflow):
+publicar primeiro colocaria no ar um código que espera tabelas inexistentes.
+Falha de migração trava o deploy de propósito.
+
+À mão, quando precisar:
+
+```bash
+DATABASE_URL="mysql://…" pnpm --filter @telecord/api prisma:migrate
+```
 
 ### Webhook do LiveKit (entradas em sala e minutos de conversa)
 

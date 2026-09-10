@@ -58,9 +58,54 @@ jobs:
       - name: Build
         run: pnpm run build
 
+  # As migrações rodam ANTES de publicar, e é o único lugar onde a ordem
+  # importa: publicar primeiro colocaria no ar um código que espera tabelas que
+  # ainda não existem, e o sintoma seria erro 500 em toda rota que toca o banco.
+  #
+  # Falhar aqui trava o deploy de propósito. Um banco que recusou a migração é
+  # exatamente o banco em que o código novo não deve entrar.
+  migrate:
+    name: Migra o banco
+    needs: verify
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    # Mesmo Environment do deploy: é dele que sai o DATABASE_URL.
+    environment:
+      name: Production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # Só o serviço e o que ele depende: instalar o workspace inteiro aqui
+      # seria baixar o SDK do LiveKit e o React para rodar um ALTER TABLE.
+      - name: Instala o serviço
+        run: pnpm install --frozen-lockfile --filter @telecord/api...
+
+      - name: prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DATABASE_URL:-}" ]; then
+            # Sem banco configurado o app roda sem contas, que é um estado
+            # legítimo do produto. Pular é o certo; falhar seria exigir banco
+            # de quem só quer publicar a sala.
+            echo "DATABASE_URL vazia — sem banco configurado, nada a migrar."
+            exit 0
+          fi
+          pnpm --filter @telecord/api exec prisma migrate deploy
+
   deploy:
     name: Publica em produção
-    needs: verify
+    needs: [verify, migrate]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     # O nome tem que bater com o Environment configurado no GitHub.

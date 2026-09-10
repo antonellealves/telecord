@@ -11,7 +11,8 @@
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "test": "node --test \"dist/test/**/*.test.js\"",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate deploy"
+    "prisma:migrate": "prisma migrate deploy",
+    "prisma:seed": "node prisma/seed.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",

@@ -13,5 +13,10 @@ dist/
 .env.*
 !.env.example
 
+# O seed carrega o e-mail e a SENHA da primeira conta administradora, então
+# ele é tratado como o .env: fica só na máquina de quem roda. O que se versiona
+# é o modelo, para a FORMA do seed continuar revisável sem os valores.
+apps/api/prisma/seed.mjs
+
 .DS_Store
 *.log
