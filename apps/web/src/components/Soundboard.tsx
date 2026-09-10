@@ -19,7 +19,7 @@ interface SoundboardProps {
  * Sons predefinidos, tocados para todo mundo na sala.
  *
  * O áudio não trafega: vai um aviso pelo canal de dados e cada cliente toca o
- * arquivo que já baixou de `public/sons`. Mandar o som como áudio custaria
+ * arquivo que já baixou junto com o app. Mandar o som como áudio custaria
  * banda por ouvinte e chegaria dessincronizado.
  */
 export function Soundboard({
@@ -59,6 +59,12 @@ export function Soundboard({
       </div>
 
       <div className={styles.grid}>
+        {SOUNDS.length === 0 ? (
+          <p className={styles.empty}>
+            Nenhum som instalado. Largue arquivos de áudio em{' '}
+            <code className={styles.code}>apps/web/src/assets/sons</code>.
+          </p>
+        ) : null}
         {SOUNDS.map((sound) => (
           <button
             key={sound.id}
@@ -96,10 +102,9 @@ export function Soundboard({
       </div>
 
       <p className={styles.hint}>
-        O volume é só seu — cada pessoa ajusta o quanto ouve. Para trocar os sons, coloque os
-        arquivos em{' '}
-        <code className={styles.code}>apps/web/public/sons</code> e liste em{' '}
-        <code className={styles.code}>lib/sounds.ts</code>.
+        O volume é só seu — cada pessoa ajusta o quanto ouve. Para acrescentar um som, largue o
+        arquivo em <code className={styles.code}>apps/web/src/assets/sons</code> — o nome do arquivo
+        vira o rótulo, sem precisar mexer no código.
       </p>
     </div>
   );

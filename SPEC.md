@@ -410,7 +410,7 @@ O próprio vídeo aparece espelhado; o dos outros, não. Espelho é como a pesso
 
 Chat e soundboard usam `publishData` (`reliable: true`), não mídia.
 
-O som **não trafega como áudio**: vai um aviso de algumas dezenas de bytes e cada cliente toca o arquivo que já tem em `apps/web/public/sons`. Mandar o áudio pela sala custaria banda por ouvinte e chegaria fora de sincronia entre as pessoas.
+O som **não trafega como áudio**: vai um aviso de algumas dezenas de bytes e cada cliente toca o arquivo que já tem, vindo de `apps/web/src/assets/sons` (o catálogo é montado a partir da pasta em tempo de build, não escrito à mão). Mandar o áudio pela sala custaria banda por ouvinte e chegaria fora de sincronia entre as pessoas.
 
 Duas consequências de o canal ser aberto a qualquer participante:
 

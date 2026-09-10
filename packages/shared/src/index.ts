@@ -228,7 +228,7 @@ export interface ChatMessage {
 export interface SoundCue {
   type: 'sound';
   id: string;
-  /** Id do som no catálogo de apps/web/public/sons. */
+  /** Id do som no catálogo montado a partir de apps/web/src/assets/sons. */
   soundId: string;
   sentAt: number;
 }

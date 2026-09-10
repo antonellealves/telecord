@@ -82,6 +82,18 @@
   transform: translateY(1px);
 }
 
+/* Ocupa a grade inteira: a pasta vazia e um estado alcancavel agora que o
+   catalogo vem dela, nao de uma lista fixa no codigo. */
+.empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 14px 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+  color: var(--text-faint);
+}
+
 .hint {
   margin: 0;
   font-size: 11.5px;
