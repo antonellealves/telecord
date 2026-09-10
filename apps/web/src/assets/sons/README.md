@@ -6,6 +6,9 @@ Largue arquivos de áudio nesta pasta. Não há lista para editar: o catálogo e
 - **O nome do arquivo vira o rótulo.** `olha-a-maconha.mp3` aparece como
   "Olha a maconha". Acentos e maiúsculas valem no nome — o identificador
   interno é derivado e sanitizado sozinho.
+- **O emoji do card é sorteado.** Sai do nome do arquivo, então é sempre o
+  mesmo para todo mundo, e dois sons não repetem símbolo. Renomear o arquivo
+  troca o emoji.
 - **Formatos aceitos:** mp3, ogg, oga, opus, wav, m4a, aac, flac, webm.
 - **Prefira arquivos curtos** (poucos segundos, algumas centenas de KB). Todo
   mundo baixa todos eles junto com o app.

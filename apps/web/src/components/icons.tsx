@@ -167,3 +167,16 @@ export function StopIcon(props: IconProps): JSX.Element {
     </Icon>
   );
 }
+
+export function InfoIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g>
+        <circle cx="12" cy="12" r="9" />
+        {/* O pingo é um traço de comprimento quase zero: com ponta redonda ele
+            desenha um ponto sem virar um segundo caminho para manter. */}
+        <path d="M12 8.1v.01M12 11.4v4.6" />
+      </g>
+    </Icon>
+  );
+}

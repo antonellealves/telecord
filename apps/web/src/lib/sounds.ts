@@ -11,6 +11,9 @@
  * arquivo uma URL com hash — trocar o conteúdo de um som invalida o cache
  * sozinho, em vez de deixar metade da sala com a versão antiga.
  *
+ * O emoji de cada card também sai daqui, sorteado a partir do id — ver
+ * `pickEmoji`.
+ *
  * O `id` trafega pelo canal de dados e é validado do outro lado por
  * `parseRoomMessage`, então ele é gerado já dentro do formato aceito. O som em
  * si nunca trafega: cada cliente toca o arquivo que já baixou, o que exige que
@@ -20,6 +23,8 @@ export interface SoundEntry {
   id: string;
   label: string;
   file: string;
+  /** Só enfeite: um por som, para o olho achar o card antes de ler o nome. */
+  emoji: string;
 }
 
 /** Mesmo limite de `/^[a-z0-9-]{1,32}$/` no contrato de @telecord/shared. */
@@ -94,8 +99,66 @@ function uniqueId(base: string, taken: ReadonlySet<string>): string {
   return base;
 }
 
+/*
+ * Paleta de emoji dos cards. Bem maior que o catálogo de propósito: a folga é
+ * o que deixa cada som ficar com um símbolo só dele.
+ */
+const EMOJI_POOL: readonly string[] = [
+  '🎉', '🎊', '🎈', '🎯', '🎨', '🎬', '🎤', '🎧', '🎸', '🎹',
+  '🎺', '🥁', '🪗', '📯', '🔔', '📣', '🚀', '🛸', '🎃', '👻',
+  '💀', '👽', '🤖', '🐸', '🐵', '🐶', '🐱', '🦊', '🐼', '🐨',
+  '🐯', '🦁', '🐮', '🐷', '🐔', '🐧', '🦆', '🦅', '🦉', '🦇',
+  '🐺', '🐗', '🐴', '🦄', '🐝', '🐛', '🦋', '🐢', '🐍', '🐙',
+  '🦑', '🦐', '🦀', '🐡', '🐠', '🐬', '🐳', '🦈', '🌵', '🌲',
+  '🍀', '🍄', '🌻', '🌙', '⭐', '⚡', '🔥', '🌈', '🌊', '🍕',
+  '🍔', '🌭', '🍿', '🍩', '🍪', '🎂', '🍎', '🍌', '🍉', '🥑',
+  '🥕', '🧀', '🍺', '☕', '🧃', '⚽', '🏀', '🏈', '🎾', '🎳',
+  '🎲', '🃏', '🎰', '💎', '🔮', '🧨', '🪄', '🗿',
+];
+
+/** Se a paleta um dia sumir do meio do caminho, um alto-falante ainda lê. */
+const FALLBACK_EMOJI = '🔊';
+
+/** FNV-1a: barato e bem espalhado para nomes curtos. Não precisa ser cripto. */
+function hashOf(text: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+/**
+ * O emoji sai do id, não de `Math.random()`: sorteado de verdade ele mudaria a
+ * cada recarga e seria outro em cada máquina, e aí não dá para dizer "manda o
+ * do foguete" e a pessoa do outro lado achar o card.
+ *
+ * Sondagem linear a partir do sorteado resolve empate: dois cards com o mesmo
+ * símbolo desfariam justamente a distinção que o emoji existe para dar. Só
+ * volta a repetir se o catálogo passar do tamanho da paleta.
+ */
+function pickEmoji(id: string, taken: ReadonlySet<string>): string {
+  const start = hashOf(id) % EMOJI_POOL.length;
+  let sorted = FALLBACK_EMOJI;
+  for (let step = 0; step < EMOJI_POOL.length; step += 1) {
+    const emoji = EMOJI_POOL[(start + step) % EMOJI_POOL.length];
+    if (emoji === undefined) {
+      continue;
+    }
+    if (step === 0) {
+      sorted = emoji;
+    }
+    if (!taken.has(emoji)) {
+      return emoji;
+    }
+  }
+  return sorted;
+}
+
 function buildCatalog(): SoundEntry[] {
   const taken = new Set<string>();
+  const takenEmoji = new Set<string>();
   const entries: SoundEntry[] = [];
 
   // Ordena os caminhos ANTES de gerar os ids: assim o desempate de colisão dá
@@ -108,7 +171,9 @@ function buildCatalog(): SoundEntry[] {
     const name = baseName(path);
     const id = uniqueId(toId(name), taken);
     taken.add(id);
-    entries.push({ id, label: toLabel(name, id), file });
+    const emoji = pickEmoji(id, takenEmoji);
+    takenEmoji.add(emoji);
+    entries.push({ id, label: toLabel(name, id), file, emoji });
   }
 
   entries.sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));

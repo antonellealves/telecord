@@ -52,6 +52,110 @@
   color: var(--accent);
 }
 
+/* O "i" anda junto do título; o × continua sozinho na outra ponta. */
+.title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* `position: relative` aqui, e não no cabeçalho: o balão aponta para o "i", e
+   não para a faixa inteira. */
+.tipAnchor {
+  position: relative;
+  display: flex;
+}
+
+.info {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-faint);
+  transition: color 0.16s ease;
+}
+
+.info svg {
+  width: 15px;
+  height: 15px;
+}
+
+.info:hover,
+.tipOn .info {
+  color: var(--accent);
+}
+
+/*
+ * Largura fixa em vez de `max-content`: o texto dá três linhas e, solto, o
+ * balão passaria da direita do painel. O `max-width` cobre a tela estreita,
+ * onde o próprio painel já encolheu.
+ */
+.tip {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: -10px;
+  z-index: 30;
+  width: 260px;
+  max-width: calc(100vw - 96px);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  /* Opaco, e não translúcido como o painel: o balão cai em cima da primeira
+     fila de cards, e um fiapo de nome atravessando o texto atrapalha a leitura
+     justo de quem abriu para ler. */
+  background: #161a28;
+  box-shadow: var(--shadow-soft);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-dim);
+  /*
+   * `visibility` junto da opacidade: só com opacidade o balão continuaria ali,
+   * invisível, comendo o clique dos cards atrás dele.
+   */
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-3px);
+  transition: opacity 0.14s ease, transform 0.14s ease, visibility 0.14s;
+}
+
+/* O bico, alinhado ao "i". Quadrado girado: com `box-sizing: border-box` no
+   global, o truque clássico das bordas fica mais chato de acertar. */
+.tip::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: 15px;
+  width: 9px;
+  height: 9px;
+  transform: rotate(45deg);
+  border-left: 1px solid var(--border-strong);
+  border-top: 1px solid var(--border-strong);
+  background: #161a28;
+}
+
+/*
+ * Passar o mouse e focar pelo teclado bastam no desktop; a classe `.tipOn` é
+ * do clique, que é o único gesto que a tela de toque tem.
+ */
+.tipAnchor:hover .tip,
+.tipAnchor:focus-within .tip,
+.tipOn .tip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tip {
+    transition: none;
+  }
+}
+
 .close {
   background: none;
   border: none;
@@ -114,14 +218,31 @@
 
 .sound {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
   width: 100%;
   padding: 12px 10px;
+  text-align: center;
   border-radius: var(--radius-sm);
   border: 1px solid rgba(var(--accent-rgb), 0.28);
   background: rgba(var(--accent-2-rgb), 0.16);
   color: var(--accent-soft);
   font-size: 13px;
   transition: background 0.16s ease, border-color 0.16s ease, transform 0.12s ease;
+}
+
+/*
+ * Linha própria e altura fixa: é exatamente a caixa que o selo de parar ocupa
+ * quando o som toca, e só com altura fixa os dois coincidem.
+ */
+.emoji {
+  height: 22px;
+  font-size: 17px;
+  line-height: 22px;
+  font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
 }
 
 .sound:hover {
@@ -150,7 +271,9 @@
 
 .stop {
   position: absolute;
-  top: 4px;
+  /* Em cima da linha do emoji, não do nome: o selo cobre o enfeite e deixa o
+     rótulo inteiro legível. Os 12px são o padding do card. */
+  top: 12px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;
@@ -161,15 +284,20 @@
   padding: 0;
   border-radius: 50%;
   /*
-   * Anel escuro em vez de borda na cor do próprio botão: sobreposto ao nome,
-   * ele cai em cima das letras, e sem esse recorte o vermelho encosta na
-   * tipografia e os dois viram uma mancha só.
+   * Anel escuro em vez de borda na cor do próprio botão: sem esse recorte o
+   * vermelho encosta direto no fundo azulado do card e os dois se misturam.
    */
   border: 2px solid rgba(9, 11, 18, 0.92);
   background: rgb(var(--danger-rgb));
   color: #fff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
   transition: transform 0.12s ease, filter 0.16s ease;
+}
+
+/* O selo cobre o emoji por inteiro; deixá-lo ali só renderia uma sombra
+   vazando na borda do círculo. */
+.playing .emoji {
+  visibility: hidden;
 }
 
 .stop svg {
@@ -203,12 +331,6 @@
 @keyframes pulse {
   50% {
     opacity: 0.25;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .playing .sound::after {
-    animation: none;
   }
 }
 

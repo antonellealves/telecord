@@ -1,7 +1,10 @@
-import { useEffect, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { SOUNDS } from '../lib/sounds';
-import { SpeakerIcon, StopIcon } from './icons';
+import { InfoIcon, SpeakerIcon, StopIcon } from './icons';
 import styles from './Soundboard.module.css';
+
+/* Fixo porque só existe um painel de sons por vez na tela. */
+const TIP_ID = 'soundboard-tip';
 
 interface SoundboardProps {
   /** Região que conta como "dentro" — inclui o botão que abre (ver DeviceSettings). */
@@ -32,6 +35,10 @@ interface SoundboardProps {
  *
  * Clicar num card sempre dispara o som: em cima de um que já toca, ele
  * recomeça do início em todo mundo. Encerrar é só pelo selo de parar.
+ *
+ * Cada card leva um emoji (de `SOUNDS`) na linha de cima. Numa grade de trinta
+ * nomes parecidos ele é o que o olho acha primeiro; e é justamente ali que o
+ * selo de parar aparece, cobrindo o emoji em vez do nome.
  */
 export function Soundboard({
   containerRef,
@@ -44,13 +51,28 @@ export function Soundboard({
   onVolumeChange,
   onToggleMute,
 }: SoundboardProps): JSX.Element {
+  const [tipOpen, setTipOpen] = useState(false);
+  /* Onde ficam o "i" e a dica: clique fora daqui fecha a dica. */
+  const tipRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const handleKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onClose();
+      if (event.key !== 'Escape') return;
+      // Uma camada por vez: com a dica aberta, Esc fecha só ela. Fechar o
+      // painel inteiro para dispensar um balão de ajuda seria demais.
+      if (tipOpen) {
+        setTipOpen(false);
+        return;
+      }
+      onClose();
     };
     const handlePointerDown = (event: PointerEvent): void => {
+      if (!(event.target instanceof Node)) return;
+      if (tipRef.current !== null && !tipRef.current.contains(event.target)) {
+        setTipOpen(false);
+      }
       const container = containerRef.current;
-      if (container !== null && event.target instanceof Node && !container.contains(event.target)) {
+      if (container !== null && !container.contains(event.target)) {
         onClose();
       }
     };
@@ -60,12 +82,39 @@ export function Soundboard({
       document.removeEventListener('keydown', handleKey);
       document.removeEventListener('pointerdown', handlePointerDown);
     };
-  }, [onClose, containerRef]);
+  }, [onClose, containerRef, tipOpen]);
 
   return (
     <div className={styles.panel} role="dialog" aria-label="Sons">
       <div className={styles.header}>
-        <h2 className={styles.heading}>Sons</h2>
+        <div className={styles.title}>
+          <h2 className={styles.heading}>Sons</h2>
+          {/*
+            * Passar o mouse mostra a dica; o clique também, porque em tela de
+            * toque não existe passar o mouse. O CSS cuida do hover e do foco,
+            * então o estado aqui só existe para o clique.
+            */}
+          <div
+            ref={tipRef}
+            className={`${styles.tipAnchor} ${tipOpen ? styles.tipOn : ''}`}
+          >
+            <button
+              type="button"
+              className={styles.info}
+              onClick={() => setTipOpen((open) => !open)}
+              aria-expanded={tipOpen}
+              aria-describedby={TIP_ID}
+              aria-label="Como acrescentar um som"
+            >
+              <InfoIcon />
+            </button>
+            <span id={TIP_ID} role="tooltip" className={styles.tip}>
+              Para acrescentar um som, largue o arquivo em{' '}
+              <code className={styles.code}>apps/web/src/assets/sons</code> — o nome do arquivo
+              vira o rótulo, sem precisar mexer no código.
+            </span>
+          </div>
+        </div>
         <button type="button" className={styles.close} onClick={onClose} aria-label="Fechar">
           ×
         </button>
@@ -115,6 +164,9 @@ export function Soundboard({
                     : `Tocar "${sound.label}" para a sala`
                 }
               >
+                <span className={styles.emoji} aria-hidden="true">
+                  {sound.emoji}
+                </span>
                 {sound.label}
               </button>
             </div>
@@ -146,11 +198,7 @@ export function Soundboard({
         <span className={styles.volumeValue}>{muted ? 'mudo' : `${Math.round(volume * 100)}%`}</span>
       </div>
 
-      <p className={styles.hint}>
-        O volume é só seu — cada pessoa ajusta o quanto ouve. Para acrescentar um som, largue o
-        arquivo em <code className={styles.code}>apps/web/src/assets/sons</code> — o nome do arquivo
-        vira o rótulo, sem precisar mexer no código.
-      </p>
+      <p className={styles.hint}>O volume é só seu — cada pessoa ajusta o quanto ouve.</p>
     </div>
   );
 }
