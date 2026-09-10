@@ -19,6 +19,22 @@ export interface GoogleConfig {
   clientSecret: string;
 }
 
+/**
+ * Credencial do LiveKit, usada SÓ para conferir a assinatura do webhook.
+ *
+ * As mesmas duas variáveis que a função `api/token.ts` já lê para EMITIR
+ * token. Aqui elas só verificam: o serviço não fala com o LiveKit, ele apenas
+ * confirma que quem falou com ele foi o LiveKit.
+ *
+ * Opcional pelo mesmo motivo do Google: sem elas o serviço sobe, o webhook
+ * responde 503 e o painel diz que não há dado de sessão — em vez de mostrar
+ * zero como se fosse a verdade.
+ */
+export interface LiveKitConfig {
+  apiKey: string;
+  apiSecret: string;
+}
+
 export interface AppConfig {
   port: number;
   /** Origem da SPA. Vale como allowlist de CORS e destino dos redirects. */
@@ -38,6 +54,7 @@ export interface AppConfig {
   cookieSecure: boolean;
 
   google: GoogleConfig | null;
+  livekit: LiveKitConfig | null;
 
   mailDriver: MailDriver;
   mailFrom: string;
@@ -118,6 +135,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     throw new ConfigError('GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET vão juntos ou nenhum dos dois.');
   }
 
+  const livekitKey = env.LIVEKIT_API_KEY?.trim() ?? '';
+  const livekitSecret = env.LIVEKIT_API_SECRET?.trim() ?? '';
+  if ((livekitKey === '') !== (livekitSecret === '')) {
+    throw new ConfigError('LIVEKIT_API_KEY e LIVEKIT_API_SECRET vão juntos ou nenhum dos dois.');
+  }
+
   const secureCookie = !appUrl.startsWith('http://localhost');
   if (sameSiteRaw === 'none' && !secureCookie) {
     throw new ConfigError('AUTH_COOKIE_SAMESITE=none exige HTTPS; em localhost use "lax".');
@@ -139,6 +162,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       googleClientId === ''
         ? null
         : { clientId: googleClientId, clientSecret: googleClientSecret },
+    livekit: livekitKey === '' ? null : { apiKey: livekitKey, apiSecret: livekitSecret },
     mailDriver: mailDriverRaw,
     mailFrom: env.MAIL_FROM?.trim() || 'Telecord <nao-responda@localhost>',
     resendApiKey: resendApiKey === '' ? undefined : resendApiKey,

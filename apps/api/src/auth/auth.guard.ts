@@ -2,7 +2,7 @@ import { Inject, Injectable, type CanActivate, type ExecutionContext } from '@ne
 import { Reflector } from '@nestjs/core';
 import { CONFIG, type AppConfig } from '../common/config';
 import { forbidden, unauthorized } from '../common/errors';
-import { IS_PUBLIC, REQUIRED_ROLES, type RequestWithUser } from './auth.decorators';
+import { IS_OPTIONAL, IS_PUBLIC, REQUIRED_ROLES, type RequestWithUser } from './auth.decorators';
 import { verifyAccessToken } from './tokens';
 
 /**
@@ -27,14 +27,23 @@ export class AuthGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<RequestWithUser>();
+    const optional = this.reflector.getAllAndOverride<boolean>(IS_OPTIONAL, targets) === true;
     const header = request.headers.authorization ?? '';
     if (!header.startsWith('Bearer ')) {
+      if (optional) return true;
       throw unauthorized('unauthorized', 'Faça login para continuar.');
     }
 
     try {
       request.user = await verifyAccessToken(this.config.jwtPublicKey, header.slice(7));
     } catch {
+      /*
+       * Rota opcional segue como anônima. Sem isto, a sessão de alguém expirar
+       * no meio de um clique viraria um erro em vez de simplesmente devolver a
+       * versão pública da resposta — e o `request.user` continua indefinido,
+       * então nada abaixo confunde "token ruim" com "está autenticado".
+       */
+      if (optional) return true;
       // Expirado, assinatura inválida, emissor errado: a distinção interessa ao
       // log, não a quem chamou — detalhar aqui vira oráculo para quem sonda.
       throw unauthorized('unauthorized', 'Sessão inválida ou expirada.');

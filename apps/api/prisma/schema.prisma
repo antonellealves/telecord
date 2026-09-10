@@ -70,6 +70,16 @@ model User {
   refreshTokens RefreshToken[]
   emailTokens   EmailToken[]
 
+  /*
+   * Relações declaradas só onde alguém de fato navega por elas. `SystemLog`,
+   * `AuditLog` e `MediaSession` guardam o id do usuário como coluna solta,
+   * sem relação: declarar uma aqui traria junto um `user.systemLogs` que
+   * carregaria a tabela inteira de log de uma pessoa sem paginação nenhuma.
+   */
+  ownedRooms      Room[]       @relation("RoomOwner")
+  roomMemberships RoomMember[] @relation("RoomMemberships")
+  uploadedSounds  Sound[]      @relation("SoundUploads")
+
   @@index([createdAt, id])
   @@index([status, createdAt])
 }
@@ -158,4 +168,253 @@ model EmailToken {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+// ===========================================================================
+// Salas, sons e registro de eventos
+//
+// As regras do topo do arquivo continuam valendo aqui, e duas delas mordem com
+// mais força nesta parte:
+//
+//  - Nenhuma FOREIGN KEY. Onde a relação existe (`RoomMember.user`), o Prisma
+//    a resolve na aplicação; onde ela só serviria para rotular uma linha de
+//    log, o campo é um `String` solto com índice, e o nome do usuário é
+//    resolvido numa segunda consulta em lote. Declarar relação em tabela de
+//    log traria junto o `user.systemLogs`, que ninguém deveria conseguir
+//    chamar sem paginação.
+//  - Toda listagem é keyset, então toda tabela que se lista tem
+//    `@@index([createdAt, id])` — o índice que faz `(createdAt, id) < (…)`
+//    ser uma busca, e não uma varredura.
+// ===========================================================================
+
+enum RoomVisibility {
+  PUBLIC
+  UNLISTED
+}
+
+enum RoomMemberRole {
+  OWNER
+  MOD
+  MEMBER
+}
+
+enum LogLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
+}
+
+/**
+ * Sala com nome, dono e soundboard próprio.
+ *
+ * É ADITIVA: o produto continua entrando em qualquer slug, exista linha aqui
+ * ou não. Uma `Room` acrescenta nome legível, descrição, dono e sons — não
+ * acrescenta portaria. Ver `RoomVisibility` no contrato compartilhado para o
+ * porquê de não existir "privada".
+ */
+model Room {
+  /// Igual ao `roomId` que vai no token do LiveKit. É por ele que a sala
+  /// persistida encontra a sala viva no SFU.
+  slug        String          @unique @db.VarChar(64)
+  id          String          @id @default(cuid())
+  name        String          @db.VarChar(48)
+  description String?         @db.VarChar(200)
+  emoji       String?         @db.VarChar(16)
+  visibility  RoomVisibility  @default(PUBLIC)
+  ownerId     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  /// Última vez que alguém entrou, pelo webhook do LiveKit. Ordena o diretório.
+  ///
+  /// NÃO é nulo, e o default é a criação: o diretório pagina por keyset sobre
+  /// esta coluna, e uma coluna anulável não ordena de forma total — a página
+  /// seguinte teria de tratar "nulo" como um caso à parte em toda comparação.
+  /// Sala recém-criada conta como ativa, que é verdade o bastante.
+  lastActiveAt DateTime @default(now())
+  deletedAt    DateTime?
+
+  owner   User?        @relation("RoomOwner", fields: [ownerId], references: [id])
+  members RoomMember[]
+  sounds  Sound[]
+
+  @@index([ownerId])
+  @@index([visibility, lastActiveAt, id])
+  @@index([createdAt, id])
+}
+
+/**
+ * Papel de alguém numa sala.
+ *
+ * Governa ADMINISTRAR a sala — renomear, apagar som dos outros —, nunca entrar
+ * nela. Não confundir com controle de acesso: entrar continua aberto a quem
+ * tem a URL.
+ */
+model RoomMember {
+  id     String         @id @default(cuid())
+  roomId String
+  userId String
+  role   RoomMemberRole @default(MEMBER)
+
+  createdAt DateTime @default(now())
+
+  room Room @relation(fields: [roomId], references: [id])
+  user User @relation("RoomMemberships", fields: [userId], references: [id])
+
+  @@unique([roomId, userId])
+  @@index([roomId])
+  @@index([userId])
+}
+
+/**
+ * Som do soundboard enviado por alguém.
+ *
+ * `roomId` nulo é som global, e só administrador instala um. Os bytes moram em
+ * `SoundBlob`, tabela à parte: listar o painel de uma sala lê esta tabela
+ * inteira, e arrastar megabytes de áudio junto de cada listagem seria pagar o
+ * arquivo para desenhar o nome dele.
+ */
+model Sound {
+  id           String  @id @default(cuid())
+  roomId       String?
+  uploadedById String?
+
+  label    String  @db.VarChar(32)
+  emoji    String? @db.VarChar(16)
+  /// Detectado pelos bytes iniciais do arquivo. NUNCA o `Content-Type` que o
+  /// cliente mandou — é ele que decide o cabeçalho da resposta depois.
+  mimeType String  @db.VarChar(32)
+  byteSize Int
+  /// Informada por quem enviou. Só enfeite: o servidor não decodifica áudio.
+  durationMs Int?
+  /// SHA-256 do conteúdo. Enviar duas vezes o mesmo arquivo na mesma sala
+  /// devolve o som que já existe em vez de guardar os bytes de novo.
+  checksum String @db.Char(64)
+
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  room       Room?      @relation(fields: [roomId], references: [id])
+  uploadedBy User?      @relation("SoundUploads", fields: [uploadedById], references: [id])
+  blob       SoundBlob?
+
+  @@index([roomId, createdAt, id])
+  @@index([uploadedById])
+  @@index([roomId, checksum])
+  @@index([createdAt, id])
+}
+
+/**
+ * Os bytes do som, numa tabela só deles.
+ *
+ * Separado do metadado por dois motivos: a listagem nunca precisa deles, e
+ * trocar por armazenamento de objeto depois vira substituir esta tabela por
+ * uma chave — sem mexer em `Sound`, que é quem o resto do sistema referencia.
+ *
+ * Apagar um som apaga esta linha e mantém a de `Sound` com `deletedAt`: o
+ * rastro de que o som existiu fica, os megabytes não.
+ */
+model SoundBlob {
+  soundId String @id
+  data    Bytes
+
+  sound Sound @relation(fields: [soundId], references: [id])
+}
+
+/**
+ * Uma pessoa dentro de uma sala, do momento em que entrou ao em que saiu.
+ *
+ * Escrita SÓ pelo webhook do LiveKit, nunca pelo cliente: minuto de conversa
+ * é o indicador principal do painel, e o navegador não é fonte confiável para
+ * um número que alguém pode querer inflar. Sem webhook configurado, esta
+ * tabela fica vazia — e o painel diz isso, em vez de mostrar zero.
+ */
+model MediaSession {
+  id       String  @id @default(cuid())
+  /// Slug, e não `roomId`: a maioria das salas é avulsa e não tem linha em
+  /// `Room`. Quando tem, `roomId` é preenchido junto.
+  roomSlug String  @db.VarChar(64)
+  roomId   String?
+  /// `identity` do participante no SFU. Para quem entrou com conta, é o id do
+  /// usuário — o que amarra a sessão à pessoa.
+  identity String  @db.VarChar(64)
+  userId   String?
+  participantName String @db.VarChar(64)
+
+  joinedAt        DateTime
+  leftAt          DateTime?
+  durationSeconds Int?
+
+  /// Id do evento do webhook que abriu a sessão. O LiveKit repete entrega em
+  /// caso de falha, e sem uma chave única a mesma entrada viraria duas.
+  joinEventId String? @unique @db.VarChar(64)
+
+  createdAt DateTime @default(now())
+
+  @@index([roomSlug, identity, leftAt])
+  @@index([joinedAt, id])
+  @@index([userId])
+  @@index([roomId])
+}
+
+/**
+ * Log técnico: o que o servidor fez, com nível e escopo.
+ *
+ * Passa obrigatoriamente pelo filtro de `redact.ts` antes de chegar aqui —
+ * senha, token e cabeçalho de autorização não entram nem por engano num campo
+ * de contexto. Expira sozinho em 30 dias, por TTL do TiDB declarado na
+ * migração (o Prisma não tem sintaxe para isso).
+ */
+model SystemLog {
+  id      String   @id @default(cuid())
+  level   LogLevel
+  scope   String   @db.VarChar(32)
+  event   String   @db.VarChar(64)
+  message String   @db.VarChar(500)
+
+  userId    String? @db.VarChar(32)
+  roomSlug  String? @db.VarChar(64)
+  ip        String? @db.VarChar(45)
+  userAgent String? @db.VarChar(255)
+  context   Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt, id])
+  @@index([level, createdAt])
+  @@index([scope, createdAt])
+  @@index([userId])
+}
+
+/**
+ * Trilha de auditoria: quem fez, em quem, e o que mudou.
+ *
+ * Sem TTL, ao contrário do log técnico. A auditoria existe para responder
+ * perguntas sobre o passado — expirá-la é apagar a única cópia da resposta.
+ */
+model AuditLog {
+  id         String  @id @default(cuid())
+  actorId    String? @db.VarChar(32)
+  /// Nome de quem agiu, congelado no momento do ato. Guardado junto de
+  /// propósito: se a conta for renomeada ou apagada depois, a linha continua
+  /// dizendo quem era.
+  actorLabel String  @db.VarChar(64)
+
+  action     String @db.VarChar(48)
+  targetType String @db.VarChar(32)
+  targetId   String @db.VarChar(64)
+  summary    String @db.VarChar(300)
+
+  before Json?
+  after  Json?
+
+  ip        String? @db.VarChar(45)
+  userAgent String? @db.VarChar(255)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt, id])
+  @@index([actorId])
+  @@index([targetType, targetId])
+  @@index([action, createdAt])
 }

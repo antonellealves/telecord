@@ -443,3 +443,281 @@ export interface AuthSessionResponse {
   /** Segundos de vida do access token, para o cliente renovar antes de expirar. */
   expiresIn: number;
 }
+
+// ---------------------------------------------------------------------------
+// Paginação por cursor (keyset)
+// ---------------------------------------------------------------------------
+
+/**
+ * Uma página de resultados. `nextCursor` nulo significa fim.
+ *
+ * Keyset, e não `OFFSET`: com deslocamento, a página 200 obriga o banco a ler
+ * e descartar 200 páginas, e uma linha inserida no meio da leitura desloca
+ * tudo — a mesma linha aparece duas vezes ou some. O cursor carrega a posição
+ * exata da última linha lida, então nenhum dos dois acontece.
+ */
+export interface Page<T> {
+  items: T[];
+  nextCursor: string | null;
+}
+
+/** Máximo de itens por página, em qualquer listagem. */
+export const PAGE_LIMIT_MAX = 100;
+export const PAGE_LIMIT_DEFAULT = 50;
+
+// ---------------------------------------------------------------------------
+// Salas persistidas
+// ---------------------------------------------------------------------------
+
+export const ROOM_NAME_MAX_LENGTH = 48;
+export const ROOM_DESCRIPTION_MAX_LENGTH = 200;
+
+/**
+ * Visibilidade da sala. NÃO existe "privada", e a ausência é deliberada.
+ *
+ * Quem emite o token de entrada é `api/token.ts`, uma função sem banco — e o
+ * produto exige que uma queda do serviço de contas não impeça ninguém de
+ * entrar numa sala. Uma sala privada de verdade precisa que a emissão do token
+ * consulte a lista de membros, e as duas regras não cabem juntas sem uma
+ * decisão que ainda não foi tomada.
+ *
+ * Marcar uma sala como privada aqui daria a aparência de controle sem o
+ * controle: qualquer pessoa com a URL continuaria entrando. `UNLISTED` diz
+ * exatamente o que faz — sai do diretório, continua alcançável pelo endereço.
+ */
+export type RoomVisibility = 'PUBLIC' | 'UNLISTED';
+
+/** Papel dentro de uma sala. Governa administrar a sala, não entrar nela. */
+export type RoomMemberRole = 'OWNER' | 'MOD' | 'MEMBER';
+
+export interface RoomMemberView {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  role: RoomMemberRole;
+  joinedAt: string;
+}
+
+export interface RoomSummary {
+  slug: string;
+  name: string;
+  description: string | null;
+  emoji: string | null;
+  visibility: RoomVisibility;
+  memberCount: number;
+  soundCount: number;
+  /** ISO 8601. */
+  createdAt: string;
+  /** Nunca nulo: uma sala recém-criada conta como ativa na criação. */
+  lastActiveAt: string;
+}
+
+export interface RoomDetail extends RoomSummary {
+  /** Papel de quem perguntou, ou null para anônimo e não-membro. */
+  myRole: RoomMemberRole | null;
+  members: RoomMemberView[];
+}
+
+export function validateRoomName(value: string): string | null {
+  const name = normalizeDisplayName(value);
+  if (name.length === 0) {
+    return 'Digite um nome para a sala.';
+  }
+  if (name.length > ROOM_NAME_MAX_LENGTH) {
+    return `O nome da sala pode ter no máximo ${ROOM_NAME_MAX_LENGTH} caracteres.`;
+  }
+  if (FORBIDDEN_NAME_CHARS.test(name)) {
+    return 'O nome da sala tem caracteres não permitidos.';
+  }
+  return null;
+}
+
+export function validateRoomDescription(value: string): string | null {
+  if (value.length > ROOM_DESCRIPTION_MAX_LENGTH) {
+    return `A descrição pode ter no máximo ${ROOM_DESCRIPTION_MAX_LENGTH} caracteres.`;
+  }
+  if (FORBIDDEN_NAME_CHARS.test(value)) {
+    return 'A descrição tem caracteres não permitidos.';
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Sons enviados (soundboard por sala)
+// ---------------------------------------------------------------------------
+
+export const SOUND_LABEL_MAX_LENGTH = 32;
+
+/**
+ * Teto do arquivo enviado.
+ *
+ * Dois motivos para ser pequeno: os bytes moram numa linha do TiDB, que tem
+ * limite de tamanho por transação; e a resposta de uma função da Vercel não
+ * passa de 4,5 MB. Clipe de soundboard passa longe disso — o que estoura aqui
+ * é upload de música inteira, que não é o caso de uso.
+ */
+export const MAX_SOUND_UPLOAD_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Formatos aceitos, pelo que o ARQUIVO diz ser — não pelo que o cliente
+ * declara. O servidor fareja os bytes iniciais e ignora o `Content-Type`
+ * enviado: aceitar a palavra do cliente é como um .exe vira "áudio".
+ */
+export type SoundMimeType =
+  | 'audio/mpeg'
+  | 'audio/ogg'
+  | 'audio/wav'
+  | 'audio/webm'
+  | 'audio/mp4'
+  | 'audio/flac'
+  | 'audio/aac';
+
+export interface RemoteSound {
+  /** cuid — cabe no formato aceito por `parseRoomMessage`, e trafega igual. */
+  id: string;
+  label: string;
+  /** Escolhido por quem enviou; nulo deixa o cliente sortear do catálogo. */
+  emoji: string | null;
+  /** Caminho do áudio na API, já pronto para `new Audio()`. */
+  url: string;
+  mimeType: SoundMimeType;
+  byteSize: number;
+  /** Informado pelo cliente no envio; só enfeite, pode ser nulo. */
+  durationMs: number | null;
+  /** Slug da sala, ou null para som global (instalado por um admin). */
+  roomSlug: string | null;
+  uploadedBy: { id: string; displayName: string } | null;
+  createdAt: string;
+  /** Se quem perguntou pode apagar este som. Decidido no servidor. */
+  canDelete: boolean;
+}
+
+/** Deriva o rótulo do nome do arquivo, como o catálogo local já faz. */
+export function soundLabelFromFilename(filename: string): string {
+  const file = filename.slice(filename.lastIndexOf('/') + 1);
+  const dot = file.lastIndexOf('.');
+  const base = dot > 0 ? file.slice(0, dot) : file;
+  const label = base.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return label.slice(0, SOUND_LABEL_MAX_LENGTH);
+}
+
+export function validateSoundLabel(value: string): string | null {
+  const label = normalizeDisplayName(value);
+  if (label.length === 0) {
+    return 'O som precisa de um nome.';
+  }
+  if (label.length > SOUND_LABEL_MAX_LENGTH) {
+    return `O nome do som pode ter no máximo ${SOUND_LABEL_MAX_LENGTH} caracteres.`;
+  }
+  if (FORBIDDEN_NAME_CHARS.test(label)) {
+    return 'O nome do som tem caracteres não permitidos.';
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Registro de eventos (painel de administração)
+// ---------------------------------------------------------------------------
+
+export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+
+export const LOG_LEVELS: readonly LogLevel[] = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
+
+export interface SystemLogEntry {
+  id: string;
+  level: LogLevel;
+  /** Módulo que escreveu: `auth`, `rooms`, `sounds`, `livekit`. */
+  scope: string;
+  /** Nome curto e estável do acontecimento: `login.ok`, `sound.upload`. */
+  event: string;
+  message: string;
+  userId: string | null;
+  userLabel: string | null;
+  roomSlug: string | null;
+  ip: string | null;
+  /** Campos extras, já passados pelo filtro que remove credencial. */
+  context: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+/**
+ * Trilha de auditoria: quem fez o quê, com o antes e o depois.
+ *
+ * Separada do `SystemLog` porque as duas têm retenções diferentes. O log
+ * técnico expira sozinho em 30 dias; a auditoria não expira — ela existe
+ * justamente para responder perguntas sobre o passado.
+ */
+export interface AuditLogEntry {
+  id: string;
+  actorId: string | null;
+  actorLabel: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  summary: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  ip: string | null;
+  createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Painel: indicadores e séries
+// ---------------------------------------------------------------------------
+
+/** Um ponto de série diária. `date` é `YYYY-MM-DD` em UTC. */
+export interface MetricPoint {
+  date: string;
+  value: number;
+}
+
+/**
+ * Um indicador com comparação contra o período anterior de mesmo tamanho.
+ * `previous` nulo quando não faz sentido comparar (totais acumulados).
+ */
+export interface Kpi {
+  value: number;
+  previous: number | null;
+}
+
+export interface DashboardMetrics {
+  /** Dias cobertos pelo recorte, contados para trás a partir de hoje (UTC). */
+  days: number;
+  generatedAt: string;
+
+  totalUsers: Kpi;
+  newUsers: Kpi;
+  activeUsers: Kpi;
+  /** Entradas em sala observadas pelo webhook do LiveKit. */
+  sessions: Kpi;
+  voiceMinutes: Kpi;
+  roomsCreated: Kpi;
+  soundsUploaded: Kpi;
+  errors: Kpi;
+
+  newUsersSeries: MetricPoint[];
+  sessionsSeries: MetricPoint[];
+  voiceMinutesSeries: MetricPoint[];
+  errorsSeries: MetricPoint[];
+
+  topRooms: { slug: string; sessions: number; minutes: number }[];
+  levelBreakdown: { level: LogLevel; count: number }[];
+  /**
+   * `false` quando nenhuma sessão foi registrada no período — quase sempre
+   * significa webhook do LiveKit não configurado, e o painel precisa dizer
+   * isso em vez de mostrar zero como se fosse a verdade.
+   */
+  hasSessionData: boolean;
+}
+
+export interface AdminUserRow {
+  id: string;
+  email: string;
+  displayName: string;
+  username: string;
+  role: 'USER' | 'ADMIN';
+  status: 'ACTIVE' | 'SUSPENDED' | 'BANNED';
+  emailVerified: boolean;
+  createdAt: string;
+  lastSeenAt: string | null;
+}

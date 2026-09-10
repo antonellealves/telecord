@@ -1,12 +1,17 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { AdminModule } from './admin/admin.module';
 import { AuthGuard } from './auth/auth.guard';
 import { AuthModule } from './auth/auth.module';
 import { ConfigModule } from './common/config.module';
 import { HttpErrorFilter } from './common/http-error.filter';
+import { LiveKitModule } from './livekit/livekit.module';
+import { LoggingModule } from './logging/logging.module';
 import { MailModule } from './mail/mail.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { RoomsModule } from './rooms/rooms.module';
+import { SoundsModule } from './sounds/sounds.module';
 import { UsersModule } from './users/users.module';
 
 /*
@@ -19,9 +24,14 @@ import { UsersModule } from './users/users.module';
     ConfigModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
     PrismaModule,
+    LoggingModule,
     MailModule,
     AuthModule,
     UsersModule,
+    RoomsModule,
+    SoundsModule,
+    LiveKitModule,
+    AdminModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -64,6 +64,14 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       MAIL_DRIVER: ${MAIL_DRIVER:-log}
       MAIL_FROM: ${MAIL_FROM:-Telecord <nao-responda@localhost>}
+      # As MESMAS credenciais que a função /api/token usa para EMITIR token.
+      # Aqui elas só CONFEREM a assinatura do webhook do LiveKit — o serviço
+      # não fala com o SFU, ele confirma que quem falou com ele foi o SFU.
+      #
+      # Sem elas o webhook responde 503, a tabela de sessões fica vazia e o
+      # painel diz que não há dado de conversa. É o modo de desenvolvimento.
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
     ports:
       - "3000:3000"
     volumes:

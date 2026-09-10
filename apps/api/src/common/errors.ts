@@ -21,6 +21,23 @@ export function forbidden(code: string, message: string): AppError {
   return new AppError(HttpStatus.FORBIDDEN, code, message);
 }
 
+export function notFound(code: string, message: string): AppError {
+  return new AppError(HttpStatus.NOT_FOUND, code, message);
+}
+
+/** Recurso já existe, ou já pertence a outra pessoa. */
+export function conflict(code: string, message: string): AppError {
+  return new AppError(HttpStatus.CONFLICT, code, message);
+}
+
+export function payloadTooLarge(code: string, message: string): AppError {
+  return new AppError(HttpStatus.PAYLOAD_TOO_LARGE, code, message);
+}
+
+export function unsupportedMedia(code: string, message: string): AppError {
+  return new AppError(HttpStatus.UNSUPPORTED_MEDIA_TYPE, code, message);
+}
+
 export function serviceUnavailable(code: string, message: string): AppError {
   return new AppError(HttpStatus.SERVICE_UNAVAILABLE, code, message);
 }
