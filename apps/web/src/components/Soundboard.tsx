@@ -29,6 +29,9 @@ interface SoundboardProps {
  * Parar também é um aviso, não um gesto local: quem corta um clipe longo corta
  * para todos, que é o motivo de existir o botão. Silenciar só para si é o que
  * o controle de volume já faz.
+ *
+ * Enquanto um som toca, o card dele significa parar, não tocar de novo — ver o
+ * comentário no botão.
  */
 export function Soundboard({
   containerRef,
@@ -97,11 +100,25 @@ export function Soundboard({
                   <StopIcon />
                 </button>
               ) : null}
+              {/*
+                * Tocando, o card inteiro passa a ser "parar".
+                *
+                * O selo de parar tem 22px em cima de um card de 100x66 que era
+                * todo "tocar": errar o alvo por poucos pixels não fazia nada
+                * silencioso, re-disparava o som — que é indistinguível de
+                * "apertei parar e continuou tocando". Um controle com dois
+                * estados, como play/pause, não tem esse modo de falha.
+                */}
               <button
                 type="button"
                 className={styles.sound}
-                onClick={() => onPlay(sound.id)}
-                title={isPlaying ? `Tocar "${sound.label}" de novo` : `Tocar "${sound.label}"`}
+                onClick={() => (isPlaying ? onStop(sound.id) : onPlay(sound.id))}
+                aria-pressed={isPlaying}
+                title={
+                  isPlaying
+                    ? `Parar "${sound.label}" para todos`
+                    : `Tocar "${sound.label}" para a sala`
+                }
               >
                 {sound.label}
               </button>

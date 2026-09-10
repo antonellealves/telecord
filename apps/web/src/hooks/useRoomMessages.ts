@@ -38,6 +38,25 @@ function newId(): string {
 }
 
 /**
+ * Encerra o elemento, em vez de só pausar.
+ *
+ * `pause()` sozinho deixa o elemento vivo, e uma chamada de `play()` ainda
+ * pendente pode retomar depois dele — o que chega a quem clicou como "apertei
+ * parar e o som continuou". Soltar a fonte e recarregar cancela qualquer
+ * carregamento ou reprodução em curso, sem depender de ordem.
+ */
+function hardStop(audio: HTMLAudioElement): void {
+  audio.pause();
+  try {
+    audio.currentTime = 0;
+  } catch {
+    // Alguns navegadores recusam a escrita antes de haver mídia carregada.
+  }
+  audio.removeAttribute('src');
+  audio.load();
+}
+
+/**
  * Chat e soundboard sobre o canal de dados do LiveKit.
  *
  * O som não trafega como áudio: vai um aviso de algumas dezenas de bytes e
@@ -54,7 +73,15 @@ export function useRoomMessages(getVolume: () => number): RoomMessaging {
   const [playingSoundId, setPlayingSoundId] = useState<string | null>(null);
 
   const seenRef = useRef(new Set<string>());
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  /*
+   * Todo áudio do soundboard vivo neste cliente.
+   *
+   * É uma lista, não uma referência única, porque parar precisa alcançar
+   * qualquer elemento daquele som. Com uma referência só, um áudio que
+   * escapasse de uma corrida entre dois avisos ficaria tocando sem nada
+   * apontando para ele — e nenhum clique em parar o alcançaria mais.
+   */
+  const liveRef = useRef<{ soundId: string; audio: HTMLAudioElement }[]>([]);
   // Espelho do que está tocando: os eventos do <audio> disparam fora do ciclo
   // do React e precisam decidir sem depender do que já foi renderizado.
   const playingRef = useRef<string | null>(null);
@@ -75,38 +102,57 @@ export function useRoomMessages(getVolume: () => number): RoomMessaging {
       return;
     }
 
-    audioRef.current?.pause();
+    // Um som por vez: o novo encerra o que estava tocando.
+    for (const entry of liveRef.current) {
+      hardStop(entry.audio);
+    }
+    liveRef.current = [];
+
     const audio = new Audio(sound.file);
     audio.volume = Math.min(1, volume);
-    audioRef.current = audio;
+    liveRef.current = [{ soundId, audio }];
     playingRef.current = soundId;
     setPlayingSoundId(soundId);
 
-    // Só limpa se este ainda for o áudio corrente: um som disparado por cima
-    // do outro faria o `ended` do antigo apagar o estado do novo.
-    const clear = (): void => {
-      if (audioRef.current !== audio) {
-        return;
+    const forget = (): void => {
+      liveRef.current = liveRef.current.filter((entry) => entry.audio !== audio);
+      // Só apaga o estado se ninguém tiver assumido o lugar desde então: um som
+      // disparado por cima do outro faria o `ended` do antigo apagar o novo.
+      if (playingRef.current === soundId && liveRef.current.length === 0) {
+        playingRef.current = null;
+        setPlayingSoundId(null);
       }
-      audioRef.current = null;
-      playingRef.current = null;
-      setPlayingSoundId(null);
     };
-    audio.addEventListener('ended', clear, { once: true });
-    audio.addEventListener('error', clear, { once: true });
-    void audio.play().catch(clear);
+    audio.addEventListener('ended', forget, { once: true });
+    audio.addEventListener('error', forget, { once: true });
+    void audio.play().catch(forget);
   }, []);
 
   const stopLocally = useCallback((soundId: string) => {
-    // Pedido atrasado, para um som que já terminou ou já foi substituído: não
-    // pode cortar o que está tocando agora.
-    if (playingRef.current !== soundId) {
+    // Encerra qualquer elemento daquele som, não só o registrado como corrente:
+    // se sobrou algum de uma corrida, é justamente ele que a pessoa continua
+    // ouvindo depois de apertar parar.
+    const restantes: { soundId: string; audio: HTMLAudioElement }[] = [];
+    let encerrou = false;
+    for (const entry of liveRef.current) {
+      if (entry.soundId === soundId) {
+        hardStop(entry.audio);
+        encerrou = true;
+      } else {
+        restantes.push(entry);
+      }
+    }
+    liveRef.current = restantes;
+
+    if (!encerrou) {
+      // Pedido atrasado, para um som que já terminou ou já foi substituído:
+      // não pode derrubar o que está tocando agora.
       return;
     }
-    audioRef.current?.pause();
-    audioRef.current = null;
-    playingRef.current = null;
-    setPlayingSoundId(null);
+    if (playingRef.current === soundId) {
+      playingRef.current = null;
+      setPlayingSoundId(null);
+    }
   }, []);
 
   const append = useCallback((entry: ChatEntry, countUnread: boolean) => {
@@ -161,9 +207,22 @@ export function useRoomMessages(getVolume: () => number): RoomMessaging {
     room.on(RoomEvent.DataReceived, handleData);
     return () => {
       room.off(RoomEvent.DataReceived, handleData);
-      audioRef.current?.pause();
     };
   }, [room, append, playLocally, stopLocally]);
+
+  /*
+   * Encerrar o áudio vive num efeito próprio, sem dependências: junto com o
+   * efeito do canal de dados, cada reassinatura dele cortaria o som que estiver
+   * tocando. Aqui só roda na saída da sala.
+   */
+  useEffect(() => {
+    return () => {
+      for (const entry of liveRef.current) {
+        hardStop(entry.audio);
+      }
+      liveRef.current = [];
+    };
+  }, []);
 
   const publish = useCallback(
     (message: RoomMessage) => {
