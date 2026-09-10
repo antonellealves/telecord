@@ -13,7 +13,12 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  overflow-y: auto;
+  /*
+   * Quem rola é a lista, não a coluna: com o overflow aqui, a seção de
+   * ausentes descia junto e sumia da vista numa sala cheia — justo a seção
+   * que precisa estar sempre alcançável, porque é onde fica o botão.
+   */
+  overflow: hidden;
 }
 
 .heading {
@@ -30,13 +35,25 @@
   color: var(--accent);
 }
 
-.list {
+.list,
+.awayList {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.list {
+  flex: 1 1 auto;
+  /* Sem isto o item flex não encolhe abaixo do conteúdo e o overflow nunca
+     entra em ação. */
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
 }
 
 .row {
@@ -127,4 +144,95 @@
 
 .muted .icon {
   color: rgba(var(--danger-rgb), 0.75);
+}
+
+/* ---- ausentes -------------------------------------------------------- */
+
+/*
+ * Rodapé fixo da coluna. Fica embaixo mesmo com a lista curta (`margin-top`
+ * automático) e não desce junto com a rolagem quando ela é longa.
+ */
+.away {
+  flex: none;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.awayHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.awayHeading {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.awayToggle {
+  flex: none;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
+}
+
+.awayToggle:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.awayToggle:disabled {
+  opacity: 0.5;
+}
+
+/* Ausente é um estado que a pessoa precisa enxergar no próprio botão: sem
+   destaque, ela esquece que se marcou e estranha o silêncio. */
+.awayToggleOn {
+  border-color: rgba(var(--accent-2-rgb), 0.5);
+  background: rgba(var(--accent-2-rgb), 0.14);
+  color: var(--accent-2);
+}
+
+/* Teto de altura próprio: uma sala em que quase todo mundo se ausentou não
+   pode empurrar a lista de quem está presente para fora da coluna. */
+.awayList {
+  max-height: 168px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+.awayEmpty {
+  margin: 0;
+  padding: 2px 2px 4px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+/* Apagado, mas ainda legível: continua sendo gente na sala, não um item
+   desativado. */
+.awayRow {
+  opacity: 0.62;
+}
+
+.awayRow .icon {
+  color: var(--accent-2);
 }

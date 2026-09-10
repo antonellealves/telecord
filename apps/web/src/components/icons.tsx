@@ -193,3 +193,13 @@ export function RefreshIcon(props: IconProps): JSX.Element {
     </Icon>
   );
 }
+
+export function MoonIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g>
+        <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" />
+      </g>
+    </Icon>
+  );
+}

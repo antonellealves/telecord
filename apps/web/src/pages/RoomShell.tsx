@@ -11,6 +11,7 @@ import { ParticipantSidebar } from '../components/ParticipantSidebar';
 import { ScreenStage } from '../components/ScreenStage';
 import { Soundboard } from '../components/Soundboard';
 import { ToastStack } from '../components/ToastStack';
+import { useAway } from '../hooks/useAway';
 import { useCameras } from '../hooks/useCameras';
 import { useParticipantViews } from '../hooks/useParticipantViews';
 import { useResizablePanel } from '../hooks/useResizablePanel';
@@ -70,6 +71,15 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
 
   const local = participants.find((participant) => participant.isLocal) ?? null;
   const isMicrophoneEnabled = local?.isMicrophoneEnabled ?? false;
+  const isAway = local?.isAway ?? false;
+
+  const away = useAway({
+    isMicrophoneEnabled,
+    isCameraOn: cameras.isLocalOn,
+    silenceMicrophone: talk.silence,
+    stopCamera: cameras.stop,
+    onError: (message) => push('error', message),
+  });
 
   // Chat aberto não acumula não-lidas.
   useEffect(() => {
@@ -113,7 +123,12 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
           className={`${styles.main} ${sidebar.isResizing || chatPanel.isResizing ? styles.resizing : ''}`}
           style={mainStyle}
         >
-          <ParticipantSidebar participants={participants} />
+          <ParticipantSidebar
+            participants={participants}
+            isAway={isAway}
+            isAwayBusy={away.isBusy}
+            onToggleAway={away.toggle}
+          />
           <div className={styles.resizer} {...sidebar.handleProps}>
             <span className={styles.grip} aria-hidden="true" />
           </div>

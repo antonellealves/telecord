@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRoomContext } from '@livekit/components-react';
 import { type Participant, type Room, RoomEvent, Track } from 'livekit-client';
-import type { ParticipantView } from '@telecord/shared';
+import { AWAY_ATTRIBUTE, AWAY_VALUE, type ParticipantView } from '@telecord/shared';
 
 /**
  * Eventos que mudam a projeção de participantes. Em todos eles o estado é
@@ -20,6 +20,7 @@ const PARTICIPANT_EVENTS: RoomEvent[] = [
   RoomEvent.LocalTrackPublished,
   RoomEvent.LocalTrackUnpublished,
   RoomEvent.ActiveSpeakersChanged,
+  RoomEvent.ParticipantAttributesChanged,
   RoomEvent.ConnectionStateChanged,
   RoomEvent.Reconnected,
 ];
@@ -41,6 +42,7 @@ function toView(participant: Participant, isLocal: boolean): ParticipantView {
     isSpeaking: participant.isSpeaking,
     isMicrophoneEnabled: participant.isMicrophoneEnabled,
     isSharingScreen: isSharingScreen(participant),
+    isAway: participant.attributes[AWAY_ATTRIBUTE] === AWAY_VALUE,
   };
 }
 

@@ -198,7 +198,23 @@ export interface ParticipantView {
   isSpeaking: boolean;
   isMicrophoneEnabled: boolean;
   isSharingScreen: boolean;
+  /** Marcou-se como ausente. Ver `AWAY_ATTRIBUTE`. */
+  isAway: boolean;
 }
+
+/**
+ * Chave do atributo de participante que marca quem está ausente.
+ *
+ * Vai como atributo do LiveKit, e não pelo canal de dados como o chat: o
+ * servidor guarda o atributo e entrega junto com a lista de participantes, de
+ * modo que quem entra depois já vê quem está ausente. Um aviso pelo canal de
+ * dados só alcançaria quem estivesse na sala na hora, e obrigaria cada cliente
+ * a reanunciar o próprio estado a cada pessoa que chegasse.
+ */
+export const AWAY_ATTRIBUTE = 'afk';
+
+/** Único valor que conta como ausente; string vazia apaga a chave. */
+export const AWAY_VALUE = '1';
 
 /** Quem detém a tela, quando alguém detém. */
 export interface ScreenShareOwner {

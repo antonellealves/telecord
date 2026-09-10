@@ -12,6 +12,8 @@ export interface TalkControls {
   /** Aperte para falar. */
   pressToTalk: () => void;
   releaseToTalk: () => void;
+  /** Cala o microfone e o mantém calado, seja qual for o modo. */
+  silence: () => void;
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -83,6 +85,13 @@ export function useTalkControls(onError: (message: string) => void): TalkControl
     applyRef.current();
   }, []);
 
+  /*
+   * Mesmo efeito de soltar a tecla, com outro nome. Quem chama daqui não está
+   * soltando nada — está desligando o microfone por outro motivo (ausentar-se,
+   * §6.10) — e passar por `releaseToTalk` mentiria sobre o que aconteceu.
+   */
+  const silence = releaseToTalk;
+
   const toggleOpenMic = useCallback(() => {
     desiredRef.current = !desiredRef.current;
     applyRef.current();
@@ -136,5 +145,5 @@ export function useTalkControls(onError: (message: string) => void): TalkControl
     };
   }, [mode, pressToTalk, releaseToTalk]);
 
-  return { mode, setMode, isBusy, toggleOpenMic, pressToTalk, releaseToTalk };
+  return { mode, setMode, isBusy, toggleOpenMic, pressToTalk, releaseToTalk, silence };
 }

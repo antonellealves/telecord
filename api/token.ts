@@ -169,7 +169,11 @@ export default async function handler(
       // Chat e soundboard passam pelo canal de dados. Sem isto o servidor
       // recusa qualquer publishData.
       canPublishData: true,
-      canUpdateOwnMetadata: false,
+      // Marcar-se como ausente é um atributo do próprio participante, e sem
+      // este grant o servidor recusa `setAttributes` (SPEC §6.10). O que se
+      // abre aqui é o participante escrever sobre si mesmo — quem tem o token
+      // já podia publicar o que quisesse no canal de dados.
+      canUpdateOwnMetadata: true,
       roomCreate: false,
       roomAdmin: false,
       hidden: false,

@@ -137,7 +137,7 @@ at.addGrant({
   canPublish: true,
   canPublishSources: ['microphone', 'camera', 'screen_share', 'screen_share_audio'],
   canPublishData: true,   // chat e soundboard
-  canUpdateOwnMetadata: false,
+  canUpdateOwnMetadata: true,   // marca de ausente (§6.10)
   roomCreate: false,
   roomAdmin: false,
   hidden: false,
@@ -155,6 +155,7 @@ Notas que valem como regra:
 - **Sem CORS**: front e função na mesma origem em produção; em dev o handler é montado dentro do próprio Vite (§8.3).
 - **Logs**: só `{ roomId, identity, code, durationMs }`. Nunca key, secret, token ou corpo cru.
 - **`canPublishData` ligado** para o chat e o soundboard (§6.7). Quem tem o token pode publicar dados na sala; o conteúdo é validado no cliente que recebe, como qualquer entrada não confiável.
+- **`canUpdateOwnMetadata` ligado** para a marca de ausente (§6.10). O grant deixa o participante escrever atributos **sobre si mesmo**, não sobre os outros nem sobre a sala — e quem tem o token já podia publicar o que quisesse no canal de dados.
 - **Sem rate limit** — limitação consciente, registrada em §9.
 
 ---
@@ -266,6 +267,7 @@ main.tsx
     │       ├── RoomAudioRenderer        (@livekit/components-react) toca todo áudio remoto
     │       ├── Stage
     │       │   ├── ParticipantSidebar   à ESQUERDA, largura arrastável (208–440 px)
+    │       │   │                        rodapé fixo com a seção de ausentes (§6.10)
     │       │   ├── ChatPanel            à DIREITA, largura arrastável (260–560 px)
     │       │   │   └── ParticipantRow[] nome, anel de "falando", ícone de mutado, badge "apresentando"
     │       │   ├── Resizer              divisória com pointer capture; setas e duplo clique também ajustam
@@ -430,6 +432,20 @@ Nada é persistido do que a sala produz: o histórico do chat vive em memória, 
 A tela cheia tenta a API do navegador e **cai para um modo maximizado por CSS** quando ela não existe ou é recusada (iOS não implementa `requestFullscreen` em div). A versão anterior engolia a recusa em silêncio, e o botão parecia morto. A barra também deixou de ser `opacity: 0` até o hover: era invisível o bastante para dar a impressão de que o recurso não existia.
 
 **Nenhum elemento de vídeo do palco toca áudio.** Todos são `muted`, e o áudio da tela sai exclusivamente pelo `RoomAudioRenderer`, que só renderiza tracks remotas. É isso que garante que quem compartilha não ouve o próprio áudio de volta, e que quem assiste não ouve dobrado — com várias telas simultâneas, um único elemento não-mudo bastaria para criar as duas coisas.
+
+---
+
+### 6.10 Ausente / AFK (emenda pós-implementação)
+
+Quem se marca como ausente sai da lista principal e desce para uma seção própria no rodapé da coluna de participantes. Entrar na ausência **desliga o microfone e a câmera** — é isso que a marca promete a quem fica: ninguém precisa perguntar se o outro ainda está ouvindo.
+
+**Por atributo de participante, não pelo canal de dados.** O canal de dados (§6.7) só alcança quem está na sala no instante do aviso; quem entrasse depois veria o ausente como presente, e cada cliente teria de reanunciar o próprio estado a cada pessoa que chegasse. O atributo fica no servidor e vem junto com a lista de participantes, então o problema não existe. Isso é o que obrigou a virar `canUpdateOwnMetadata` para `true` em §2.2: o que se abre com ele é o participante escrever sobre si mesmo, e quem tem o token já podia publicar o que quisesse no canal de dados.
+
+**O estado não é duplicado no cliente.** `isAway` sai de `useParticipantViews`, como qualquer outro campo da projeção; `useAway` só publica e expõe o botão. Uma cópia local divergiria da sala na primeira falha de rede — o botão diria "voltar" para quem todo mundo ainda vê como ausente.
+
+**Voltar não religa nada.** Reabrir o microfone de alguém que talvez tenha saído da frente do computador é o acidente que a marca existe para evitar. O caminho de volta é o inverso: **abrir microfone ou câmera desfaz a ausência sozinho**, porque quem fala ou aparece não está ausente e a lista mentiria. Só a virada de desligado para ligado conta — testar o valor corrente cancelaria a ausência no ato de entrar nela, já que no clique o microfone ainda está aberto.
+
+**Não há detecção de inatividade.** A marca é sempre deliberada. Mover alguém para os ausentes por tempo parado erra em cima de quem está assistindo a uma tela em silêncio, que é metade do uso da sala.
 
 ---
 
