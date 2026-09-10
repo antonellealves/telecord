@@ -135,7 +135,12 @@ jobs:
 
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v5
+      # v4, não v5: a partir de v5 o setup-node lê o `packageManager` do
+      # package.json e tenta ativar pnpm via Corepack sozinho — e falha porque
+      # este runner não tem Corepack habilitado. Este job nunca precisou de
+      # pnpm (não há `pnpm/action-setup` aqui, ao contrário de verify/migrate):
+      # `vercel-deploy.mjs` só usa o fetch nativo do Node.
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
 
