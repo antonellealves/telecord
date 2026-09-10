@@ -3,6 +3,7 @@ import { StatusScreen } from './components/StatusScreen';
 import statusStyles from './components/StatusScreen.module.css';
 import { AdminPage } from './pages/AdminPage';
 import { AuthReturnPage } from './pages/AuthReturnPage';
+import { ChannelPage } from './pages/ChannelPage';
 import { JoinPage } from './pages/JoinPage';
 import { LoginPage } from './pages/LoginPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
@@ -37,6 +38,12 @@ export function App(): JSX.Element {
           * por conta própria, e é isso que vale.
           */}
         <Route path="/painel" element={<AdminPage />} />
+        {/*
+          * Canal: nome, salas dentro e membros. Não é sala, então não passa
+          * pelo `LiveKitRoom` — é uma página comum, entrável mesmo sem
+          * ninguém conectado a nada.
+          */}
+        <Route path="/canal/:channelSlug" element={<ChannelPage />} />
         <Route path="/sala/:roomId" element={<RoomPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>

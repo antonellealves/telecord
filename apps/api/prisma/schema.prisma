@@ -76,9 +76,11 @@ model User {
    * sem relação: declarar uma aqui traria junto um `user.systemLogs` que
    * carregaria a tabela inteira de log de uma pessoa sem paginação nenhuma.
    */
-  ownedRooms      Room[]       @relation("RoomOwner")
-  roomMemberships RoomMember[] @relation("RoomMemberships")
-  uploadedSounds  Sound[]      @relation("SoundUploads")
+  ownedRooms         Room[]          @relation("RoomOwner")
+  roomMemberships    RoomMember[]    @relation("RoomMemberships")
+  uploadedSounds      Sound[]         @relation("SoundUploads")
+  ownedChannels       Channel[]       @relation("ChannelOwner")
+  channelMemberships  ChannelMember[] @relation("ChannelMemberships")
 
   @@index([createdAt, id])
   @@index([status, createdAt])
@@ -198,6 +200,15 @@ enum RoomMemberRole {
   MEMBER
 }
 
+/** Igual a `RoomMemberRole` em forma, mas é o papel DENTRO DO CANAL — quem
+ * pode criar salas nele, renomeá-lo, mexer nos membros. Não confundir com o
+ * papel de uma sala específica dentro do canal, que continua em `RoomMember`. */
+enum ChannelMemberRole {
+  OWNER
+  MOD
+  MEMBER
+}
+
 enum LogLevel {
   DEBUG
   INFO
@@ -223,6 +234,18 @@ model Room {
   emoji       String?         @db.VarChar(16)
   visibility  RoomVisibility  @default(PUBLIC)
   ownerId     String?
+  /// Canal ao qual esta sala pertence, se algum. NULO é o padrão: a imensa
+  /// maioria das salas continua avulsa, exatamente como antes de canais
+  /// existirem. Uma sala pertence a NO MÁXIMO um canal — não existe "sala
+  /// compartilhada entre dois canais", porque isso quebraria a ordenação
+  /// (`position`) que decide onde ela aparece na lista do canal.
+  channelId   String?
+  /// Ordem de exibição dentro do canal. Zero para salas avulsas — nunca é
+  /// lido sem `channelId` junto, então o valor não importa fora de um canal.
+  /// Inteiro comum, não fracionário: o número de salas por canal é baixo
+  /// (dezenas, não milhares), então reordenar tudo a cada inserção é barato,
+  /// e um inteiro é ordenável e legível de um jeito que ponto flutuante não é.
+  position    Int             @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -236,12 +259,14 @@ model Room {
   deletedAt    DateTime?
 
   owner   User?        @relation("RoomOwner", fields: [ownerId], references: [id])
+  channel Channel?     @relation(fields: [channelId], references: [id])
   members RoomMember[]
   sounds  Sound[]
 
   @@index([ownerId])
   @@index([visibility, lastActiveAt, id])
   @@index([createdAt, id])
+  @@index([channelId, position, id])
 }
 
 /**
@@ -264,6 +289,70 @@ model RoomMember {
 
   @@unique([roomId, userId])
   @@index([roomId])
+  @@index([userId])
+}
+
+/**
+ * Um canal agrupa várias salas transitáveis — a categoria do Discord, não a
+ * própria sala de voz. Entrar num canal não conecta a lugar nenhum: é a lista
+ * de salas dentro dele que a pessoa navega, e cada clique numa sala é uma
+ * troca de conexão LiveKit de verdade (sai da atual, entra na nova) — não uma
+ * sub-área dentro da mesma. Ver PLANO.md pela decisão de manter uma `Room`
+ * LiveKit por sala, mesmo dentro de canal.
+ *
+ * ADITIVO como `Room`: uma sala continua existindo e sendo entrável sem nunca
+ * ter pertencido a canal nenhum. Um canal SEM sala nenhuma dentro também é
+ * válido — é o estado do canal recém-criado, antes de alguém acrescentar a
+ * primeira sala.
+ */
+model Channel {
+  slug        String   @unique @db.VarChar(64)
+  id          String   @id @default(cuid())
+  name        String   @db.VarChar(48)
+  description String?  @db.VarChar(200)
+  emoji       String?  @db.VarChar(16)
+  /// Mesma semântica de `Room.visibility`: `UNLISTED` sai do diretório e
+  /// nada além disso. Não existe canal privado, pelo mesmo motivo de não
+  /// existir sala privada (PLANO.md) — a função que emite token de entrada
+  /// não consulta banco, e uma trava que ela não confere é só decoração.
+  visibility  RoomVisibility @default(PUBLIC)
+  ownerId     String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  owner   User?            @relation("ChannelOwner", fields: [ownerId], references: [id])
+  members ChannelMember[]
+  rooms   Room[]
+
+  @@index([ownerId])
+  @@index([visibility, createdAt, id])
+  @@index([createdAt, id])
+}
+
+/**
+ * Papel de alguém num canal. Governa criar/renomear/apagar SALAS dentro do
+ * canal e mexer nos membros do canal — não confundir com `RoomMember`, que é
+ * o papel dentro de uma sala específica. As duas hierarquias são
+ * independentes: ser MOD do canal não torna ninguém MOD automático de uma
+ * sala dele, e vice-versa. Mesclar as duas faria promover alguém no canal
+ * mexer silenciosamente na permissão de toda sala dentro — um raio de
+ * efeito que ninguém pediu.
+ */
+model ChannelMember {
+  id        String            @id @default(cuid())
+  channelId String
+  userId    String
+  role      ChannelMemberRole @default(MEMBER)
+
+  createdAt DateTime @default(now())
+
+  channel Channel @relation(fields: [channelId], references: [id])
+  user    User    @relation("ChannelMemberships", fields: [userId], references: [id])
+
+  @@unique([channelId, userId])
+  @@index([channelId])
   @@index([userId])
 }
 

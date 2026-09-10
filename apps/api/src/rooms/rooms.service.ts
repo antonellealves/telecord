@@ -75,6 +75,7 @@ export class RoomsService {
         visibility: 'PUBLIC',
         ...(keysetBefore(cursor, 'lastActiveAt') as Prisma.RoomWhereInput),
       },
+      include: { channel: { select: { slug: true } } },
       orderBy: [{ lastActiveAt: 'desc' }, { id: 'desc' }],
       take: limit + 1,
     });
@@ -83,7 +84,7 @@ export class RoomsService {
     return buildPage(
       rows,
       limit,
-      (room) => this.toSummary(room, counts.get(room.id)),
+      (room) => this.toSummary(room, counts.get(room.id), room.channel?.slug ?? null),
       (room) => encodeCursor(room.lastActiveAt, room.id),
     );
   }
@@ -92,19 +93,19 @@ export class RoomsService {
   async mine(userId: string): Promise<RoomSummary[]> {
     const memberships = await this.prisma.roomMember.findMany({
       where: { userId, room: { deletedAt: null } },
-      include: { room: true },
+      include: { room: { include: { channel: { select: { slug: true } } } } },
       orderBy: { room: { lastActiveAt: 'desc' } },
       take: 50,
     });
 
     const rooms = memberships.map((membership) => membership.room);
     const counts = await this.countsFor(rooms.map((room) => room.id));
-    return rooms.map((room) => this.toSummary(room, counts.get(room.id)));
+    return rooms.map((room) => this.toSummary(room, counts.get(room.id), room.channel?.slug ?? null));
   }
 
   async detail(slug: string, viewerId: string | null): Promise<RoomDetail> {
     const room = await this.findBySlug(slug);
-    const [counts, members] = await Promise.all([
+    const [counts, members, channelSlug] = await Promise.all([
       this.countsFor([room.id]),
       this.prisma.roomMember.findMany({
         where: { roomId: room.id },
@@ -112,11 +113,18 @@ export class RoomsService {
         orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
         take: 100,
       }),
+      // Consulta pontual, só quando a sala de fato pertence a um canal — o
+      // caso comum (sala avulsa) não paga nada além do `null` já em mãos.
+      room.channelId === null
+        ? Promise.resolve(null)
+        : this.prisma.channel
+            .findUnique({ where: { id: room.channelId }, select: { slug: true } })
+            .then((channel) => channel?.slug ?? null),
     ]);
 
     const mine = members.find((member) => member.userId === viewerId);
     return {
-      ...this.toSummary(room, counts.get(room.id)),
+      ...this.toSummary(room, counts.get(room.id), channelSlug),
       myRole: mine?.role ?? null,
       members: members.map((member) => ({
         userId: member.userId,
@@ -500,7 +508,11 @@ export class RoomsService {
     return counts;
   }
 
-  private toSummary(room: Room, counts: RoomCounts | undefined): RoomSummary {
+  private toSummary(
+    room: Room,
+    counts: RoomCounts | undefined,
+    channelSlug: string | null = null,
+  ): RoomSummary {
     return {
       slug: room.slug,
       name: room.name,
@@ -511,6 +523,7 @@ export class RoomsService {
       soundCount: counts?.sounds ?? 0,
       createdAt: room.createdAt.toISOString(),
       lastActiveAt: room.lastActiveAt.toISOString(),
+      channelSlug,
     };
   }
 }

@@ -510,6 +510,10 @@ export interface RoomSummary {
   createdAt: string;
   /** Nunca nulo: uma sala recém-criada conta como ativa na criação. */
   lastActiveAt: string;
+  /** Slug do canal ao qual esta sala pertence, ou null se for avulsa. É o
+   * que permite a `RoomShell` desenhar a navegação entre salas do mesmo canal
+   * sem uma segunda ida ao banco. */
+  channelSlug: string | null;
 }
 
 export interface RoomDetail extends RoomSummary {
@@ -535,6 +539,90 @@ export function validateRoomName(value: string): string | null {
 export function validateRoomDescription(value: string): string | null {
   if (value.length > ROOM_DESCRIPTION_MAX_LENGTH) {
     return `A descrição pode ter no máximo ${ROOM_DESCRIPTION_MAX_LENGTH} caracteres.`;
+  }
+  if (FORBIDDEN_NAME_CHARS.test(value)) {
+    return 'A descrição tem caracteres não permitidos.';
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Canais — agrupadores de salas transitáveis
+// ---------------------------------------------------------------------------
+
+export const CHANNEL_NAME_MAX_LENGTH = 48;
+export const CHANNEL_DESCRIPTION_MAX_LENGTH = 200;
+/** Quantas salas cabem num canal antes da UI virar uma lista impraticável. */
+export const CHANNEL_ROOM_LIMIT = 60;
+
+/** Papel dentro de um canal. Governa criar/renomear salas do canal e mexer
+ * nos membros do canal — não o papel de uma sala específica (`RoomMemberRole`),
+ * que continua independente: promover alguém no canal não muda o papel dela
+ * em nenhuma sala existente dentro dele. */
+export type ChannelMemberRole = 'OWNER' | 'MOD' | 'MEMBER';
+
+export interface ChannelMemberView {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  role: ChannelMemberRole;
+  joinedAt: string;
+}
+
+/**
+ * Uma sala como aparece dentro da lista de um canal — o suficiente para
+ * desenhar o item de navegação (nome, emoji, quantas pessoas) sem carregar o
+ * `RoomDetail` inteiro (membros, contagem de sons) para cada uma das salas do
+ * canal de uma vez só.
+ */
+export interface ChannelRoomEntry {
+  slug: string;
+  name: string;
+  emoji: string | null;
+  position: number;
+  /** Contagem de participantes é derivada do SFU, não do banco — fica de fora
+   * daqui e é responsabilidade do cliente casar com `GET /api/rooms` (a
+   * função das salas ao vivo), do mesmo jeito que a tela inicial já faz com o
+   * diretório de salas soltas. */
+}
+
+export interface ChannelSummary {
+  slug: string;
+  name: string;
+  description: string | null;
+  emoji: string | null;
+  visibility: RoomVisibility;
+  memberCount: number;
+  roomCount: number;
+  /** ISO 8601. */
+  createdAt: string;
+}
+
+export interface ChannelDetail extends ChannelSummary {
+  /** Papel de quem perguntou, ou null para anônimo e não-membro. */
+  myRole: ChannelMemberRole | null;
+  members: ChannelMemberView[];
+  /** Em ordem de exibição (`position`, depois `id` para desempate). */
+  rooms: ChannelRoomEntry[];
+}
+
+export function validateChannelName(value: string): string | null {
+  const name = normalizeDisplayName(value);
+  if (name.length === 0) {
+    return 'Digite um nome para o canal.';
+  }
+  if (name.length > CHANNEL_NAME_MAX_LENGTH) {
+    return `O nome do canal pode ter no máximo ${CHANNEL_NAME_MAX_LENGTH} caracteres.`;
+  }
+  if (FORBIDDEN_NAME_CHARS.test(name)) {
+    return 'O nome do canal tem caracteres não permitidos.';
+  }
+  return null;
+}
+
+export function validateChannelDescription(value: string): string | null {
+  if (value.length > CHANNEL_DESCRIPTION_MAX_LENGTH) {
+    return `A descrição pode ter no máximo ${CHANNEL_DESCRIPTION_MAX_LENGTH} caracteres.`;
   }
   if (FORBIDDEN_NAME_CHARS.test(value)) {
     return 'A descrição tem caracteres não permitidos.';

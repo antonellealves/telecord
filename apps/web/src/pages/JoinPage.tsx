@@ -10,7 +10,9 @@ import {
 } from '@telecord/shared';
 import { ActiveRoomsList } from '../components/ActiveRoomsList';
 import { AmbientGradient } from '../components/AmbientGradient';
+import { ChannelsList } from '../components/ChannelsList';
 import { useActiveRooms } from '../hooks/useActiveRooms';
+import { useChannelDirectory } from '../hooks/useChannelDirectory';
 import { useRoomDirectory } from '../hooks/useRoomDirectory';
 import { useAuth } from '../hooks/useAuth';
 import { useDisplayName } from '../hooks/useDisplayName';
@@ -50,6 +52,7 @@ export function JoinPage(): JSX.Element {
    * lista fica idêntica à de antes.
    */
   const directory = useRoomDirectory();
+  const channels = useChannelDirectory();
   const microphone = useMicrophonePermission();
   const [lastRoom] = useState(() => readLastRoom());
 
@@ -223,6 +226,8 @@ export function JoinPage(): JSX.Element {
               Entrar na sala
             </button>
           </form>
+
+          <ChannelsList channels={channels.channels} />
 
           <ActiveRoomsList
             rooms={activeRooms.rooms}
