@@ -30,8 +30,8 @@ interface SoundboardProps {
  * para todos, que é o motivo de existir o botão. Silenciar só para si é o que
  * o controle de volume já faz.
  *
- * Enquanto um som toca, o card dele significa parar, não tocar de novo — ver o
- * comentário no botão.
+ * Clicar num card sempre dispara o som: em cima de um que já toca, ele
+ * recomeça do início em todo mundo. Encerrar é só pelo selo de parar.
  */
 export function Soundboard({
   containerRef,
@@ -101,22 +101,17 @@ export function Soundboard({
                 </button>
               ) : null}
               {/*
-                * Tocando, o card inteiro passa a ser "parar".
-                *
-                * O selo de parar tem 22px em cima de um card de 100x66 que era
-                * todo "tocar": errar o alvo por poucos pixels não fazia nada
-                * silencioso, re-disparava o som — que é indistinguível de
-                * "apertei parar e continuou tocando". Um controle com dois
-                * estados, como play/pause, não tem esse modo de falha.
+                * O card sempre dispara, inclusive sobre um som que já esteja
+                * tocando — nesse caso o som recomeça do zero, para a sala
+                * inteira, em vez de tocar em dobro. Parar é só o selo.
                 */}
               <button
                 type="button"
                 className={styles.sound}
-                onClick={() => (isPlaying ? onStop(sound.id) : onPlay(sound.id))}
-                aria-pressed={isPlaying}
+                onClick={() => onPlay(sound.id)}
                 title={
                   isPlaying
-                    ? `Parar "${sound.label}" para todos`
+                    ? `Recomeçar "${sound.label}" do início`
                     : `Tocar "${sound.label}" para a sala`
                 }
               >
