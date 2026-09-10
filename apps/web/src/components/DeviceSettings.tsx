@@ -214,16 +214,33 @@ export function DeviceSettings({
         )}
       </label>
 
-      <div className={styles.field}>
+      <label className={styles.field}>
         <span className={styles.label}>
           <ScreenIcon className={styles.icon} />
-          Vídeo
+          Câmera
         </span>
+        <select
+          className={styles.select}
+          value={devices.activeVideoInput}
+          disabled={devices.isSwitching || devices.videoInputs.length === 0}
+          onChange={(event) => devices.selectVideoInput(event.target.value)}
+          aria-label="Câmera"
+        >
+          {devices.videoInputs.length === 0 ? (
+            <option value="default">Nenhuma câmera encontrada</option>
+          ) : (
+            devices.videoInputs.map((device) => (
+              <option key={device.deviceId} value={device.deviceId}>
+                {device.label}
+              </option>
+            ))
+          )}
+        </select>
         <span className={styles.hint}>
-          A sala não usa câmera: o vídeo é a tela compartilhada, e quem escolhe a janela ou
-          monitor é o seletor do próprio navegador, no momento de compartilhar.
+          Câmera e tela compartilhada são independentes: dá para mostrar as duas ao mesmo tempo.
+          A janela ou monitor compartilhado quem escolhe é o seletor do próprio navegador.
         </span>
-      </div>
+      </label>
     </div>
   );
 }

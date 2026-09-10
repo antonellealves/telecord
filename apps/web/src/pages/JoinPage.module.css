@@ -36,11 +36,11 @@
 .wordmark {
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(30px, 6.6vw, 44px);
-  font-weight: 900;
-  line-height: 1;
-  letter-spacing: 0.16em;
-  text-indent: 0.16em;
+  font-size: clamp(21px, 4.6vw, 34px);
+  font-weight: 400;
+  line-height: 1.1;
+  letter-spacing: 0.1em;
+  text-indent: 0.1em;
   text-transform: uppercase;
   background: linear-gradient(102deg, #ffffff 0%, var(--accent) 44%, #8f7ae8 100%);
   -webkit-background-clip: text;

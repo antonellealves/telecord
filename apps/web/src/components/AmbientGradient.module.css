@@ -17,6 +17,8 @@
 .root {
   --glow: 0.5;
   --sway: 0;
+  /* 0 = roxo (cursor no topo) · 1 = azul (cursor na base). */
+  --tone: 0.5;
   /* Multiplicador global de força, reduzido na variante da sala. */
   --strength: 1;
 
@@ -52,19 +54,40 @@
 }
 
 /*
- * Deriva de cor: reforça o roxo no alto e o azul na base. Ancorada fora da
- * viewport nos dois casos, então some pelas beiradas sem desenhar nada.
+ * Deriva de cor, em DUAS camadas que se revezam.
+ *
+ * A mudança de tom não pode sair de interpolar paradas de gradiente: isso é
+ * repintura a cada frame. Em vez disso são duas versões do campo — uma azul,
+ * outra roxa — empilhadas, e o ponteiro só cruza a opacidade entre elas.
+ * Opacidade fica no compositor, e o efeito é o mesmo de girar o matiz.
+ *
+ * Ambas ancoradas fora da viewport, então somem pelas beiradas sem desenhar
+ * contorno nenhum.
  */
 .tint {
   position: absolute;
   inset: 0;
   transform: translateX(calc(var(--sway) * 1.4vw));
-  opacity: calc((0.72 + var(--glow) * 0.28) * var(--strength));
+}
+
+/* Cursor embaixo: campo azul. */
+.tintCool {
+  opacity: calc((0.2 + var(--tone) * 0.8) * (0.72 + var(--glow) * 0.28) * var(--strength));
   background:
-    radial-gradient(135% 95% at 50% 124%, rgba(var(--accent-rgb), 0.34), transparent 74%),
-    radial-gradient(145% 90% at 50% -24%, rgba(var(--accent-2-rgb), 0.3), transparent 72%),
-    radial-gradient(90% 70% at 4% 8%, rgba(var(--accent-2-rgb), 0.16), transparent 70%),
-    radial-gradient(90% 70% at 96% 4%, rgba(var(--accent-2-rgb), 0.13), transparent 70%);
+    radial-gradient(135% 95% at 50% 124%, rgba(var(--accent-rgb), 0.42), transparent 76%),
+    radial-gradient(145% 95% at 50% -16%, rgba(var(--accent-rgb), 0.16), transparent 74%),
+    radial-gradient(90% 70% at 4% 12%, rgba(var(--accent-rgb), 0.14), transparent 70%),
+    radial-gradient(90% 70% at 96% 8%, rgba(var(--accent-2-rgb), 0.12), transparent 70%);
+}
+
+/* Cursor em cima: campo roxo. */
+.tintWarm {
+  opacity: calc((1 - var(--tone)) * (0.72 + var(--glow) * 0.28) * var(--strength));
+  background:
+    radial-gradient(145% 95% at 50% -24%, rgba(var(--accent-2-rgb), 0.46), transparent 74%),
+    radial-gradient(120% 85% at 50% 118%, rgba(var(--accent-2-rgb), 0.2), transparent 76%),
+    radial-gradient(90% 70% at 4% 8%, rgba(var(--accent-2-rgb), 0.22), transparent 70%),
+    radial-gradient(90% 70% at 96% 4%, rgba(var(--accent-2-rgb), 0.18), transparent 70%);
 }
 
 /*

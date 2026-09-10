@@ -58,3 +58,17 @@ export function describeScreenShareError(error: unknown): string | null {
 export function isScreenShareSupported(): boolean {
   return typeof navigator.mediaDevices?.getDisplayMedia === 'function';
 }
+
+/** Mesmas falhas do microfone, com o substantivo certo. */
+export function describeCameraError(error: unknown): string {
+  switch (MediaDeviceFailure.getFailure(error)) {
+    case MediaDeviceFailure.PermissionDenied:
+      return 'Permissão de câmera negada. Libere o acesso no cadeado da barra de endereços e tente de novo.';
+    case MediaDeviceFailure.NotFound:
+      return 'Nenhuma câmera encontrada. Conecte uma e tente de novo.';
+    case MediaDeviceFailure.DeviceInUse:
+      return 'A câmera está ocupada por outro aplicativo. Feche o outro programa e tente de novo.';
+    default:
+      return 'Não foi possível ligar a câmera.';
+  }
+}

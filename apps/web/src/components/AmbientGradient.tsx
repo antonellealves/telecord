@@ -34,14 +34,17 @@ export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX
 
     let glow = REST_GLOW;
     let sway = 0;
+    let tone = 0.5;
     let targetGlow = REST_GLOW;
     let targetSway = 0;
+    let targetTone = 0.5;
     let frame = 0;
     let running = false;
 
     const apply = (): void => {
       root.style.setProperty('--glow', glow.toFixed(3));
       root.style.setProperty('--sway', sway.toFixed(3));
+      root.style.setProperty('--tone', tone.toFixed(3));
     };
 
     apply();
@@ -53,9 +56,15 @@ export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX
     const tick = (): void => {
       const deltaGlow = targetGlow - glow;
       const deltaSway = targetSway - sway;
-      if (Math.abs(deltaGlow) > 0.0015 || Math.abs(deltaSway) > 0.0015) {
+      const deltaTone = targetTone - tone;
+      if (
+        Math.abs(deltaGlow) > 0.0015 ||
+        Math.abs(deltaSway) > 0.0015 ||
+        Math.abs(deltaTone) > 0.0015
+      ) {
         glow += deltaGlow * 0.085;
         sway += deltaSway * 0.05;
+        tone += deltaTone * 0.07;
         apply();
         frame = requestAnimationFrame(tick);
       } else {
@@ -78,16 +87,19 @@ export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX
       const vertical = (height - event.clientY) / height;
       const distance = Math.min(1, Math.hypot(horizontal * 0.55, vertical));
 
-      // Faixa estreita, 0,45–1,0: com o degradê preenchendo a tela inteira,
-      // variação grande de intensidade volta a parecer foco de luz.
-      targetGlow = 1 - distance * 0.55;
+      targetGlow = 1 - distance * 0.7;
       targetSway = horizontal;
+      // O que mais se percebe não é o brilho, é a COR: subir o cursor puxa o
+      // campo para o roxo, descer puxa para o azul. Intensidade sozinha, num
+      // degradê que cobre a tela inteira, é mudança fácil de não notar.
+      targetTone = Math.max(0, Math.min(1, event.clientY / height));
       start();
     };
 
     const handlePointerLeave = (): void => {
       targetGlow = REST_GLOW;
       targetSway = 0;
+      targetTone = 0.5;
       start();
     };
 
@@ -109,7 +121,8 @@ export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX
     >
       <div className={styles.bed} />
       <div className={styles.drift}>
-        <div className={styles.tint} />
+        <div className={`${styles.tint} ${styles.tintCool}`} />
+        <div className={`${styles.tint} ${styles.tintWarm}`} />
       </div>
       <div className={styles.sheen} />
       <div className={styles.grid} />

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import { RoomAudioRenderer, useRoomContext } from '@livekit/components-react';
 import { AmbientGradient } from '../components/AmbientGradient';
 import { AudioPlaybackGate } from '../components/AudioPlaybackGate';
+import { CameraStrip } from '../components/CameraStrip';
 import { ChatPanel } from '../components/ChatPanel';
 import { ConnectionBanner } from '../components/ConnectionBanner';
 import { ControlBar } from '../components/ControlBar';
@@ -10,6 +11,7 @@ import { ParticipantSidebar } from '../components/ParticipantSidebar';
 import { ScreenStage } from '../components/ScreenStage';
 import { Soundboard } from '../components/Soundboard';
 import { ToastStack } from '../components/ToastStack';
+import { useCameras } from '../hooks/useCameras';
 import { useParticipantViews } from '../hooks/useParticipantViews';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 import { useRoomConnectionStatus } from '../hooks/useRoomConnection';
@@ -37,6 +39,7 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
   const participants = useParticipantViews();
   const { toasts, push, dismiss } = useToasts();
   const shares = useScreenShares(push);
+  const cameras = useCameras(push);
   const talk = useTalkControls((message) => push('error', message));
   const sound = useSoundVolume();
   const { messages, unread, sendChat, playSound, markRead } = useRoomMessages(() => sound.effective);
@@ -113,7 +116,12 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
           <div className={styles.resizer} {...sidebar.handleProps}>
             <span className={styles.grip} aria-hidden="true" />
           </div>
-          <ScreenStage entries={shares.entries} />
+          <div className={styles.stageArea}>
+            <CameraStrip entries={cameras.entries} expanded={shares.entries.length === 0} />
+            {shares.entries.length > 0 || cameras.entries.length === 0 ? (
+              <ScreenStage entries={shares.entries} />
+            ) : null}
+          </div>
           {isChatOpen ? (
             <>
               <div
@@ -161,6 +169,9 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
             onToggleMicrophone={talk.toggleOpenMic}
             onPressToTalk={talk.pressToTalk}
             onReleaseToTalk={talk.releaseToTalk}
+            isCameraOn={cameras.isLocalOn}
+            cameraDisabledReason={cameras.disabledReason}
+            onToggleCamera={cameras.isLocalOn ? cameras.stop : cameras.start}
             isSharingScreen={shares.isLocalSharing}
             shareDisabledReason={shares.disabledReason}
             onToggleScreenShare={shares.isLocalSharing ? shares.stop : shares.start}

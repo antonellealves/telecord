@@ -135,7 +135,7 @@ at.addGrant({
   room: roomId,
   canSubscribe: true,
   canPublish: true,
-  canPublishSources: ['microphone', 'screen_share', 'screen_share_audio'], // sem 'camera'
+  canPublishSources: ['microphone', 'camera', 'screen_share', 'screen_share_audio'],
   canPublishData: true,   // chat e soundboard
   canUpdateOwnMetadata: false,
   roomCreate: false,
@@ -150,7 +150,7 @@ Notas que valem como regra:
 
 - **`identity` é gerado no servidor.** Duas conexões com a mesma identity fazem o LiveKit derrubar a anterior — derivar identity do nome digitado transformaria "dois Joões" em kick mútuo. UUID por emissão também impede que o cliente escolha se passar por outra identity.
 - **`name` não é confiável.** Não há autenticação; é rótulo auto-declarado. Registrado em §9.
-- **`canPublishSources` sem `camera`** é a única restrição de mídia efetivamente imposta pelo servidor no MVP. É de graça, então vale.
+- **`canPublishSources`** lista o que o servidor aceita publicar. `camera` entrou depois do MVP (§6.9); sem ela na lista, o servidor recusa a publicação e o cliente falha sem explicação clara.
 - **O TTL de 10 min governa só o join.** Depois de conectado, o próprio servidor LiveKit entrega token renovado pelo canal de sinalização, então a reconexão automática não quebra. Ainda assim o cliente trata falha por token expirado refazendo `POST /api/token` e reconectando.
 - **Sem CORS**: front e função na mesma origem em produção; em dev o handler é montado dentro do próprio Vite (§8.3).
 - **Logs**: só `{ roomId, identity, code, durationMs }`. Nunca key, secret, token ou corpo cru.
@@ -269,6 +269,7 @@ main.tsx
     │       │   ├── ChatPanel            à DIREITA, largura arrastável (260–560 px)
     │       │   │   └── ParticipantRow[] nome, anel de "falando", ícone de mutado, badge "apresentando"
     │       │   ├── Resizer              divisória com pointer capture; setas e duplo clique também ajustam
+    │       │   ├── CameraStrip          faixa de câmeras; vira mosaico sem telas
     │       │   ├── ScreenStage          grade de telas; cada quadro tem barra
     │       │   │                        com zoom (roda/arrasto) e tela cheia
     │       │   └── EmptyStage           estado vazio: "Ninguém está compartilhando"
@@ -375,13 +376,35 @@ Dois limites do navegador, não do app:
 - **Rótulos vazios sem permissão.** O navegador esconde o nome dos dispositivos até haver permissão de microfone — proteção contra fingerprinting. Como o app entra mutado de propósito, esse é o estado normal na chegada. O painel oferece revelar os nomes em vez de pedir permissão por conta própria, que contrariaria a regra de entrar mutado.
 - **Saída de áudio só em Chromium.** `supportsAudioOutputSelection()` é falso em Firefox e Safari; nesses, a troca é pelo sistema operacional.
 
-**Não há escolha de dispositivo de vídeo** porque não há câmera: o `canPublishSources` do token nem permite publicar uma (§2.2). O vídeo da sala é a tela compartilhada, e quem escolhe janela ou monitor é o seletor do próprio navegador.
+**Escolha de câmera** existe desde §6.9. O que continua sem seletor é a tela compartilhada: quem escolhe janela ou monitor é o seletor do próprio navegador, no momento de compartilhar.
 
 **Modo de voz.** Além da voz aberta, há aperte-para-falar (barra de espaço ou o botão da barra). `setMicrophoneEnabled` é assíncrono e a tecla pode ser solta durante a chamada, então o cliente guarda o estado *desejado* e reconcilia ao fim de cada troca — uma chamada por evento deixaria o microfone aberto sempre que o "liga" resolvesse depois do "desliga". Perder o foco da janela corta a transmissão: alt-tab com a tecla apertada nunca gera `keyup`.
 
 **Teste de microfone.** Grava alguns segundos e toca de volta, em vez de monitorar ao vivo. Monitoração ao vivo em quem está de caixa de som vira microfonia imediata; gravar e reproduzir é o único jeito de "ouvir você mesmo" sem exigir fone. A reprodução usa `setSinkId` quando disponível, então o mesmo teste cobre a saída escolhida. O teste usa `getUserMedia` próprio e **não** publica nada na sala.
 
 **Supressão de ruído.** Ajustável em tempo de execução, em duas frentes: os defaults do `Room` governam a próxima publicação (o app entra mutado, então é quase sempre esse o caso) e `restartTrack` reabre a captura quando já existe microfone no ar. Só a primeira deixaria a mudança sem efeito para quem já está falando.
+
+### 6.9 Câmera (emenda pós-implementação)
+
+O MVP não tinha câmera, e o token proibia publicá-la. Agora tem.
+
+```ts
+setCameraEnabled(true, { resolution: VideoPresets.h360.resolution, facingMode: 'user' }, {
+  simulcast: true,
+  videoEncoding: VideoPresets.h360.encoding,
+  videoSimulcastLayers: [VideoPresets.h180],
+});
+```
+
+**Simulcast só na câmera.** As opções vão por chamada em `setCameraEnabled`, e não nos defaults do `Room`, para a tela compartilhada manter a decisão da §6.4 de publicar uma camada só. Os dois casos são opostos: a tela tem um publicador e poucos olhos atentos ao detalhe; a câmera tem muitos quadros pequenos, e é aí que a camada de 180p permite ao SFU mandar pouco para quem não está olhando de perto.
+
+**Câmera e tela são fontes independentes** no LiveKit, então publicar as duas ao mesmo tempo não exige nada de especial — quem compartilha continua podendo aparecer.
+
+**Custo de banda.** Cada câmera ligada soma egress para todos os assistentes. A 360p (~600 kbps na camada alta), cinco câmeras numa sala de vinte já somam alguns dezenas de Mbps ao que a §6.5 estima só para as telas. O limite prático continua sendo a cota do plano, e ele não é imposto por código.
+
+**Layout.** Com tela compartilhada, as câmeras ficam numa faixa de altura fixa acima do palco: a tela é o conteúdo principal deste app e não pode perder espaço para rostos. Sem tela, a faixa vira mosaico e ocupa o palco.
+
+O próprio vídeo aparece espelhado; o dos outros, não. Espelho é como a pessoa se reconhece, mas inverter o vídeo alheio inverteria texto e lateralidade sem motivo.
 
 ### 6.7 Chat e sons pelo canal de dados
 

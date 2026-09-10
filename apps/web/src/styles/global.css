@@ -52,8 +52,11 @@
   --radius-sm: 10px;
   --radius-pill: 999px;
 
-  --font-display: 'Orbitron', 'Chakra Petch', system-ui, sans-serif;
-  --font-sans: 'Chakra Petch', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Michroma na marca: futurista de engenharia, sem o chanfro "gamer".
+     Sora na interface: geométrica e contemporânea, mas de tom sério — é ela
+     que carrega o texto todo, e futurismo demais em corpo pequeno cansa. */
+  --font-display: 'Michroma', 'Sora', system-ui, sans-serif;
+  --font-sans: 'Sora', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --shadow-soft: 0 24px 70px -30px rgba(0, 0, 0, 0.9);

@@ -158,10 +158,11 @@ export default async function handler(
       room: roomId,
       canSubscribe: true,
       canPublish: true,
-      // Câmera fica de fora: é a única restrição de mídia imposta pelo
-      // servidor (SPEC §2.2).
+      // Câmera entrou depois do MVP. Sem ela nesta lista o servidor recusa a
+      // publicação, e o cliente falha sem explicação clara (SPEC §2.2).
       canPublishSources: [
         TrackSource.MICROPHONE,
+        TrackSource.CAMERA,
         TrackSource.SCREEN_SHARE,
         TrackSource.SCREEN_SHARE_AUDIO,
       ],

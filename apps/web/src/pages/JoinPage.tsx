@@ -75,7 +75,7 @@ export function JoinPage(): JSX.Element {
               <span className={styles.titleAccent}>mostre a tela.</span>
             </p>
             <p className={styles.lead}>
-              Supra sumo do entretenimento de dota 2 — entre, fale e mostre a tela.
+              Suprasumo do entretenimento de dota 2
             </p>
           </header>
 

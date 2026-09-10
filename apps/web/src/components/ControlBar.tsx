@@ -1,6 +1,16 @@
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { TalkMode } from '../lib/storage';
-import { ChatIcon, LeaveIcon, MicIcon, MicOffIcon, ScreenIcon, SlidersIcon, SoundIcon } from './icons';
+import {
+  CameraIcon,
+  CameraOffIcon,
+  ChatIcon,
+  LeaveIcon,
+  MicIcon,
+  MicOffIcon,
+  ScreenIcon,
+  SlidersIcon,
+  SoundIcon,
+} from './icons';
 import styles from './ControlBar.module.css';
 
 interface ControlBarProps {
@@ -10,6 +20,9 @@ interface ControlBarProps {
   onToggleMicrophone: () => void;
   onPressToTalk: () => void;
   onReleaseToTalk: () => void;
+  isCameraOn: boolean;
+  cameraDisabledReason: string | null;
+  onToggleCamera: () => void;
   isSharingScreen: boolean;
   shareDisabledReason: string | null;
   onToggleScreenShare: () => void;
@@ -31,6 +44,9 @@ export function ControlBar({
   onToggleMicrophone,
   onPressToTalk,
   onReleaseToTalk,
+  isCameraOn,
+  cameraDisabledReason,
+  onToggleCamera,
   isSharingScreen,
   shareDisabledReason,
   onToggleScreenShare,
@@ -97,6 +113,18 @@ export function ControlBar({
           <span className={styles.text}>{isMicrophoneEnabled ? 'Microfone ligado' : 'Falar'}</span>
         </button>
       )}
+
+      <button
+        type="button"
+        className={`${styles.button} ${isCameraOn ? styles.active : ''}`}
+        onClick={onToggleCamera}
+        disabled={disabled || (!isCameraOn && cameraDisabledReason !== null)}
+        aria-pressed={isCameraOn}
+        title={cameraDisabledReason ?? (isCameraOn ? 'Desligar a câmera' : 'Ligar a câmera')}
+      >
+        {isCameraOn ? <CameraIcon /> : <CameraOffIcon />}
+        <span className={styles.text}>{isCameraOn ? 'Câmera ligada' : 'Câmera'}</span>
+      </button>
 
       <button
         type="button"

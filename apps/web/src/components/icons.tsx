@@ -132,3 +132,26 @@ export function SoundIcon(props: IconProps): JSX.Element {
     </Icon>
   );
 }
+
+export function CameraIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g>
+        <rect x="2.5" y="6" width="13" height="12" rx="2.5" />
+        <path d="M15.5 10.5l6-3v9l-6-3z" />
+      </g>
+    </Icon>
+  );
+}
+
+export function CameraOffIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g>
+        <path d="M15.5 10.5l6-3v9l-3.2-1.6" />
+        <path d="M13 6h-2M5 6h-.5A2 2 0 0 0 2.5 8v8a2 2 0 0 0 2 2h9a2 2 0 0 0 1.7-1" />
+        <path d="M3 3l18 18" />
+      </g>
+    </Icon>
+  );
+}

@@ -1,8 +1,11 @@
 import {
   AudioPresets,
   ScreenSharePresets,
+  VideoPresets,
   type RoomOptions,
   type ScreenShareCaptureOptions,
+  type TrackPublishOptions,
+  type VideoCaptureOptions,
 } from 'livekit-client';
 
 /** SPEC §6.1. */
@@ -43,6 +46,27 @@ export const screenShareCaptureOptions: ScreenShareCaptureOptions = {
   // em vez do som do sistema inteiro — sem isso, notificação e qualquer outro
   // programa entram junto na sala.
   systemAudio: 'exclude',
+};
+
+/** SPEC §6.9. */
+export const cameraCaptureOptions: VideoCaptureOptions = {
+  resolution: VideoPresets.h360.resolution,
+  facingMode: 'user',
+};
+
+/**
+ * Simulcast SÓ na câmera.
+ *
+ * As opções de publicação são passadas por chamada em `setCameraEnabled`, e
+ * não nos defaults do Room, de propósito: assim a tela compartilhada mantém a
+ * decisão da §6.4 de publicar uma camada só. Câmera é o caso oposto — muitos
+ * assistindo em quadro pequeno —, e a camada de 180p é o que permite ao SFU
+ * mandar pouco para quem não está olhando de perto.
+ */
+export const cameraPublishOptions: TrackPublishOptions = {
+  simulcast: true,
+  videoEncoding: VideoPresets.h360.encoding,
+  videoSimulcastLayers: [VideoPresets.h180],
 };
 
 /** Slug curto e digitável para quando o campo de sala vem vazio. */

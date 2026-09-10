@@ -17,8 +17,10 @@ export interface DeviceOption {
 export interface MediaDeviceSettings {
   audioInputs: DeviceOption[];
   audioOutputs: DeviceOption[];
+  videoInputs: DeviceOption[];
   activeAudioInput: string;
   activeAudioOutput: string;
+  activeVideoInput: string;
   /** Firefox e Safari não expõem escolha de saída de áudio. */
   outputSelectionSupported: boolean;
   /** O navegador só revela os nomes depois da permissão de microfone. */
@@ -28,6 +30,7 @@ export interface MediaDeviceSettings {
   setNoiseSuppression: (enabled: boolean) => void;
   selectAudioInput: (deviceId: string) => void;
   selectAudioOutput: (deviceId: string) => void;
+  selectVideoInput: (deviceId: string) => void;
   revealLabels: () => void;
 }
 
@@ -58,8 +61,10 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
   const room = useRoomContext();
   const [audioInputs, setAudioInputs] = useState<DeviceOption[]>([]);
   const [audioOutputs, setAudioOutputs] = useState<DeviceOption[]>([]);
+  const [videoInputs, setVideoInputs] = useState<DeviceOption[]>([]);
   const [activeAudioInput, setActiveAudioInput] = useState(DEFAULT_DEVICE);
   const [activeAudioOutput, setActiveAudioOutput] = useState(DEFAULT_DEVICE);
+  const [activeVideoInput, setActiveVideoInput] = useState(DEFAULT_DEVICE);
   const [labelsHidden, setLabelsHidden] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
   const [noiseSuppression, setNoiseSuppressionState] = useState(() => readNoiseSuppression());
@@ -76,12 +81,15 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
       const outputs = outputSelectionSupported
         ? await Room.getLocalDevices('audiooutput', false)
         : [];
+      const cameras = await Room.getLocalDevices('videoinput', false);
 
       setAudioInputs(toOptions(inputs, 'Microfone'));
       setAudioOutputs(toOptions(outputs, 'Saída de áudio'));
+      setVideoInputs(toOptions(cameras, 'Câmera'));
       setLabelsHidden(inputs.length > 0 && inputs.every((device) => device.label === ''));
       setActiveAudioInput(room.getActiveDevice('audioinput') ?? DEFAULT_DEVICE);
       setActiveAudioOutput(room.getActiveDevice('audiooutput') ?? DEFAULT_DEVICE);
+      setActiveVideoInput(room.getActiveDevice('videoinput') ?? DEFAULT_DEVICE);
     } catch {
       onErrorRef.current('Não foi possível listar os dispositivos de áudio deste navegador.');
     }
@@ -96,6 +104,7 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
     const handleActiveChanged = (kind: MediaDeviceKind, deviceId: string): void => {
       if (kind === 'audioinput') setActiveAudioInput(deviceId);
       if (kind === 'audiooutput') setActiveAudioOutput(deviceId);
+      if (kind === 'videoinput') setActiveVideoInput(deviceId);
     };
 
     room.on(RoomEvent.MediaDevicesChanged, handleDevicesChanged);
@@ -142,6 +151,14 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
     (deviceId: string) => {
       writePreferredDevice('audiooutput', deviceId);
       select('audiooutput', deviceId);
+    },
+    [select],
+  );
+
+  const selectVideoInput = useCallback(
+    (deviceId: string) => {
+      writePreferredDevice('videoinput', deviceId);
+      select('videoinput', deviceId);
     },
     [select],
   );
@@ -215,8 +232,10 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
   return {
     audioInputs,
     audioOutputs,
+    videoInputs,
     activeAudioInput,
     activeAudioOutput,
+    activeVideoInput,
     outputSelectionSupported,
     labelsHidden,
     isSwitching,
@@ -224,6 +243,7 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
     setNoiseSuppression,
     selectAudioInput,
     selectAudioOutput,
+    selectVideoInput,
     revealLabels,
   };
 }
