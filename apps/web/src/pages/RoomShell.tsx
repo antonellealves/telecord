@@ -8,15 +8,18 @@ import { ConnectionBanner } from '../components/ConnectionBanner';
 import { ControlBar } from '../components/ControlBar';
 import { DeviceSettings } from '../components/DeviceSettings';
 import { ParticipantSidebar } from '../components/ParticipantSidebar';
+import { RoomPanel } from '../components/RoomPanel';
 import { ScreenStage } from '../components/ScreenStage';
 import { Soundboard } from '../components/Soundboard';
 import { ToastStack } from '../components/ToastStack';
+import { useAuth } from '../hooks/useAuth';
 import { useAway } from '../hooks/useAway';
 import { useCameras } from '../hooks/useCameras';
 import { useParticipantViews } from '../hooks/useParticipantViews';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 import { useRoomConnectionStatus } from '../hooks/useRoomConnection';
 import { useRoomMessages } from '../hooks/useRoomMessages';
+import { useRoomSounds } from '../hooks/useRoomSounds';
 import { useScreenShares } from '../hooks/useScreenShares';
 import { useSoundVolume } from '../hooks/useSoundVolume';
 import { useTalkControls } from '../hooks/useTalkControls';
@@ -43,14 +46,28 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
   const cameras = useCameras(push);
   const talk = useTalkControls((message) => push('error', message));
   const sound = useSoundVolume();
+  const { status: authStatus } = useAuth();
+  /*
+   * O painel de sons junta o catálogo do build com os que a turma enviou para
+   * ESTA sala, e é ele quem resolve o id que chega pelo canal de dados — daí a
+   * ordem: os sons primeiro, e o `find` deles entregue ao canal de mensagens.
+   */
+  const roomSounds = useRoomSounds({
+    roomId,
+    isSignedIn: authStatus === 'autenticado',
+    notify: push,
+  });
   const { messages, unread, sendChat, playSound, playing, stopSound, markRead } =
-    useRoomMessages(() => sound.effective);
+    useRoomMessages(() => sound.effective, roomSounds.find);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSoundboardOpen, setIsSoundboardOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isRoomPanelOpen, setIsRoomPanelOpen] = useState(false);
 
   const controlsRef = useRef<HTMLDivElement | null>(null);
+  /* Âncora da ficha da sala: engloba o título e o próprio painel. */
+  const identityRef = useRef<HTMLDivElement | null>(null);
   const mainRef = useRef<HTMLDivElement | null>(null);
   const sidebar = useResizablePanel(mainRef, {
     name: 'sidebar',
@@ -109,9 +126,31 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
         <RoomAudioRenderer />
 
         <header className={styles.header}>
-          <div className={styles.identity}>
+          <div className={styles.identity} ref={identityRef}>
             <span className={styles.brand}>Telecord</span>
-            <h1 className={styles.title}>{roomId}</h1>
+            {/*
+              * O título continua sendo o `h1` da página — a estrutura do
+              * documento não muda por causa de um painel. O que abre a ficha é
+              * um botão DENTRO dele.
+              */}
+            <h1 className={styles.title}>
+              <button
+                type="button"
+                className={styles.titleButton}
+                onClick={() => setIsRoomPanelOpen((open) => !open)}
+                aria-expanded={isRoomPanelOpen}
+                title="Nome, descrição e quem participa desta sala"
+              >
+                {roomId}
+              </button>
+            </h1>
+            {isRoomPanelOpen ? (
+              <RoomPanel
+                roomId={roomId}
+                anchorRef={identityRef}
+                onClose={() => setIsRoomPanelOpen(false)}
+              />
+            ) : null}
           </div>
           <ConnectionBanner status={status} />
         </header>
@@ -169,6 +208,13 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
           {isSoundboardOpen ? (
             <Soundboard
               containerRef={controlsRef}
+              sounds={roomSounds.sounds}
+              isLoading={roomSounds.isLoading}
+              error={roomSounds.error}
+              canUpload={roomSounds.canUpload}
+              isUploading={roomSounds.isUploading}
+              onUpload={(files) => void roomSounds.upload(files)}
+              onDelete={(soundId) => void roomSounds.remove(soundId)}
               onPlay={playSound}
               playing={playing}
               onStop={stopSound}

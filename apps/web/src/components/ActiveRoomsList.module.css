@@ -92,8 +92,10 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  /* Lista longa não pode empurrar o resto da página para fora da vista. */
-  max-height: 208px;
+  /* Lista longa não pode empurrar o resto da página para fora da vista. O teto
+     subiu junto com a lista: além das salas online, agora entram as nomeadas
+     que estão vazias. */
+  max-height: 268px;
   overflow-y: auto;
 }
 
@@ -158,4 +160,73 @@
 .age {
   font-family: var(--font-mono);
   font-size: 10.5px;
+}
+
+/* ---- salas com nome ---------------------------------------------------
+   A lista passou a ter duas fontes: quem está online agora (LiveKit) e quem
+   tem nome (banco). O que muda no visual é pouco de propósito — continua sendo
+   uma lista de lugares para clicar, não dois blocos concorrendo. */
+
+.identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.emoji {
+  flex: none;
+  font-size: 16px;
+  line-height: 1;
+  font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
+}
+
+.names {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+/* Sala batizada mostra o nome em texto normal; sala sem nome continua com o
+   slug em monoespaçada, como antes. A troca de família é o que diferencia
+   "isto é um nome" de "isto é um endereço". */
+.names:has(.slug) .name {
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+}
+
+.slug {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sala sem ninguém: mais apagada, sem o ponto pulsante. Continua clicável —
+   entrar numa sala vazia é como toda sala começa. */
+.quiet {
+  background: rgba(10, 14, 26, 0.24);
+  border-style: dashed;
+}
+
+.quiet .name {
+  color: var(--text-dim);
+}
+
+.divider {
+  padding: 6px 4px 2px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.sounds {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
 }

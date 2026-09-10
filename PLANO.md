@@ -297,3 +297,160 @@ Resolvido durante a implementação: host (Vercel, mesma origem), domínio próp
    e o botão some da tela; o resto funciona.
 3. **Verificar no primeiro deploy:** o empacotamento do motor do Prisma (§2.3) e
    a precedência de `api/token.ts` sobre a captura `api/[...nest].ts`.
+
+---
+
+# Fatia 2 — Salas, soundboard enviado e painel de administração
+
+Implementada. Esta seção registra o que foi construído e as decisões que a
+§2.4 acima deixou em aberto ("adotar o §4 não é acrescentar tabelas: é
+reescrever o produto"). O que segue é como o §4 do documento foi acomodado
+**sem** reescrever o produto.
+
+## 9. O princípio que governou tudo
+
+**Nada do que foi acrescentado pode ser exigido para entrar numa sala.**
+
+Continua valendo, byte a byte: quem abre `/sala/qualquer-coisa` entra, sem
+conta, sem banco, sem este serviço no ar. Todas as tabelas novas são
+ADITIVAS — acrescentam nome, dono, sons e histórico a uma sala que já
+funcionava sem nada disso.
+
+É o que decide as três escolhas mais discutíveis abaixo.
+
+## 10. Entidades criadas
+
+| Model | Para quê | Observação |
+|---|---|---|
+| `Room` | nome, descrição, emoji, dono, visibilidade | `slug` = o `roomId` do LiveKit |
+| `RoomMember` | papel na sala (`OWNER`/`MOD`/`MEMBER`) | governa administrar, **não** entrar |
+| `Sound` | metadado do clipe enviado | `roomId` nulo = som global |
+| `SoundBlob` | os bytes, em tabela própria | trocar por object storage = trocar esta tabela |
+| `MediaSession` | quem entrou e quando saiu | escrita **só** pelo webhook do LiveKit |
+| `SystemLog` | o que o servidor fez | TTL de 30 dias, no próprio TiDB |
+| `AuditLog` | quem fez o quê, com antes e depois | **sem** TTL |
+
+Todas seguem as regras da fatia anterior: `cuid()`, sem `autoincrement()`,
+`@@index` explícito em toda FK, e `@@index([createdAt, id])` em tudo que se
+lista — porque toda listagem é keyset, e nenhuma usa `OFFSET`.
+
+## 11. Três decisões que precisam estar escritas
+
+### 11.1 Não existe sala privada, e a ausência é deliberada
+
+`RoomVisibility` tem `PUBLIC` e `UNLISTED`. Não tem `PRIVATE`.
+
+Quem emite o token de entrada é `api/token.ts`, uma função sem banco. Uma sala
+privada de verdade exigiria que essa emissão consultasse a lista de membros —
+e aí uma queda do banco impediria entrar em sala, que é justamente o que a §6
+proíbe. As duas regras não cabem juntas sem uma decisão que ainda não foi
+tomada.
+
+Marcar a sala como privada sem essa verificação seria pior do que não ter o
+recurso: daria a aparência de controle sem o controle, e qualquer pessoa com a
+URL continuaria entrando. `UNLISTED` diz exatamente o que faz — sai do
+diretório, continua alcançável pelo endereço.
+
+**Se um dia isso for necessário**, o caminho é `api/token.ts` consultar o banco
+e decidir o que fazer quando ele não responder. É uma decisão de produto
+("prefere sala trancada ou sala sempre acessível?"), não de implementação.
+
+### 11.2 Os bytes do som moram no TiDB
+
+O documento fala em `storageKey` e armazenamento de objeto. Aqui os bytes estão
+numa tabela (`SoundBlob`), com teto de 2 MiB por arquivo.
+
+O que se ganha: nenhum fornecedor novo, nenhuma credencial nova, nenhum segundo
+lugar de onde as coisas somem, e o mesmo comportamento em desenvolvimento e em
+produção. O que se perde: não escala para arquivo grande nem para volume alto.
+
+Para clipe de soundboard de uma turma de dota, o primeiro ganha. E o metadado
+está separado dos bytes exatamente para que trocar de ideia seja substituir uma
+tabela por uma chave, sem tocar em `Sound`, que é o que o resto referencia.
+
+### 11.3 Minuto de conversa vem do webhook, não do navegador
+
+`MediaSession` é escrita SÓ pelo `POST /api/livekit/webhook`, com assinatura
+conferida contra o `sha256` do corpo (`webhook-auth.ts`, com teste).
+
+O cliente seria a pior fonte possível para o indicador principal do painel: a
+aba fecha sem avisar, a rede cai no meio, e qualquer pessoa com o devtools
+aberto reporta o número que quiser.
+
+**Custo:** exige configurar o webhook no LiveKit Cloud. Sem isso a tabela fica
+vazia — e o painel DIZ que não está medindo, em vez de mostrar zero como se
+ninguém tivesse conversado.
+
+## 12. Rotas
+
+```
+GET    /api/rooms/directory        público, keyset
+GET    /api/rooms/mine             sessão
+GET    /api/rooms/:slug            sessão OPCIONAL (muda a resposta, não exige)
+POST   /api/rooms                  cria, ou adota sala sem dono
+PATCH  /api/rooms/:slug            OWNER/MOD
+DELETE /api/rooms/:slug            OWNER
+PUT    /api/rooms/:slug/members/:userId
+DELETE /api/rooms/:slug/members/:userId
+
+GET    /api/sounds?room=            sessão opcional (decide `canDelete`)
+POST   /api/sounds?room=&filename=  sessão; corpo = bytes crus
+GET    /api/sounds/:id/audio        público, imutável, com ETag
+DELETE /api/sounds/:id              quem enviou, quem administra, ou admin
+
+POST   /api/livekit/webhook         público, autenticado pela ASSINATURA
+
+GET    /api/admin/metrics|logs|audit|users     @Roles('ADMIN') NA CLASSE
+PATCH  /api/admin/users/:id
+```
+
+`GET /api/rooms` — sem sufixo — continua sendo a função serverless das salas ao
+vivo, sem banco. Sub-caminhos caem na captura do Nest; o passo de verificação
+do deploy confere as duas coisas.
+
+### 12.1 `@OptionalAuth()`, o decorador novo
+
+Não é `@Public()` com um jeito de espiar o token (público nem lê o cabeçalho),
+nem rota protegida (exigir conta fecharia a porta para o anônimo, que aqui é
+usuário de primeira classe). Serve às rotas cuja RESPOSTA muda com quem
+pergunta. Token inválido cai em anônimo em vez de dar erro.
+
+## 13. O que impede credencial de entrar no log
+
+`logging/redact.ts`, no caminho obrigatório de toda escrita. Age por nome de
+campo (`password`, `token`, `authorization`…) **e** por formato do valor (JWT,
+PEM, `Bearer …`) — o segundo pega o caso em que o campo se chama `dados` e o
+token está dentro. Corta profundidade, largura e comprimento. Tem teste.
+
+A regra virou código porque disciplina não a cumpre: basta um
+`context: { ...body }` escrito com pressa num caminho de erro que ninguém
+revisa.
+
+## 14. Critérios de aceite desta fatia
+
+- [x] `migrate deploy` limpo contra TiDB zerado, incluindo o `TTL` do `SystemLog`
+- [x] Nenhum `autoincrement()`; toda FK com `@@index`; nenhuma listagem com `OFFSET`
+- [x] Entrar em sala continua idêntico sem conta e com a API fora do ar
+- [x] Arquivo que não é áudio é recusado pelos BYTES, não pelo `Content-Type` — com teste
+- [x] Mesmo arquivo enviado duas vezes não duplica os bytes
+- [x] Áudio servido com tipo farejado, cache imutável e 304 na revalidação
+- [x] Webhook com assinatura de outra chave, corpo trocado, token vencido ou `alg:none` é recusado — com teste
+- [x] Reentrega do mesmo evento não duplica a sessão
+- [x] `USER` recebe 403 em toda rota de `/api/admin`; anônimo recebe 401
+- [x] Nenhuma resposta de `/api/admin/users` contém hash de senha
+- [x] Administrador não muda a própria conta e não entra como outra pessoa
+- [x] Cursor inválido é 400, e a segunda página não repete a primeira
+- [x] Série de N dias tem N pontos, termina hoje e mostra zero onde não houve evento
+- [x] Painel avisa quando não há dado de sessão em vez de desenhar zero
+
+## 15. O que fica para depois
+
+1. **Contador de reprodução de som.** O disparo acontece pelo canal de dados,
+   entre clientes; o servidor não vê. Medir exigiria um pedido por clique, e o
+   número seria auto-declarado.
+2. **Reconciliação de sessões órfãs.** `room_finished` fecha o que ficou
+   aberto, mas se ESSE evento se perder a sessão fica aberta para sempre. A
+   varredura periódica precisa de cron da Vercel (§2.1).
+3. **Limitador de requisições compartilhado.** Continua em memória, por
+   instância (§2.1).
+4. **Sala privada**, se e quando a §11.1 for decidida.

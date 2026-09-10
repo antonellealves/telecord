@@ -7,7 +7,11 @@ import {
   parseRoomMessage,
   type RoomMessage,
 } from '@telecord/shared';
-import { findSound } from '../lib/sounds';
+
+/** O mínimo que este hook precisa saber de um som para tocá-lo. */
+export interface ResolvedSound {
+  file: string;
+}
 
 export interface ChatEntry {
   id: string;
@@ -83,7 +87,19 @@ function hardStop(audio: HTMLAudioElement): void {
  * Nada aqui é persistido: a sala é efêmera, e o histórico morre com ela. Quem
  * entra depois não vê o que passou — é a mesma regra do resto do app.
  */
-export function useRoomMessages(getVolume: () => number): RoomMessaging {
+export function useRoomMessages(
+  getVolume: () => number,
+  /*
+   * De onde sai o arquivo de um id.
+   *
+   * Entra como parâmetro porque o catálogo deixou de ser uma constante do
+   * módulo: além dos sons do build, a sala tem os que a turma enviou, e esses
+   * chegam por rede depois da primeira renderização. Ler `SOUNDS` direto aqui
+   * faria todo clipe enviado ser ignorado com a mesma mensagem de "não
+   * conheço este som".
+   */
+  resolveSound: (soundId: string) => ResolvedSound | undefined,
+): RoomMessaging {
   const room = useRoomContext();
   const [messages, setMessages] = useState<ChatEntry[]>([]);
   const [unread, setUnread] = useState(0);
@@ -105,12 +121,21 @@ export function useRoomMessages(getVolume: () => number): RoomMessaging {
   const tokenRef = useRef(0);
   const getVolumeRef = useRef(getVolume);
   getVolumeRef.current = getVolume;
+  /*
+   * Por referência, e não por dependência do `useCallback`: a lista de sons da
+   * sala muda quando alguém envia um clipe, e reconstruir `playLocally` a cada
+   * mudança reassinaria o efeito do canal de dados — que corta o som que
+   * estiver tocando naquele instante.
+   */
+  const resolveSoundRef = useRef(resolveSound);
+  resolveSoundRef.current = resolveSound;
 
   const playLocally = useCallback((soundId: string) => {
-    const sound = findSound(soundId);
+    const sound = resolveSoundRef.current(soundId);
     if (sound === undefined) {
-      // Som que este cliente não conhece: pode ser catálogo diferente entre
-      // versões. Ignorar é melhor do que estourar erro na cara de quem ouve.
+      // Som que este cliente não conhece: catálogo diferente entre versões do
+      // app, ou um clipe enviado que a lista daqui ainda não trouxe. Ignorar é
+      // melhor do que estourar erro na cara de quem ouve.
       return;
     }
     const volume = getVolumeRef.current();

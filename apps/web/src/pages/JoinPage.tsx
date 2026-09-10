@@ -11,6 +11,7 @@ import {
 import { ActiveRoomsList } from '../components/ActiveRoomsList';
 import { AmbientGradient } from '../components/AmbientGradient';
 import { useActiveRooms } from '../hooks/useActiveRooms';
+import { useRoomDirectory } from '../hooks/useRoomDirectory';
 import { useAuth } from '../hooks/useAuth';
 import { useDisplayName } from '../hooks/useDisplayName';
 import { useMicrophonePermission } from '../hooks/useMicrophonePermission';
@@ -43,6 +44,12 @@ export function JoinPage(): JSX.Element {
   }, [user]);
 
   const activeRooms = useActiveRooms();
+  /*
+   * O nome das salas vem do banco; quem está online, do LiveKit. A lista
+   * abaixo casa as duas — e sem serviço de contas o diretório chega vazio e a
+   * lista fica idêntica à de antes.
+   */
+  const directory = useRoomDirectory();
   const microphone = useMicrophonePermission();
   const [lastRoom] = useState(() => readLastRoom());
 
@@ -137,6 +144,20 @@ export function JoinPage(): JSX.Element {
                 </p>
                 <p className={styles.hint}>
                   Vem da sua conta ({user.email}).{' '}
+                  {/*
+                    * O atalho para o painel só aparece para quem tem o cargo,
+                    * e isso é conveniência de navegação — a rota `/painel`
+                    * existe para todo mundo e é o SERVIDOR que recusa quem não
+                    * for administrador, com 403 em cada chamada.
+                    */}
+                  {user.role === 'ADMIN' ? (
+                    <>
+                      <Link className={styles.link} to="/painel">
+                        painel
+                      </Link>
+                      {' · '}
+                    </>
+                  ) : null}
                   <button type="button" className={styles.linkButton} onClick={() => void signOut()}>
                     sair da conta
                   </button>
@@ -205,6 +226,7 @@ export function JoinPage(): JSX.Element {
 
           <ActiveRoomsList
             rooms={activeRooms.rooms}
+            directory={directory.rooms}
             isLoading={activeRooms.isLoading}
             error={activeRooms.error}
             onEnter={enterRoom}

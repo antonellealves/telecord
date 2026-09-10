@@ -22,6 +22,8 @@
 }
 
 .identity {
+  /* Âncora da ficha da sala, que é posicionada em relação a este bloco. */
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -47,6 +49,28 @@
   letter-spacing: -0.01em;
   color: var(--text);
   word-break: break-all;
+}
+
+/* O nome da sala abre a ficha dela. Não parece um botão em repouso — é o
+   título da página, e enfeitá-lo de controle competiria com a barra de
+   controles lá embaixo. O sublinhado pontilhado aparece no hover, que é onde
+   a affordance precisa existir. */
+.titleButton {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  word-break: break-all;
+  border-bottom: 1px dotted transparent;
+  transition: color 0.16s ease, border-color 0.16s ease;
+}
+
+.titleButton:hover,
+.titleButton[aria-expanded='true'] {
+  color: var(--accent);
+  border-bottom-color: rgba(var(--accent-rgb), 0.6);
 }
 
 /* Âncora do painel de dispositivos, que abre acima da barra. */

@@ -199,6 +199,77 @@ teste do serviço de autenticação sozinho.
 origem. Continuam separadas porque uma é lida no navegador, em tempo de build, e
 a outra no servidor, em tempo de execução.
 
+## Salas com nome e soundboard da sala
+
+Duas coisas passaram a existir **em volta** da sala, sem mudar como se entra
+nela — quem abre `/sala/qualquer-coisa` continua entrando sem conta, sem banco
+e com o serviço de contas fora do ar.
+
+**Dar nome à sala.** Dentro da sala, clique no nome dela no canto superior
+esquerdo. Quem batiza fica como dono, e passa a poder renomeá-la, escolher
+emoji, tirá-la do diretório e administrar os membros. Salas com nome aparecem
+na tela inicial junto das que têm gente agora.
+
+Não existe sala *privada*: `só por link` tira do diretório e nada além disso.
+Quem emite o token de entrada é uma função sem acesso ao banco, e um cadeado
+que ela não consegue conferir seria um cadeado desenhado na porta — o
+raciocínio inteiro está em `PLANO.md §11.1`.
+
+**Acrescentar um som à sala.** Abra o painel de sons e largue um arquivo de
+áudio nele (ou use o botão de enviar). O nome do arquivo vira o rótulo. Exige
+conta, porque o arquivo fica guardado e precisa ter dono para alguém poder
+apagá-lo depois. Limite de 2 MB por arquivo e 120 sons por sala.
+
+Os sons que ficam em `apps/web/src/assets/sons/` continuam existindo e valem
+para **todas** as salas — eles viajam dentro do bundle, funcionam sem conta e
+sem rede, e é por isso que não foram substituídos.
+
+O servidor decide o formato pelos **bytes** do arquivo, não pelo que o
+navegador declara. Um `.exe` renomeado para `.mp3` é recusado.
+
+## Painel de administração
+
+Em `/painel`, para contas com papel `ADMIN`. Tem quatro abas:
+
+- **Visão geral** — indicadores comparados com o período anterior, séries
+  diárias de entradas, minutos de conversa, cadastros e erros, além das salas
+  mais movimentadas.
+- **Log** — o que o servidor fez, com filtro por nível, escopo e busca.
+  Expira sozinho em 30 dias, por `TTL` do TiDB.
+- **Auditoria** — quem fez o quê, com o antes e o depois. Não expira.
+- **Contas** — papel e situação. Suspender derruba as sessões abertas na hora.
+
+Não há como ler senha nem entrar como outra pessoa por aqui — nem pela API. As
+rotas de `/api/admin` são recusadas com 403 para conta comum **no servidor**,
+com o guard aplicado no nível da classe: rota nova nasce restrita.
+
+### Fazendo a primeira conta virar administradora
+
+Não há tela para isso, de propósito: a primeira promoção tem que passar pelo
+banco.
+
+```sql
+UPDATE `User` SET `role` = 'ADMIN' WHERE `email` = 'voce@exemplo.com';
+```
+
+Depois entre de novo — o papel viaja dentro do access token, e o que já estava
+emitido continua dizendo `USER` até vencer.
+
+### Webhook do LiveKit (entradas em sala e minutos de conversa)
+
+Estes dois indicadores vêm do SFU, não do navegador: aba que fecha sem avisar e
+número auto-declarado não servem para medir conversa. Configure em
+**cloud.livekit.io → Project → Settings → Webhooks**:
+
+```
+https://telecord.vercel.app/api/livekit/webhook
+```
+
+O serviço confere a assinatura do evento contra o `LIVEKIT_API_SECRET` que já
+existe — nenhuma credencial nova. Sem o webhook, o painel mostra zero nesses
+dois indicadores **e avisa que não está medindo**, em vez de fingir que
+ninguém conversou.
+
 ## Deploy
 
 Quem publica é o **GitHub Actions**, não a Vercel. O deploy automático dela está desligado em [vercel.json](./vercel.json) (`git.deploymentEnabled: false`), e o pipeline está em [.github/workflows/deploy.yml](.github/workflows/deploy.yml).

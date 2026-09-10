@@ -168,7 +168,46 @@ jobs:
             echo "3. autenticação desligada (sem VITE_API_URL) — pulando"
           fi
 
-          echo "4. rota de API inexistente deve dar 404, não o HTML da SPA"
+          echo "4. /api/rooms deve continuar sendo a função das salas ao vivo"
+          code=$(curl -sS -o /tmp/rooms.json -w '%{http_code}' --max-time 30 "$URL/api/rooms")
+          if [ "$code" = "200" ]; then
+            echo "   ok (200)"
+          else
+            echo "::error::/api/rooms respondeu $code"
+            cat /tmp/rooms.json || true
+            fail=1
+          fi
+
+          if [ -n "${AUTH_ON:-}" ]; then
+            # Estes dois confirmam a suposição de roteamento da Vercel que não
+            # dá para verificar localmente: um arquivo de função casa com o
+            # caminho EXATO dele, e o sub-caminho sobra para a captura
+            # api/[...nest].ts. Se um dia deixar de valer, /api/rooms/directory
+            # cairia na função errada — e o sintoma seria o diretório de salas
+            # devolvendo a lista do LiveKit em silêncio.
+            echo "5. /api/rooms/directory deve cair no serviço, não na função"
+            code=$(curl -sS -o /tmp/dir.json -w '%{http_code}' --max-time 30 "$URL/api/rooms/directory")
+            if [ "$code" = "200" ] && grep -q '"items"' /tmp/dir.json; then
+              echo "   ok (200, formato de página)"
+            else
+              echo "::error::/api/rooms/directory respondeu $code"
+              cat /tmp/dir.json || true
+              fail=1
+            fi
+
+            echo "6. rota de administração deve exigir sessão"
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$URL/api/admin/logs")
+            if [ "$code" = "401" ]; then
+              echo "   ok (401)"
+            else
+              echo "::error::/api/admin/logs respondeu $code, e deveria ser 401"
+              fail=1
+            fi
+          else
+            echo "5-6. autenticação desligada — pulando"
+          fi
+
+          echo "7. rota de API inexistente deve dar 404, não o HTML da SPA"
           code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$URL/api/nada")
           if [ "$code" = "404" ]; then echo "   ok (404)"; else echo "::error::/api/nada respondeu $code"; fail=1; fi
 

@@ -198,7 +198,49 @@ A função importa a saída **compilada** de `apps/api`, não a fonte: o compila
 
 **Pré-vinculação de conta.** Suportar Google e senha juntos abre um ataque conhecido: registrar por senha com o e-mail de outra pessoa e esperar que ela entre pelo Google. Por isso conta criada por senha nasce com `emailVerifiedAt` nulo e **nunca** é adotada por um login social; o Google só vincula com e-mail verificado dos dois lados.
 
-**Sem detecção de inatividade e sem impersonação.** Fora de escopo, deliberadamente.
+**Sem detecção de inatividade e sem impersonação.** Fora de escopo, deliberadamente — e continua assim depois do painel de administração (§2.5): não existe rota que emita sessão em nome de terceiro.
+
+### 2.5 Salas com nome, sons enviados e registro (emenda pós-implementação)
+
+O §3 abaixo continua verdadeiro para a SALA: o estado de quem está falando,
+quem compartilha tela e quem está ausente segue derivado do SFU e morrendo
+junto com a sessão. O que passou a ser persistido é o que fica **em volta** da
+sala, e nada disso é exigido para entrar numa.
+
+| Rota | Quem pode | Observação |
+|---|---|---|
+| `GET /api/rooms` | qualquer um | inalterada: função sem banco, salas ao vivo no SFU |
+| `GET /api/rooms/directory` | qualquer um | salas com nome, paginação por cursor |
+| `GET /api/rooms/:slug` | qualquer um | com sessão devolve também o papel de quem pergunta |
+| `POST /api/rooms` | com conta | cria a sala, ou adota uma que esteja sem dono |
+| `PATCH`/`DELETE /api/rooms/:slug` | dono / moderação | `DELETE` é exclusão lógica |
+| `GET /api/sounds?room=` | qualquer um | com sessão, marca quais o chamador pode apagar |
+| `POST /api/sounds` | com conta | corpo = bytes crus; tipo decidido pelos bytes |
+| `GET /api/sounds/:id/audio` | qualquer um | imutável por id, com `ETag` e 304 |
+| `DELETE /api/sounds/:id` | quem enviou, quem administra, admin | apaga os bytes, mantém o rastro |
+| `POST /api/livekit/webhook` | o LiveKit | autenticada pela assinatura do corpo |
+| `/api/admin/*` | `ADMIN` | guard no nível da CLASSE do controller |
+
+**Precedência de rota na Vercel.** `api/rooms.ts` casa com `/api/rooms` e só
+com ele; `/api/rooms/qualquer-coisa` sobra para a captura `api/[...nest].ts`.
+As duas coisas convivem de propósito — a lista de salas ao vivo não pode
+depender do banco —, e o passo de verificação do deploy confere as duas, para
+o dia em que essa suposição deixar de valer.
+
+**Cache do áudio.** `GET /api/sounds/:id/audio` responde
+`public, max-age=31536000, immutable`, e o `vercel.json` exclui esse caminho do
+`no-store` que vale para o resto da API. O conteúdo de um id nunca muda:
+apagar produz 404, nunca um áudio diferente na mesma URL. É o que faz um clipe
+disparado trinta vezes numa noite ser baixado uma vez.
+
+**O tipo do arquivo sai dos bytes.** O `Content-Type` do envio é ignorado e o
+formato é farejado pela assinatura inicial (`sound-format.ts`). Se o tipo da
+resposta viesse do pedido, bastaria mandar HTML dizendo `audio/mpeg` para
+escolher o que o navegador executa ao abrir a URL — e a origem passaria a
+servir conteúdo de terceiro.
+
+**Retenção.** `SystemLog` expira em 30 dias, por `TTL` declarado na migração
+(sintaxe do TiDB; o Prisma não a emite). `AuditLog` não expira.
 
 ---
 
@@ -573,6 +615,14 @@ Ordem que importa: a Vercel roda o `buildCommand` **antes** de compilar as funç
 **Autenticação é opcional, e por isso não fecha nada**
 
 - Existe conta (§2.4), mas ela **não protege a sala**: quem tem a URL entra sem conta, como sempre. O que a conta garante é que o nome de quem entrou com ela não é auto-declarado.
+- Sala com nome e dono (§2.5) **não muda isso**. Não existe visibilidade "privada", e a ausência é deliberada: quem emite o token de entrada é uma função sem banco, e um cadeado que ela não consegue verificar seria um cadeado desenhado na porta. `UNLISTED` tira do diretório e nada além disso.
+- O áudio de um som enviado é público por id, pelo mesmo motivo: quem entra na sala recebe a lista inteira de sons dela, e fingir segredo ali não protegeria nada.
+
+**Sessões e minutos dependem de um webhook configurado**
+
+- `MediaSession` só é escrita pelo `POST /api/livekit/webhook`. Sem o webhook apontado no LiveKit Cloud, "entradas em sala" e "minutos de conversa" ficam em zero no painel — que **avisa** que não está medindo, em vez de exibir zero como se ninguém tivesse conversado.
+- Se o evento `participant_left` se perder E o `room_finished` também, a sessão fica aberta para sempre e nunca entra na conta de minutos. A varredura periódica que fecharia essas órfãs precisa de cron, que função serverless não tem.
+- O contador de reprodução de som não existe: o disparo acontece entre clientes, pelo canal de dados, e o servidor não o vê.
 - **A lista de salas ativas continua pública**, e continua sem senha por sala. Fechar isso exigiria tornar o login obrigatório, que é decisão de produto tomada no sentido contrário.
 - `/api/token` continua sem rate limit. O serviço de autenticação tem limite nas rotas de credencial; a emissão de token do LiveKit, não.
 - Não há expulsar, silenciar, nem lista de moderação.

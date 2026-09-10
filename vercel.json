@@ -19,7 +19,7 @@
       ]
     },
     {
-      "source": "/api/(.*)",
+      "source": "/api/((?!sounds/).*)",
       "headers": [{ "key": "Cache-Control", "value": "no-store" }]
     }
   ]

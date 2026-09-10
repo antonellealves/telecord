@@ -1,0 +1,476 @@
+/*
+ * Estilos do painel de administração.
+ *
+ * Um módulo para as quatro peças (página, log, auditoria e contas), e não um
+ * por arquivo como no resto do projeto. O motivo é que elas formam UMA tela:
+ * as três abas dividem a mesma tabela, os mesmos filtros e o mesmo cartão. Em
+ * arquivos separados, a régua da tabela e a altura do filtro seriam copiadas
+ * três vezes — e é assim que as três abas começam a ficar sutilmente
+ * diferentes uma da outra.
+ */
+
+.page {
+  min-height: 100%;
+  padding: 28px 20px 60px;
+}
+
+.shell {
+  width: min(1100px, 100%);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ---- cabeçalho -------------------------------------------------------- */
+
+.head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 20px;
+  letter-spacing: 0.02em;
+}
+
+.subtitle {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.back {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+.back:hover {
+  color: var(--accent);
+}
+
+.periods {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.period {
+  padding: 5px 12px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.period:hover {
+  color: var(--text);
+}
+
+.periodOn {
+  background: rgba(var(--accent-rgb), 0.16);
+  color: var(--accent);
+}
+
+/* ---- cartões de indicador --------------------------------------------- */
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+  gap: 10px;
+}
+
+.kpi {
+  padding: 13px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.035);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.kpiLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.kpiValue {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  /* Tabular para os números não dançarem ao atualizar o recorte. */
+  font-variant-numeric: tabular-nums;
+}
+
+.kpiDelta {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+}
+
+.up {
+  color: #7fd7a5;
+}
+
+.down {
+  color: var(--danger);
+}
+
+/* ---- blocos ----------------------------------------------------------- */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.card {
+  padding: 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.note {
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(var(--warn-rgb), 0.3);
+  background: rgba(var(--warn-rgb), 0.1);
+  color: var(--warn);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.error {
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(var(--danger-rgb), 0.35);
+  background: rgba(var(--danger-rgb), 0.1);
+  color: var(--danger);
+  font-size: 12.5px;
+}
+
+.muted {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+
+/* ---- abas ------------------------------------------------------------- */
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  padding: 9px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  transition: color 0.16s ease, border-color 0.16s ease;
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tabOn {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ---- filtros ---------------------------------------------------------- */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.search {
+  position: relative;
+  flex: 1 1 200px;
+  display: flex;
+  align-items: center;
+}
+
+.search svg {
+  position: absolute;
+  left: 10px;
+  width: 14px;
+  height: 14px;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+.input {
+  width: 100%;
+  padding: 8px 10px 8px 30px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(8, 10, 16, 0.6);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.input:focus {
+  outline: none;
+  border-color: rgba(var(--accent-rgb), 0.5);
+}
+
+.select {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(8, 10, 16, 0.6);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.ghost {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  transition: color 0.16s ease, border-color 0.16s ease;
+}
+
+.ghost:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.45);
+}
+
+.ghost:disabled {
+  opacity: 0.5;
+}
+
+/* ---- tabela ----------------------------------------------------------- */
+
+/* Rola na horizontal dentro do próprio bloco: sem isto, uma linha de log longa
+   empurra a página inteira e a barra de rolagem horizontal aparece no body. */
+.tableWrap {
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 9px 12px;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  background: #10131c;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  vertical-align: top;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.when {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.message {
+  color: var(--text);
+  /* Quebra dentro da célula em vez de esticar a tabela até o infinito. */
+  min-width: 240px;
+  max-width: 520px;
+  overflow-wrap: anywhere;
+}
+
+.context {
+  margin: 4px 0 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--text-faint);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---- selos ------------------------------------------------------------ */
+
+.badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.levelDEBUG {
+  color: var(--text-faint);
+  border-color: var(--border);
+}
+
+.levelINFO {
+  color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.35);
+  background: rgba(var(--accent-rgb), 0.1);
+}
+
+.levelWARN {
+  color: var(--warn);
+  border-color: rgba(var(--warn-rgb), 0.35);
+  background: rgba(var(--warn-rgb), 0.1);
+}
+
+.levelERROR {
+  color: var(--danger);
+  border-color: rgba(var(--danger-rgb), 0.4);
+  background: rgba(var(--danger-rgb), 0.12);
+}
+
+.statusACTIVE {
+  color: #7fd7a5;
+  border-color: rgba(127, 215, 165, 0.35);
+  background: rgba(127, 215, 165, 0.1);
+}
+
+.statusSUSPENDED {
+  color: var(--warn);
+  border-color: rgba(var(--warn-rgb), 0.35);
+  background: rgba(var(--warn-rgb), 0.1);
+}
+
+.statusBANNED {
+  color: var(--danger);
+  border-color: rgba(var(--danger-rgb), 0.4);
+  background: rgba(var(--danger-rgb), 0.12);
+}
+
+.roleADMIN {
+  color: #c9b3ff;
+  border-color: rgba(var(--accent-2-rgb), 0.5);
+  background: rgba(var(--accent-2-rgb), 0.16);
+}
+
+.roleUSER {
+  color: var(--text-dim);
+  border-color: var(--border);
+}
+
+.more {
+  display: flex;
+  justify-content: center;
+  padding-top: 4px;
+}
+
+.diff {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  max-width: 380px;
+  overflow-wrap: anywhere;
+}
+
+.diffBefore {
+  color: rgba(var(--danger-rgb), 0.85);
+}
+
+.diffAfter {
+  color: #7fd7a5;
+}
+
+.rowActions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.miniSelect {
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(8, 10, 16, 0.6);
+  color: var(--text);
+  font: inherit;
+  font-size: 11.5px;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 20px 12px 48px;
+  }
+
+  .kpiValue {
+    font-size: 20px;
+  }
+}

@@ -547,3 +547,156 @@
   font-size: 11px;
   color: var(--text-faint);
 }
+
+/* ---- envio de arquivo ------------------------------------------------
+   O painel inteiro é a área de soltar, e não um retângulo tracejado à parte:
+   a grade já ocupa quase todo o espaço, e um alvo separado disputaria lugar
+   com os cards em vez de acrescentar. */
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.add {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-dim);
+  transition: color 0.16s ease, background 0.16s ease, border-color 0.16s ease;
+}
+
+.add:hover:not(:disabled) {
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.14);
+  border-color: rgba(var(--accent-rgb), 0.4);
+}
+
+.add:disabled {
+  opacity: 0.5;
+}
+
+.add svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* O input existe para o clique no ícone abrir o seletor. `display: none` o
+   tiraria da ordem de foco de forma irreversível em alguns navegadores; isto
+   o esconde e o mantém acessível por programa. */
+.file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.dropping {
+  border-color: rgba(var(--accent-rgb), 0.55);
+  box-shadow:
+    var(--shadow-soft),
+    0 0 0 1px rgba(var(--accent-rgb), 0.35) inset;
+}
+
+.dropHint {
+  position: absolute;
+  inset: 6px;
+  z-index: 30;
+  /* Sem isto a camada engoliria o `drop`, e o arquivo largado no meio do
+     painel não chegaria a lugar nenhum. */
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: var(--radius);
+  border: 1.5px dashed rgba(var(--accent-rgb), 0.6);
+  background: rgba(10, 14, 24, 0.86);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: var(--accent-soft);
+  font-size: 13px;
+  text-align: center;
+}
+
+.dropHint svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* Aviso de falha ao carregar a lista da sala. Não é erro fatal: os sons do
+   build continuam na grade, e por isso o tom é de recado, não de alarme. */
+.warn {
+  margin: 0;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(var(--warn-rgb), 0.3);
+  background: rgba(var(--warn-rgb), 0.1);
+  color: var(--warn);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+/* Som enviado: um traço lateral que o separa do catálogo do repositório sem
+   pedir mais espaço nem uma legenda. */
+.uploaded {
+  border-left: 2px solid rgba(var(--accent-2-rgb), 0.85);
+}
+
+.remove {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(9, 11, 18, 0.92);
+  background: rgba(60, 64, 82, 0.95);
+  color: var(--text-dim);
+  /* Aparece no hover e no foco. Some por padrão porque apagar não é o que se
+     vem fazer aqui — clicar para tocar é —, e um lixeira em cada card
+     transformaria a grade num painel de administração. */
+  opacity: 0;
+  transform: scale(0.85);
+  transition: opacity 0.14s ease, transform 0.14s ease, background 0.14s ease, color 0.14s ease;
+}
+
+.tile:hover .remove,
+.remove:focus-visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.remove:hover {
+  background: rgb(var(--danger-rgb));
+  color: #fff;
+}
+
+.remove svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* Em tela de toque não existe hover, e o botão nunca apareceria. */
+@media (hover: none) {
+  .remove {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

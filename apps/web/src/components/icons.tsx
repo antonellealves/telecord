@@ -204,6 +204,77 @@ export function MoonIcon(props: IconProps): JSX.Element {
   );
 }
 
+export function UploadIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g>
+        {/* Seta para CIMA saindo da bandeja: para baixo leria como baixar. */}
+        <path d="M12 16V4" />
+        <path d="M7.5 8.5 12 4l4.5 4.5" />
+        <path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" />
+      </g>
+    </Icon>
+  );
+}
+
+export function TrashIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g>
+        <path d="M4 7h16" />
+        <path d="M9.5 7V5.5A1.5 1.5 0 0 1 11 4h2a1.5 1.5 0 0 1 1.5 1.5V7" />
+        <path d="M6.5 7l.8 11.1A1.5 1.5 0 0 0 8.8 19.5h6.4a1.5 1.5 0 0 0 1.5-1.4L17.5 7" />
+      </g>
+    </Icon>
+  );
+}
+
+export function ChartIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g>
+        <path d="M4 20h16" />
+        <path d="M7 20v-6" />
+        <path d="M12 20V6" />
+        <path d="M17 20v-9" />
+      </g>
+    </Icon>
+  );
+}
+
+export function SearchIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g>
+        <circle cx="11" cy="11" r="6" />
+        <path d="m20 20-3.6-3.6" />
+      </g>
+    </Icon>
+  );
+}
+
+export function PlusIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g>
+        <path d="M12 5v14" />
+        <path d="M5 12h14" />
+      </g>
+    </Icon>
+  );
+}
+
+export function PencilIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g>
+        <path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17v3z" />
+        <path d="M14.5 6.5l3 3" />
+      </g>
+    </Icon>
+  );
+}
+
 /**
  * Marca do Google. Fora do `Icon` porque é a única com cor própria: as quatro
  * cores são parte da identidade e não podem herdar `currentColor` como as

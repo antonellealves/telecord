@@ -1,6 +1,7 @@
 import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
 import { StatusScreen } from './components/StatusScreen';
 import statusStyles from './components/StatusScreen.module.css';
+import { AdminPage } from './pages/AdminPage';
 import { AuthReturnPage } from './pages/AuthReturnPage';
 import { JoinPage } from './pages/JoinPage';
 import { LoginPage } from './pages/LoginPage';
@@ -29,6 +30,13 @@ export function App(): JSX.Element {
         <Route path="/entrar" element={<LoginPage />} />
         <Route path="/entrar/retorno" element={<AuthReturnPage />} />
         <Route path="/entrar/nova-senha" element={<ResetPasswordPage />} />
+        {/*
+          * O painel. A rota existe para todo mundo e a própria tela decide o
+          * que desenhar — quem não é administrador vê "sem acesso". Não é aqui
+          * que o acesso é controlado: as rotas de `/api/admin` respondem 403
+          * por conta própria, e é isso que vale.
+          */}
+        <Route path="/painel" element={<AdminPage />} />
         <Route path="/sala/:roomId" element={<RoomPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>

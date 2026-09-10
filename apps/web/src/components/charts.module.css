@@ -1,0 +1,144 @@
+/* Gráficos do painel. A cor entra por `currentColor`: cada gráfico recebe uma
+   classe de tom e tudo dentro dele — traço, preenchimento, barra — herda dali,
+   em vez de repetir a mesma cor em cinco regras. */
+
+.chart {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.toneAccent {
+  color: var(--accent);
+}
+
+.toneAccent2 {
+  color: #a08cf0;
+}
+
+.toneDanger {
+  color: var(--danger);
+}
+
+.toneWarn {
+  color: var(--warn);
+}
+
+.canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+.baseline {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Os pontos são alvos de hover, não enfeite: transparentes até o cursor
+   chegar. Raio generoso porque num recorte de 90 dias a distância entre dois
+   pontos é de três pixels, e um alvo menor seria impossível de acertar. */
+.dot {
+  fill: currentColor;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.dot:hover {
+  opacity: 0.9;
+}
+
+.bar {
+  fill: currentColor;
+  opacity: 0.75;
+  transition: opacity 0.12s ease;
+}
+
+.bar:hover {
+  opacity: 1;
+}
+
+.caption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.captionRange {
+  letter-spacing: 0.04em;
+  text-transform: none;
+  opacity: 0.75;
+}
+
+/* ---- ranque em barras horizontais ------------------------------------ */
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 12.5px;
+}
+
+/* A barra fica ATRÁS do texto: a linha continua legível e a proporção aparece
+   sem uma coluna de gráfico separada. */
+.rowFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: currentColor;
+  opacity: 0.16;
+  border-radius: 8px;
+}
+
+.rowLabel {
+  position: relative;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.rowValue {
+  position: relative;
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.empty {
+  margin: 0;
+  padding: 14px 0;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}

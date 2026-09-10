@@ -138,7 +138,7 @@ function hashOf(text: string): number {
  * símbolo desfariam justamente a distinção que o emoji existe para dar. Só
  * volta a repetir se o catálogo passar do tamanho da paleta.
  */
-function pickEmoji(id: string, taken: ReadonlySet<string>): string {
+export function pickEmoji(id: string, taken: ReadonlySet<string>): string {
   const start = hashOf(id) % EMOJI_POOL.length;
   let sorted = FALLBACK_EMOJI;
   for (let step = 0; step < EMOJI_POOL.length; step += 1) {
@@ -181,6 +181,16 @@ function buildCatalog(): SoundEntry[] {
 }
 
 export const SOUNDS: SoundEntry[] = buildCatalog();
+
+/**
+ * Emojis já gastos pelo catálogo do build.
+ *
+ * Os sons ENVIADOS por quem usa a sala escolhem o emoji deles a partir desta
+ * lista de ocupados, e não de uma nova — senão um clipe enviado sairia com o
+ * mesmo símbolo de um que já está no painel, desfazendo justamente a distinção
+ * que o emoji existe para dar (ver `pickEmoji`).
+ */
+export const BUILTIN_EMOJI: ReadonlySet<string> = new Set(SOUNDS.map((sound) => sound.emoji));
 
 const byId = new Map(SOUNDS.map((sound) => [sound.id, sound]));
 
