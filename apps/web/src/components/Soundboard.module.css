@@ -269,6 +269,68 @@
   box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.25);
 }
 
+/* ---- progresso na borda ---------------------------------------------- */
+
+/*
+ * O traço vive num SVG por cima do card, não numa borda animada: só o SVG
+ * sabe percorrer o contorno arredondado a velocidade constante. Com um
+ * gradiente cônico o avanço travaria nos cantos, porque ele varre ângulo e não
+ * perímetro — num card mais largo que alto isso salta aos olhos.
+ *
+ * `overflow: visible` porque o traço fica montado em cima da borda, metade
+ * dele para fora da caixa.
+ */
+.progress {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.progressTrack,
+.progressLine {
+  fill: none;
+  stroke-width: 2;
+}
+
+/* A parte que ainda falta, apagada. Sem ela o traço aparece do nada num canto
+   e não se lê como "de zero a cheio". */
+.progressTrack {
+  stroke: rgba(var(--accent-rgb), 0.16);
+}
+
+/*
+ * `pathLength="1"` normaliza o perímetro: a conta do quanto já passou não
+ * depende do tamanho do card, que muda com o texto que quebra em duas linhas e
+ * com a largura da coluna.
+ *
+ * `stroke-dasharray: 1` faz um traço do tamanho do contorno inteiro, e o
+ * deslocamento vai de 1 (todo escondido) a 0 (todo à mostra).
+ */
+.progressLine {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: soundFill var(--sound-duration, 3s) linear forwards;
+  filter: drop-shadow(0 0 5px rgba(var(--accent-rgb), 0.55));
+}
+
+@keyframes soundFill {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/*
+ * Este movimento fica de pé mesmo com movimento reduzido: ele não decora, ele
+ * é o dado. Parado, o card só diria "tocando", que é o que o anel abaixo já
+ * dizia antes.
+ */
+
 .stop {
   position: absolute;
   /* Em cima da linha do emoji, não do nome: o selo cobre o enfeite e deixa o
@@ -331,6 +393,33 @@
 @keyframes pulse {
   50% {
     opacity: 0.25;
+  }
+}
+
+/* Com a borda se preenchendo, o anel pulsante vira ruído: dois contornos
+   animados no mesmo card disputam a mesma atenção. */
+.timed .sound::after {
+  display: none;
+}
+
+/*
+ * E a borda própria do card volta ao tom de repouso. Acesa como nos outros
+ * cards tocando, ela fica quase tão clara quanto o traço do progresso, e aí não
+ * dá para ver onde o preenchimento está — o trecho que falta some junto com o
+ * que já passou.
+ */
+.timed .sound {
+  border-color: rgba(var(--accent-rgb), 0.22);
+  /*
+   * E fora o anel interno. Ele desenha um contorno aceso a um pixel da borda,
+   * volta inteira — o que faz o trecho que ainda falta parecer já preenchido.
+   */
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .playing .sound::after {
+    animation: none;
   }
 }
 

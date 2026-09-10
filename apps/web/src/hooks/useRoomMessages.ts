@@ -17,6 +17,23 @@ export interface ChatEntry {
   isLocal: boolean;
 }
 
+/** O som que este cliente está tocando agora. */
+export interface SoundPlayback {
+  soundId: string;
+  /**
+   * Sobe a cada disparo. É o que reinicia a barra de progresso quando o mesmo
+   * som é disparado por cima de si mesmo — sem isso o React reaproveitaria o
+   * nó e a animação continuaria de onde estava.
+   */
+  token: number;
+  /**
+   * Duração em segundos, conhecida só quando a reprodução começa de fato.
+   * Fica `null` se o navegador não souber dizer (arquivo sem cabeçalho
+   * decente), e aí não há progresso para desenhar.
+   */
+  duration: number | null;
+}
+
 export interface RoomMessaging {
   messages: ChatEntry[];
   /** Mensagens chegadas enquanto o chat estava fechado. */
@@ -24,7 +41,7 @@ export interface RoomMessaging {
   sendChat: (body: string) => void;
   playSound: (soundId: string) => void;
   /** Som tocando agora neste cliente, ou null. Um por vez. */
-  playingSoundId: string | null;
+  playing: SoundPlayback | null;
   /** Corta o som na sala inteira, não só aqui. */
   stopSound: (soundId: string) => void;
   markRead: () => void;
@@ -70,7 +87,7 @@ export function useRoomMessages(getVolume: () => number): RoomMessaging {
   const room = useRoomContext();
   const [messages, setMessages] = useState<ChatEntry[]>([]);
   const [unread, setUnread] = useState(0);
-  const [playingSoundId, setPlayingSoundId] = useState<string | null>(null);
+  const [playing, setPlaying] = useState<SoundPlayback | null>(null);
 
   const seenRef = useRef(new Set<string>());
   /*
@@ -85,6 +102,7 @@ export function useRoomMessages(getVolume: () => number): RoomMessaging {
   // Espelho do que está tocando: os eventos do <audio> disparam fora do ciclo
   // do React e precisam decidir sem depender do que já foi renderizado.
   const playingRef = useRef<string | null>(null);
+  const tokenRef = useRef(0);
   const getVolumeRef = useRef(getVolume);
   getVolumeRef.current = getVolume;
 
@@ -112,7 +130,28 @@ export function useRoomMessages(getVolume: () => number): RoomMessaging {
     audio.volume = Math.min(1, volume);
     liveRef.current = [{ soundId, audio }];
     playingRef.current = soundId;
-    setPlayingSoundId(soundId);
+    tokenRef.current += 1;
+    const token = tokenRef.current;
+    setPlaying({ soundId, token, duration: null });
+
+    /*
+     * A duração só entra no estado quando o som começa a sair de fato. Entrar
+     * antes, no `loadedmetadata`, adiantaria a barra em relação ao áudio pelo
+     * tempo que o navegador levasse para soltar o primeiro sample.
+     */
+    audio.addEventListener(
+      'playing',
+      () => {
+        const seconds = audio.duration;
+        if (!Number.isFinite(seconds) || seconds <= 0) {
+          return;
+        }
+        setPlaying((current) =>
+          current !== null && current.token === token ? { ...current, duration: seconds } : current,
+        );
+      },
+      { once: true },
+    );
 
     const forget = (): void => {
       liveRef.current = liveRef.current.filter((entry) => entry.audio !== audio);
@@ -120,7 +159,7 @@ export function useRoomMessages(getVolume: () => number): RoomMessaging {
       // disparado por cima do outro faria o `ended` do antigo apagar o novo.
       if (playingRef.current === soundId && liveRef.current.length === 0) {
         playingRef.current = null;
-        setPlayingSoundId(null);
+        setPlaying(null);
       }
     };
     audio.addEventListener('ended', forget, { once: true });
@@ -151,7 +190,7 @@ export function useRoomMessages(getVolume: () => number): RoomMessaging {
     }
     if (playingRef.current === soundId) {
       playingRef.current = null;
-      setPlayingSoundId(null);
+      setPlaying(null);
     }
   }, []);
 
@@ -282,5 +321,5 @@ export function useRoomMessages(getVolume: () => number): RoomMessaging {
 
   const markRead = useCallback(() => setUnread(0), []);
 
-  return { messages, unread, sendChat, playSound, playingSoundId, stopSound, markRead };
+  return { messages, unread, sendChat, playSound, playing, stopSound, markRead };
 }
