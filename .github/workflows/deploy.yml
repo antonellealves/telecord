@@ -23,13 +23,13 @@ jobs:
     name: Typecheck e build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v4
         with:
           version: 9.15.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
@@ -73,13 +73,13 @@ jobs:
     environment:
       name: Production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v4
         with:
           version: 9.15.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
@@ -133,9 +133,9 @@ jobs:
           if [ -n "${MASK_TOKEN:-}" ]; then echo "::add-mask::$MASK_TOKEN"; fi
           if [ -n "${MASK_SECRET:-}" ]; then echo "::add-mask::$MASK_SECRET"; fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
 
