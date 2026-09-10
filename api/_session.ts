@@ -43,7 +43,21 @@ export async function readSession(req: IncomingMessage): Promise<SessionClaims |
   }
 
   try {
-    const key = await importSPKI(publicKey.replace(/\n/g, '\n'), ALG);
+    /*
+     * Desfaz o `\n` LITERAL do PEM.
+     *
+     * A Vercel guarda variável de ambiente numa linha só, então a chave chega
+     * com a barra-n escrita em vez de quebra de linha, e o `jose` recusa PEM
+     * assim. O mesmo tratamento existe em `apps/api/src/common/config.ts`.
+     *
+     * A expressão precisa ser `/\\n/g` — barra invertida seguida de "n". Com
+     * `/\n/g` ela casaria com a quebra de linha de verdade e trocaria uma
+     * quebra por outra igual: uma operação sem efeito nenhum, que deixaria a
+     * chave inutilizável e faria TODO mundo entrar na sala como anônimo, sem
+     * erro visível em lugar nenhum — porque falha aqui é, por desenho,
+     * indistinguível de "não mandou token".
+     */
+    const key = await importSPKI(publicKey.replace(/\\n/g, '\n'), ALG);
     const { payload } = await jwtVerify(header.slice(7), key, {
       issuer: ISSUER,
       audience: AUDIENCE,
