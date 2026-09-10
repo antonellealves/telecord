@@ -57,9 +57,14 @@
 }
 
 .row {
+  /*
+   * Coluna, não linha: a linha principal (avatar, nome, ícones) fica em
+   * `.rowMain`, e o controle de volume — quando aberto — entra abaixo dela
+   * como uma segunda linha, sem forçar a lista inteira a virar duas colunas.
+   */
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 6px;
   padding: 8px;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
@@ -68,6 +73,51 @@
 
 .row:hover {
   background: var(--surface);
+}
+
+.rowMain {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* O controle de volume some por padrão e só ocupa espaço quando alguém abre
+   — numa sala de vinte pessoas, vinte sliders sempre visíveis seriam ruído. */
+.rowVolume {
+  padding-left: 40px;
+}
+
+.volumeToggle {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  margin-left: -2px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  opacity: 0;
+  transition: opacity 0.14s ease, background 0.14s ease, color 0.14s ease;
+}
+
+/* Aparece no hover da linha ou quando já foi ajustado — do contrário fica
+   invisível até passar o mouse, e ninguém acharia o controle a primeira vez. */
+.row:hover .volumeToggle,
+.row:focus-within .volumeToggle,
+.volumeToggleOn {
+  opacity: 1;
+}
+
+.volumeToggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.volumeToggleOn {
+  color: var(--warn);
 }
 
 /* Falando: anel + halo na cor de destaque. Só borda seria fraco demais para

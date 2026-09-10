@@ -3,6 +3,7 @@ import { RoomAudioRenderer, useRoomContext } from '@livekit/components-react';
 import { AmbientGradient } from '../components/AmbientGradient';
 import { AudioPlaybackGate } from '../components/AudioPlaybackGate';
 import { CameraStrip } from '../components/CameraStrip';
+import { ChannelNav } from '../components/ChannelNav';
 import { ChatPanel } from '../components/ChatPanel';
 import { ConnectionBanner } from '../components/ConnectionBanner';
 import { ControlBar } from '../components/ControlBar';
@@ -15,7 +16,9 @@ import { ToastStack } from '../components/ToastStack';
 import { useAuth } from '../hooks/useAuth';
 import { useAway } from '../hooks/useAway';
 import { useCameras } from '../hooks/useCameras';
+import { useChannelNav } from '../hooks/useChannelNav';
 import { useParticipantViews } from '../hooks/useParticipantViews';
+import { usePeerVolume } from '../hooks/usePeerVolume';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 import { useRoomConnectionStatus } from '../hooks/useRoomConnection';
 import { useRoomMessages } from '../hooks/useRoomMessages';
@@ -41,6 +44,8 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
   const room = useRoomContext();
   const status = useRoomConnectionStatus();
   const participants = useParticipantViews();
+  const peerVolume = usePeerVolume();
+  const channelNav = useChannelNav(roomId);
   const { toasts, push, dismiss } = useToasts();
   const shares = useScreenShares(push);
   const cameras = useCameras(push);
@@ -155,6 +160,10 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
           <ConnectionBanner status={status} />
         </header>
 
+        {channelNav.channel !== null ? (
+          <ChannelNav channel={channelNav.channel} currentRoomSlug={roomId} />
+        ) : null}
+
         <AudioPlaybackGate />
 
         <div
@@ -167,6 +176,7 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
             isAway={isAway}
             isAwayBusy={away.isBusy}
             onToggleAway={away.toggle}
+            peerVolume={peerVolume}
           />
           <div className={styles.resizer} {...sidebar.handleProps}>
             <span className={styles.grip} aria-hidden="true" />
@@ -189,6 +199,7 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
                 messages={messages}
                 onSend={sendChat}
                 onClose={() => setIsChatOpen(false)}
+                peerVolume={peerVolume}
               />
             </>
           ) : null}

@@ -16,6 +16,13 @@ export interface ResolvedSound {
 export interface ChatEntry {
   id: string;
   author: string;
+  /**
+   * A `identity` de quem mandou — não o nome. É o que liga a mensagem à
+   * pessoa de verdade para o clique no chat abrir o controle de volume dela
+   * (ver `usePeerVolume`): dois participantes podem escolher o mesmo nome de
+   * exibição, mas nunca a mesma `identity`.
+   */
+  authorIdentity: string;
   body: string;
   sentAt: number;
   isLocal: boolean;
@@ -263,7 +270,14 @@ export function useRoomMessages(
           : (participant?.identity ?? 'alguém');
 
       append(
-        { id: message.id, author, body: message.body, sentAt: message.sentAt, isLocal: false },
+        {
+          id: message.id,
+          author,
+          authorIdentity: participant?.identity ?? '',
+          body: message.body,
+          sentAt: message.sentAt,
+          isLocal: false,
+        },
         true,
       );
     };
@@ -316,6 +330,7 @@ export function useRoomMessages(
         {
           id: message.id,
           author: name !== undefined && name !== '' ? name : 'você',
+          authorIdentity: room.localParticipant.identity,
           body: trimmed,
           sentAt: message.sentAt,
           isLocal: true,

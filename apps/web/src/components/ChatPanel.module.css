@@ -97,6 +97,36 @@
   white-space: nowrap;
 }
 
+/* Âncora do popover de volume: precisa de `position: relative` porque o
+   popover se posiciona `absolute` em relação a ela, não à mensagem inteira —
+   senão ele nasceria colado ao topo do painel de chat. */
+.authorAnchor {
+  position: relative;
+  min-width: 0;
+}
+
+.authorButton {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  border-bottom: 1px dotted transparent;
+  transition: color 0.16s ease, border-color 0.16s ease;
+}
+
+.authorButton:hover,
+.authorButton[aria-expanded='true'] {
+  color: var(--accent);
+  border-bottom-color: rgba(var(--accent-rgb), 0.55);
+}
+
 .time {
   flex: none;
   font-family: var(--font-mono);

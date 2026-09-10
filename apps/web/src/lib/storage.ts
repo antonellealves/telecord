@@ -191,3 +191,56 @@ export function writePanelWidth(name: string, width: number): void {
     // Storage indisponível.
   }
 }
+
+// ---------------------------------------------------------------------------
+// Volume individual por participante
+// ---------------------------------------------------------------------------
+
+/**
+ * 0..2 (0% a 200%). Guardado por `identity`, não por nome: o nome pode mudar
+ * de sala para sala ou entre contas, a `identity` é o que o SFU usa para
+ * saber que é a mesma pessoa que estava aqui antes.
+ *
+ * É preferência DESTA pessoa sobre a voz das outras — nunca sincroniza entre
+ * clientes, nunca sobe para o servidor. Cada um ajusta o que ouve dos outros,
+ * do jeito que o volume do soundboard já funciona.
+ */
+const PEER_VOLUME_PREFIX = 'telecord.peerVolume.';
+const PEER_MUTED_PREFIX = 'telecord.peerMuted.';
+
+export function readPeerVolume(identity: string): number {
+  try {
+    const raw = window.localStorage.getItem(PEER_VOLUME_PREFIX + identity);
+    if (raw === null) {
+      return 1;
+    }
+    const value = Number(raw);
+    return Number.isFinite(value) && value >= 0 && value <= 2 ? value : 1;
+  } catch {
+    return 1;
+  }
+}
+
+export function writePeerVolume(identity: string, volume: number): void {
+  try {
+    window.localStorage.setItem(PEER_VOLUME_PREFIX + identity, String(volume));
+  } catch {
+    // Storage indisponível: o ajuste vale só para esta sessão da aba.
+  }
+}
+
+export function readPeerMuted(identity: string): boolean {
+  try {
+    return window.localStorage.getItem(PEER_MUTED_PREFIX + identity) === 'yes';
+  } catch {
+    return false;
+  }
+}
+
+export function writePeerMuted(identity: string, muted: boolean): void {
+  try {
+    window.localStorage.setItem(PEER_MUTED_PREFIX + identity, muted ? 'yes' : 'no');
+  } catch {
+    // Storage indisponível.
+  }
+}
