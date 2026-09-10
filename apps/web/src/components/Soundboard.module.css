@@ -136,9 +136,12 @@
 /* ---- som tocando ----------------------------------------------------- */
 
 .playing .sound {
-  /* Abre espaço para o botão de parar, que fica acima do nome. Só o tile que
-     está tocando cresce — e isso ajuda a achá-lo na lista. */
-  padding-top: 30px;
+  /*
+   * Nenhuma mudança de caixa aqui de propósito: o botão de parar é sobreposto,
+   * não empilhado. Antes eu abria espaço com padding, e o card crescia ao
+   * começar a tocar — o que empurra a linha inteira da grade e faz a lista
+   * pular embaixo do cursor, justamente quando a pessoa vai clicar em parar.
+   */
   border-color: rgba(var(--accent-rgb), 0.85);
   background: rgba(var(--accent-rgb), 0.24);
   color: var(--text);
@@ -147,20 +150,26 @@
 
 .stop {
   position: absolute;
-  top: 5px;
+  top: 4px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 1;
+  z-index: 2;
   display: grid;
   place-items: center;
   width: 22px;
   height: 22px;
   padding: 0;
   border-radius: 50%;
-  border: 1px solid rgba(var(--danger-rgb), 0.6);
-  background: rgba(var(--danger-rgb), 0.9);
+  /*
+   * Anel escuro em vez de borda na cor do próprio botão: sobreposto ao nome,
+   * ele cai em cima das letras, e sem esse recorte o vermelho encosta na
+   * tipografia e os dois viram uma mancha só.
+   */
+  border: 2px solid rgba(9, 11, 18, 0.92);
+  background: rgb(var(--danger-rgb));
   color: #fff;
-  transition: transform 0.12s ease, background 0.16s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  transition: transform 0.12s ease, filter 0.16s ease;
 }
 
 .stop svg {
@@ -169,7 +178,8 @@
 }
 
 .stop:hover {
-  background: rgb(var(--danger-rgb));
+  /* O fundo já é a cor cheia, então clarear é o que sobra para dar retorno. */
+  filter: brightness(1.18);
   transform: translateX(-50%) scale(1.12);
 }
 
