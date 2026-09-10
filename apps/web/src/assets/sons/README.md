@@ -13,9 +13,6 @@ Largue arquivos de áudio nesta pasta. Não há lista para editar: o catálogo e
   clica manda só um aviso e cada cliente toca o próprio arquivo. Quem estiver com
   uma versão antiga aberta não vai ter o som novo até recarregar.
 
-Os cinco `.wav` que vieram no repositório são sintetizados, só para o recurso
-funcionar de saída. Pode apagar.
-
 Sobre o que você coloca aqui: esta pasta é versionada num repositório público
 que faz deploy sozinho, então qualquer arquivo aqui passa a ser distribuído
 publicamente, não só tocado entre vocês. Vale conferir se o clipe pode ser
