@@ -254,9 +254,20 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
               onClose={() => setIsSettingsOpen(false)}
               notify={push}
               screenQualityId={screenQualityId}
+              isSharingScreen={shares.isLocalSharing}
               onChangeScreenQuality={(id) => {
                 setScreenQualityId(id);
                 writeScreenQuality(id);
+                /*
+                 * Compartilhando agora? Republica na hora.
+                 *
+                 * Antes a escolha só valia no PRÓXIMO compartilhamento, então
+                 * mexer no seletor durante uma transmissão não mudava nada na
+                 * tela de quem assistia — e a opção parecia quebrada.
+                 */
+                if (shares.isLocalSharing) {
+                  shares.restart(id);
+                }
               }}
             />
           ) : null}

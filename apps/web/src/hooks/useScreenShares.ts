@@ -5,7 +5,7 @@ import type { ScreenShareOwner } from '@telecord/shared';
 import { describeScreenShareError, isScreenShareSupported } from '../lib/errors';
 import {
   DEFAULT_SCREEN_QUALITY,
-  screenQuality,
+  screenEncoding,
   screenShareCaptureOptions,
   type ScreenQualityId,
 } from '../lib/media';
@@ -25,6 +25,18 @@ export interface ScreenShares {
   /** Qualidade opcional; sem ela, usa a preferência salva/padrão. */
   start: (quality?: ScreenQualityId) => void;
   stop: () => void;
+  /**
+   * Republica a tela já compartilhada com outra qualidade.
+   *
+   * Precisa ser republicação, e não ajuste: o `screenShareEncoding` é lido
+   * quando a track é PUBLICADA, e mexer nele depois não alcança a track que
+   * já está no ar. Era por isso que trocar o nível no meio de uma
+   * transmissão não mudava nada na tela de quem assistia.
+   *
+   * Custa uma piscada no quadro de quem está vendo — e o navegador NÃO pede a
+   * tela de novo, porque a track de origem é reaproveitada.
+   */
+  restart: (quality: ScreenQualityId) => void;
 }
 
 const SHARE_EVENTS: RoomEvent[] = [
@@ -217,7 +229,8 @@ export function useScreenShares(notify: (kind: ToastKind, message: string) => vo
       const options = screenShareCaptureOptions(quality);
       void room.localParticipant
         .setScreenShareEnabled(true, options, {
-          screenShareEncoding: screenQuality(quality ?? DEFAULT_SCREEN_QUALITY).preset.encoding,
+          screenShareEncoding: screenEncoding(quality ?? DEFAULT_SCREEN_QUALITY),
+          degradationPreference: 'maintain-resolution',
         })
         .then(() => {
           silenceVoicesInSharedAudio(room, notifyRef.current);
@@ -260,5 +273,45 @@ export function useScreenShares(notify: (kind: ToastKind, message: string) => vo
     disabledReason = 'Este navegador não compartilha tela. Use Chrome, Edge ou Firefox no computador.';
   }
 
-  return { entries, isLocalSharing, isBusy, disabledReason, start, stop };
+
+  /*
+   * Troca a qualidade da tela que JÁ está no ar.
+   *
+   * Desliga e liga de novo: o `screenShareEncoding` só é lido na publicação,
+   * e mexer nele depois não alcança a track que já está no ar.
+   * O navegador não volta a perguntar qual tela — a permissão já foi dada e a
+   * track de origem continua viva —, então o custo é uma piscada no quadro de
+   * quem assiste.
+   */
+  const restart = useCallback(
+    (quality: ScreenQualityId) => {
+      if (busyRef.current) {
+        return;
+      }
+      busyRef.current = true;
+      setIsBusy(true);
+      void room.localParticipant
+        .setScreenShareEnabled(false)
+        .then(() =>
+          room.localParticipant.setScreenShareEnabled(true, screenShareCaptureOptions(quality), {
+            screenShareEncoding: screenEncoding(quality),
+            degradationPreference: 'maintain-resolution',
+          }),
+        )
+        .then(() => {
+          silenceVoicesInSharedAudio(room, notifyRef.current);
+        })
+        .catch((error: unknown) => {
+          const message = describeScreenShareError(error);
+          notifyRef.current('error', message ?? 'Não deu para trocar a qualidade.');
+        })
+        .finally(() => {
+          busyRef.current = false;
+          setIsBusy(false);
+        });
+    },
+    [room],
+  );
+
+  return { entries, isLocalSharing, isBusy, disabledReason, start, stop, restart };
 }

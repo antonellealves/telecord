@@ -384,7 +384,7 @@ const roomOptions: RoomOptions = {
     red: true,                                   // redundância de áudio contra perda de pacote
     audioPreset: AudioPresets.musicHighQuality,  // Opus mono 96 kbps — ver 6.1.1
     stopMicTrackOnMute: false,                   // mute instantâneo, sem repedir permissão
-    videoCodec: 'vp8',                           // compatibilidade ampla
+    videoCodec: 'vp9',                           // + backupCodec vp8 — ver 6.2.1
     screenShareEncoding: <nível escolhido>.encoding,             // padrão 1080p@30 — ver 6.2.1
     simulcast: false,                            // ver 6.4
   },
@@ -410,7 +410,7 @@ Mono continua: voz não tem o que estereofonar, e estéreo só dobraria a conta.
 ```ts
 await localParticipant.setScreenShareEnabled(true, {
   audio: true,                                   // áudio da aba/sistema, quando o browser oferecer
-  contentHint: 'motion',                         // prioriza fluidez — ver 6.2.1
+  contentHint: 'text',                           // preserva detalhe — ver 6.2.1
   resolution: <nível escolhido>.resolution,      // omitido no nível "original"
   selfBrowserSurface: 'exclude',                 // evita o efeito túnel de compartilhar a própria aba
   surfaceSwitching: 'include',                   // trocar de janela sem republicar
@@ -418,24 +418,34 @@ await localParticipant.setScreenShareEnabled(true, {
 });
 ```
 
-`15 fps` e `contentHint: 'detail'` porque o conteúdo esperado é IDE, slide e planilha — texto legível vale mais que suavidade. Se o uso virar demonstração animada, o preset certo é `h1080fps30` (~5 Mbps) com `contentHint: 'motion'`.
+A resolução e o bitrate saem do nível escolhido, não de um preset fixo — ver 6.2.1, que também explica por que os presets prontos do LiveKit ficam aquém para conteúdo de tela.
 
 #### 6.2.1 Níveis de qualidade da tela
 
-A resolução deixou de ser fixa. Quatro níveis, escolhidos no painel de áudio e vídeo e guardados por **máquina** (`telecord.screenQuality`) — quem está num link apertado quer o nível baixo em toda sala, e quem tem fibra não quer reescolher toda vez:
+Quatro níveis, escolhidos no painel de áudio e vídeo e guardados por **máquina** (`telecord.screenQuality`):
 
-| Nível | Preset | Para quê |
+| Nível | Captura | Teto de subida |
 | --- | --- | --- |
-| Suave | `h720fps15` | Conexão apertada. Texto legível, movimento trava. |
-| Equilibrada | `h1080fps15` | Slide e código parado. |
-| **Alta** (padrão) | `h1080fps30` | Movimento fluido, ~5 Mbps. |
-| Máxima | `original` | Sem redimensionar: 1440p/4K nativos, ~7 Mbps. |
+| Suave | 1280×720 @30 | 2,5 Mbps |
+| Equilibrada | 1920×1080 @30 | 6 Mbps |
+| **Alta** (padrão) | 1920×1080 @60 | 12 Mbps |
+| Máxima | nativa, sem redimensionar, @60 | 25 Mbps |
 
-O padrão subiu de `h1080fps15` para `h1080fps30`. 15 quadros bastam para conteúdo parado — e era ali que a escolha antiga estava certa —, mas qualquer coisa em movimento fica em soluços. O dobro de quadros custa o dobro de banda, e quem não a tem agora tem onde baixar.
+**Os presets do LiveKit não servem aqui.** `ScreenSharePresets.h1080fps30` pede 1080p a 5 Mbps, que é a conta para vídeo COMUM — onde o olho perdoa borrão em textura. Tela é quase toda texto e linha fina, o conteúdo mais caro que existe para um codificador, porque cada letra é borda de alto contraste. A 5 Mbps o codec desiste do detalhe e entrega um 1080p com cara de 720p esticado. Daí os níveis acima terem bitrate próprio.
 
-`contentHint` passou de `'detail'` para `'motion'` pelo mesmo motivo: a dica diz ao codificador o que sacrificar quando a banda aperta, e `detail` joga fora quadros para manter cada pixel nítido — o certo para slide, o errado para vídeo e jogo.
+Quatro coisas atuavam juntas contra a nitidez, e todas foram corrigidas:
 
-O nível `original` tem resolução `0x0`, que significa "não redimensione". Esse valor **não** pode ser passado adiante como `resolution`: nesse nível o campo é omitido da captura.
+1. **`contentHint`** era `'motion'`, que manda sacrificar DETALHE para segurar o quadro — o avesso do que uma tela de texto precisa. Agora é `'text'`.
+2. **`degradationPreference`** não era declarado, então o WebRTC usava `balanced` e derrubava a RESOLUÇÃO ao primeiro aperto de CPU ou banda, sem voltar com a mesma pressa. Agora é `maintain-resolution`: perde quadro antes de perder pixel.
+3. **`adaptiveStream: true`** pedia um fluxo do tamanho do ELEMENTO, assumindo densidade de pixel 1 — num monitor de alta densidade, metade dos pixels que a tela desenha. Agora é `{ pixelDensity: 'screen' }`, e o pedido acompanha o monitor de quem assiste. Este era o único que agia do lado de QUEM RECEBE, e sozinho já explicava boa parte da queixa.
+4. **VP8** borra borda de letra que o VP9 resolve no mesmo bitrate. Agora `videoCodec: 'vp9'` com `backupCodec: { codec: 'vp8' }` — quem não tem VP9 recebe a versão VP8 em vez de nada.
+
+`resolution` continua virando `ideal` nas constraints, e isso é deliberado: com `exact`, um monitor 1600×900 não degradaria para o que cabe, **falharia** — a pessoa clicaria em compartilhar e não sairia nada. Quem garante a qualidade é o que vem depois da captura, nos quatro pontos acima.
+
+**Trocar o nível durante uma transmissão republica a tela.** O `screenShareEncoding` só é lido na publicação, então mexer nele depois não alcança a track no ar — era por isso que o seletor parecia não funcionar. `useScreenShares.restart` desliga e liga: o navegador não volta a perguntar qual tela (a permissão já foi dada), e o custo é uma piscada no quadro de quem assiste. O texto do seletor muda para dizer isso quando há transmissão ativa.
+
+O nível "máxima" tem largura 0, que quer dizer "não redimensione". Esse valor **não** pode ser passado como `resolution`: nesse nível o campo é omitido.
+
 
 #### 6.2.2 O eco do áudio de tela
 

@@ -24,6 +24,8 @@ interface DeviceSettingsProps {
   notify: (kind: ToastKind, message: string) => void;
   screenQualityId: ScreenQualityId;
   onChangeScreenQuality: (id: ScreenQualityId) => void;
+  /** Muda o texto de ajuda: trocar agora republica em vez de esperar. */
+  isSharingScreen: boolean;
 }
 
 const TEST_LABEL: Record<'idle' | 'recording' | 'playing', string> = {
@@ -41,6 +43,7 @@ export function DeviceSettings({
   notify,
   screenQualityId,
   onChangeScreenQuality,
+  isSharingScreen,
 }: DeviceSettingsProps): JSX.Element {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const devices = useMediaDevices((message) => notify('error', message));
@@ -272,11 +275,13 @@ export function DeviceSettings({
           {screenQuality(screenQualityId).hint}
           {' '}
           {/*
-            * Trocar durante uma transmissão não reencaixa a track já
-            * publicada — dizer isso evita a pessoa mexer no seletor, não ver
-            * diferença nenhuma e concluir que a opção não funciona.
+            * O texto muda com o estado porque a consequência muda: com uma
+            * transmissão no ar, trocar republica na hora e o quadro pisca;
+            * sem transmissão, a escolha fica guardada para a próxima.
             */}
-          Vale a partir do próximo compartilhamento.
+          {isSharingScreen
+            ? 'Trocar agora republica a tela — o quadro pisca uma vez para quem assiste.'
+            : 'Vale a partir do próximo compartilhamento.'}
         </span>
       </label>
     </div>
