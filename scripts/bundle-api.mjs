@@ -13,7 +13,7 @@
  * A saída daqui é um `.cjs` sem dependência externa, que a função carrega por
  * caminho relativo.
  *
- * A saída fica FORA de `api/`, em `.vercel-api/`. Qualquer `.js`/`.cjs` dentro
+ * A saída fica FORA de `api/`, em `api-bundle/`. Qualquer `.js`/`.cjs` dentro
  * de `api/` é candidato a virar função serverless própria no roteamento
  * zero-config da Vercel — e o cliente do Prisma sozinho traz mais de dez
  * arquivos `.js`, que viravam dez funções quebradas e atrapalhavam a captura.
@@ -22,7 +22,7 @@ import { build } from 'esbuild';
 import { cpSync, mkdirSync, rmSync, readdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 
-const OUT = '.vercel-api';
+const OUT = 'api-bundle';
 
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

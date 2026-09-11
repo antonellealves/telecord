@@ -14,12 +14,12 @@
  * casos, de resolver algo que naquele instante não existe.
  *
  * `scripts/bundle-api.mjs` resolve antes: empacota o serviço num `.cjs` sem
- * dependência externa, em `.vercel-api/` — FORA de `api/`, porque todo
+ * dependência externa, em `api-bundle/` — FORA de `api/`, porque todo
  * `.js`/`.cjs` dentro de `api/` vira candidato a função serverless própria no
  * roteamento zero-config, e o cliente do Prisma sozinho traz mais de dez.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import nest from '../.vercel-api/bundle/nest.cjs';
+import nest from '../api-bundle/bundle/nest.cjs';
 
 type NodeHandler = (req: IncomingMessage, res: ServerResponse) => void;
 
