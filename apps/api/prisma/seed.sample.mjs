@@ -35,7 +35,7 @@
  * depois de uma migração sem pensar duas vezes.
  */
 import { createRequire } from 'node:module';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../src/generated/prisma/index.js';
 
 const require = createRequire(import.meta.url);
 

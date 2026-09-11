@@ -20,3 +20,7 @@ apps/api/prisma/seed.mjs
 
 .DS_Store
 *.log
+
+# Cliente do Prisma gerado dentro do serviço (ver o `output` no schema).
+# Sai do `prisma generate`, que roda no build — aqui e na Vercel.
+apps/api/src/generated/

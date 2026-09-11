@@ -13,6 +13,21 @@
 generator client {
   provider = "prisma-client-js"
   /*
+   * Saída EXPLÍCITA, dentro do serviço.
+   *
+   * No padrão, o cliente é gerado em `node_modules/.prisma/client` e o
+   * `@prisma/client` chega nele por `require('.prisma/client/default')` — um
+   * especificador nu que só resolve pelo layout interno do store do pnpm.
+   * A função da Vercel roda de `/var/task/api/`, onde esse caminho não existe,
+   * e o import morria com ERR_MODULE_NOT_FOUND antes de qualquer código rodar.
+   * Conferido: `.prisma/client/default` não resolve nem da raiz, nem de
+   * `apps/api` — só de dentro do `.pnpm`.
+   *
+   * Gerando aqui, o cliente vira um diretório comum do repositório, alcançado
+   * por caminho relativo e copiado junto do resto do `dist`.
+   */
+  output = "../src/generated/prisma"
+  /*
    * O motor de query é um binário nativo, escolhido por sistema. `native`
    * cobre a máquina de quem desenvolve; `rhel-openssl-3.0.x` é o runtime Node
    * da Vercel (Amazon Linux 2023, OpenSSL 3). Sem o segundo, o build passa e o

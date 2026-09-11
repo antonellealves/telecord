@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Prisma, Room, RoomMemberRole } from '@prisma/client';
+import type { Prisma, Room, RoomMemberRole } from '../generated/prisma';
 import {
   normalizeDisplayName,
   normalizeRoomId,

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import type { Sound } from '@prisma/client';
+import type { Sound } from '../generated/prisma';
 import {
   MAX_SOUND_UPLOAD_BYTES,
   normalizeDisplayName,

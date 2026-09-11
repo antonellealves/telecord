@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import type { Prisma, User } from '@prisma/client';
+import type { Prisma, User } from '../generated/prisma';
 import {
   normalizeDisplayName,
   normalizeEmail,

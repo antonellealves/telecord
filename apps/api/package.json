@@ -8,7 +8,7 @@
     "./vercel": "./dist/src/vercel.js"
   },
   "scripts": {
-    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && prisma generate && tsc --project tsconfig.json && node -e \"require('fs').writeFileSync('dist/package.json','{ \\\"type\\\": \\\"commonjs\\\" }\\n')\"",
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && prisma generate && tsc --project tsconfig.json && node -e \"require('fs').writeFileSync('dist/package.json','{\\\"type\\\":\\\"commonjs\\\"}')\" && node -e \"require('fs').cpSync('src/generated','dist/src/generated',{recursive:true})\"",
     "start": "node dist/src/main.js",
     "dev": "tsc --project tsconfig.json --watch",
     "typecheck": "tsc --project tsconfig.json --noEmit",

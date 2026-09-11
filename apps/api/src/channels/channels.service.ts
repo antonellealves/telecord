@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { ChannelMemberRole, Prisma } from '@prisma/client';
+import type { ChannelMemberRole, Prisma } from '../generated/prisma';
 import {
   CHANNEL_ROOM_LIMIT,
   normalizeDisplayName,

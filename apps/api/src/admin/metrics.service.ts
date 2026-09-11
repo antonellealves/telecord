@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../generated/prisma';
 import type { DashboardMetrics, Kpi, LogLevel, MetricPoint } from '@telecord/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { fillSeries, startOfWindow, windowDays } from './metrics-series';
