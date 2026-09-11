@@ -7,6 +7,7 @@ import {
   slugifyRoomId,
   validateDisplayName,
   validateRoomId,
+  type TransportMode,
 } from '@telecord/shared';
 import { ActiveRoomsList } from '../components/ActiveRoomsList';
 import { AmbientGradient } from '../components/AmbientGradient';
@@ -14,11 +15,12 @@ import { ChannelsList } from '../components/ChannelsList';
 import { useActiveRooms } from '../hooks/useActiveRooms';
 import { useChannelDirectory } from '../hooks/useChannelDirectory';
 import { useRoomDirectory } from '../hooks/useRoomDirectory';
+import { TransportPicker } from '../components/TransportPicker';
 import { useAuth } from '../hooks/useAuth';
 import { useDisplayName } from '../hooks/useDisplayName';
 import { useMicrophonePermission } from '../hooks/useMicrophonePermission';
 import { generateRoomId } from '../lib/media';
-import { readLastRoom, writeLastRoom } from '../lib/storage';
+import { readLastRoom, readTransport, writeLastRoom, writeTransport } from '../lib/storage';
 import styles from './JoinPage.module.css';
 
 const NOTES = ['entra mutado', 'várias telas', 'sem gravação'];
@@ -55,6 +57,7 @@ export function JoinPage(): JSX.Element {
   const channels = useChannelDirectory();
   const microphone = useMicrophonePermission();
   const [lastRoom] = useState(() => readLastRoom());
+  const [transport, setTransport] = useState<TransportMode>(readTransport);
 
   const previewSlug = room.trim() === '' ? '' : slugifyRoomId(room);
 
@@ -131,6 +134,23 @@ export function JoinPage(): JSX.Element {
                 )}
               </p>
             </label>
+
+            {/*
+              * A escolha fica AQUI, ao lado do nome da sala, e não escondida
+              * nas configurações: ela muda o que a sala é — quantas pessoas
+              * cabem e por onde a mídia anda —, então é decisão de quem cria,
+              * no momento de criar.
+              */}
+            <div className={styles.field}>
+              <span className={styles.label}>Como a transmissão viaja</span>
+              <TransportPicker
+                value={transport}
+                onChange={(mode) => {
+                  setTransport(mode);
+                  writeTransport(mode);
+                }}
+              />
+            </div>
 
             {lastRoom !== '' && lastRoom !== previewSlug ? (
               <button type="button" className={styles.recall} onClick={() => setRoom(lastRoom)}>
@@ -247,13 +267,26 @@ export function JoinPage(): JSX.Element {
             ))}
           </ul>
 
-          <p className={styles.signature}>
-            feito com carinho para a galera do dota teleton
-            {' · '}
-            <Link to="/arquitetura" className={styles.signatureLink}>
+          {/*
+            * Navegação discreta, no rodapé e no tom mais apagado da tela: quem
+            * chega aqui quer criar uma sala, não ler sobre o projeto.
+            *
+            * O painel só aparece para quem tem o papel — e isso é conveniência
+            * de navegação, não controle de acesso: as rotas de administração
+            * respondem 403 por conta própria para quem digitar o endereço.
+            */}
+          <nav className={styles.footerNav} aria-label="Sobre o projeto">
+            <Link to="/arquitetura" className={styles.footerLink}>
               como é feito
             </Link>
-          </p>
+            {isSignedIn && user.role === 'ADMIN' ? (
+              <Link to="/painel" className={styles.footerLink}>
+                painel
+              </Link>
+            ) : null}
+          </nav>
+
+          <p className={styles.signature}>feito com carinho para a galera do dota teleton</p>
         </div>
       </div>
     </>

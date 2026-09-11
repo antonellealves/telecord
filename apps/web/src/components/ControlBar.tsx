@@ -190,10 +190,10 @@ export function ControlBar({
         onClick={onToggleSettings}
         aria-expanded={isSettingsOpen}
         aria-haspopup="dialog"
-        title="Modo de voz, dispositivos e teste de microfone"
+        title="Áudio, vídeo e dispositivos"
       >
         <SlidersIcon />
-        <span className={styles.text}>Áudio</span>
+        <span className={styles.text}>Configurações</span>
       </button>
 
       <button

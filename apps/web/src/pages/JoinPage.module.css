@@ -425,18 +425,26 @@
 }
 
 /*
- * O caminho para a página que explica o projeto. Fica na assinatura, no tom
- * mais apagado da tela: quem entra quer criar uma sala, não ler sobre
- * arquitetura — mas quem procura acha.
+ * Navegação de rodapé. Fica no tom mais apagado da tela de propósito: quem
+ * chega aqui quer criar uma sala, e estes links são para quem procura.
  */
-.signatureLink {
-  color: var(--text-dim);
+.footerNav {
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+}
+
+.footerLink {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
   text-decoration: none;
-  border-bottom: 1px solid rgba(var(--accent-rgb), 0.3);
+  border-bottom: 1px solid transparent;
   transition: color 0.16s ease, border-color 0.16s ease;
 }
 
-.signatureLink:hover {
+.footerLink:hover {
   color: var(--accent-soft);
-  border-color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.45);
 }

@@ -2,6 +2,7 @@
  * localStorage guarda APENAS a preferência de nome (SPEC §3).
  * Modo privado e storage bloqueado não podem derrubar o app.
  */
+import type { TransportMode } from '@telecord/shared';
 import { DEFAULT_SCREEN_QUALITY, type ScreenQualityId } from './media';
 
 /** Ids válidos, para recusar lixo vindo do localStorage. */
@@ -301,5 +302,55 @@ export function writeParticipantsOpen(open: boolean): void {
     window.localStorage.setItem(PARTICIPANTS_OPEN_KEY, open ? 'true' : 'false');
   } catch {
     // Storage indisponível: a escolha vale só para esta aba.
+  }
+}
+
+const TRANSPORT_KEY = 'telecord.transport';
+
+/**
+ * Qual pilha de transmissão usar: o SFU (LiveKit) ou a malha direta (P2P).
+ *
+ * `livekit` é o padrão e continua sendo: é o que aguenta sala cheia, o que
+ * funciona atrás de NAT difícil e o que tem soundboard, chat e gravação de
+ * sessão. O P2P é escolha consciente de quem quer latência menor ou não quer a
+ * mídia passando por servidor nenhum — e aceita o teto de gente.
+ */
+export function readTransport(): TransportMode {
+  try {
+    return window.localStorage.getItem(TRANSPORT_KEY) === 'p2p' ? 'p2p' : 'livekit';
+  } catch {
+    return 'livekit';
+  }
+}
+
+export function writeTransport(mode: TransportMode): void {
+  try {
+    window.localStorage.setItem(TRANSPORT_KEY, mode);
+  } catch {
+    // Storage indisponível: a escolha vale só para esta aba.
+  }
+}
+
+const PEER_ID_KEY = 'telecord.peerId';
+
+/**
+ * Identidade deste navegador na malha P2P.
+ *
+ * Estável entre recargas de propósito: se mudasse a cada carga, recarregar a
+ * página deixaria a presença antiga pendurada por ~20 s e os outros tentariam
+ * conectar num par que não existe mais. Com storage bloqueado, cai para um id
+ * de sessão — pior, mas funciona.
+ */
+export function readPeerId(): string {
+  const novo = (): string =>
+    `p-${crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)}`.slice(0, 40);
+  try {
+    const atual = window.localStorage.getItem(PEER_ID_KEY);
+    if (atual !== null && atual !== '') return atual;
+    const gerado = novo();
+    window.localStorage.setItem(PEER_ID_KEY, gerado);
+    return gerado;
+  } catch {
+    return novo();
   }
 }

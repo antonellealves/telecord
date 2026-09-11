@@ -1,0 +1,118 @@
+.wrap {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.option {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px 15px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font: inherit;
+  color: var(--text-dim);
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    transform 0.16s ease;
+}
+
+.option:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+/* A escolha atual fica evidente na borda e no fundo, não só no marcador —
+   este seletor muda o que a sala é, e precisa ser lido de relance. */
+.optionOn {
+  border-color: rgba(var(--accent-rgb), 0.55);
+  background: rgba(var(--accent-rgb), 0.1);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mark {
+  width: 11px;
+  height: 11px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.optionOn .mark {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 3px var(--accent);
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.tagline {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+.lists {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+/*
+ * Vantagem e custo no MESMO tamanho e peso. Só o sinal muda — esconder o custo
+ * em letra menor seria empurrar a escolha.
+ */
+.pro,
+.con {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pro::before {
+  content: '+';
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+.con::before {
+  content: '−';
+  color: var(--warn);
+  font-family: var(--font-mono);
+}
+
+.con {
+  color: var(--text-faint);
+}
+
+@media (max-width: 560px) {
+  .wrap {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Dentro da sala: só o nome e o marcador, lado a lado. */
+.compact .option {
+  padding: 9px 12px;
+}
+
+.compact .label {
+  font-size: 13px;
+}

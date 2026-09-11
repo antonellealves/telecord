@@ -1,9 +1,11 @@
 import { useCallback, useRef, useState } from 'react';
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { LiveKitRoom } from '@livekit/components-react';
 import { normalizeRoomId, validateRoomId } from '@telecord/shared';
 import { StatusScreen } from '../components/StatusScreen';
 import { useDisplayName } from '../hooks/useDisplayName';
+import { readPeerId, readTransport } from '../lib/storage';
+import { P2PRoom } from './P2PRoom';
 import { useToken } from '../hooks/useToken';
 import { LIVEKIT_URL, getConfigError } from '../lib/config';
 import { roomOptions } from '../lib/media';
@@ -14,6 +16,8 @@ import styles from './RoomPage.module.css';
 export function RoomPage(): JSX.Element {
   const params = useParams<{ roomId: string }>();
   const [displayName] = useDisplayName();
+  const navigate = useNavigate();
+  const [peerId] = useState(readPeerId);
 
   const roomId = normalizeRoomId(params.roomId ?? '');
   const configError = getConfigError();
@@ -42,6 +46,23 @@ export function RoomPage(): JSX.Element {
   // Sem nome salvo não dá para entrar: volta para a entrada com a sala pronta.
   if (displayName === '') {
     return <Navigate to={`/?sala=${encodeURIComponent(roomId)}`} replace />;
+  }
+
+  /*
+   * O paradigma escolhido na entrada decide QUAL sala abrir. São duas pilhas
+   * diferentes — uma fala com o SFU, a outra direto entre navegadores —, e a
+   * troca acontece aqui, uma vez, em vez de cada componente lá dentro ter que
+   * saber em qual modo está.
+   */
+  if (readTransport() === 'p2p') {
+    return (
+      <P2PRoom
+        roomId={roomId}
+        displayName={displayName}
+        peerId={peerId}
+        onLeave={() => navigate('/')}
+      />
+    );
   }
 
   return <RoomSession roomId={roomId} displayName={displayName} />;

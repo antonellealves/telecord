@@ -285,3 +285,36 @@
   font-weight: 500;
   color: var(--text);
 }
+
+/* --- seções do painel --------------------------------------------------- */
+
+.sections {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  margin-bottom: 4px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.sectionTab {
+  flex: 1;
+  padding: 6px 10px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 12px;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.sectionTab:hover {
+  color: var(--text-dim);
+}
+
+.sectionTabOn {
+  background: rgba(var(--accent-rgb), 0.16);
+  color: var(--accent-soft);
+}

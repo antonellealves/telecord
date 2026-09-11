@@ -11,6 +11,7 @@ import { LiveKitModule } from './livekit/livekit.module';
 import { LoggingModule } from './logging/logging.module';
 import { MailModule } from './mail/mail.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { PeersModule } from './peers/peers.module';
 import { RoomsModule } from './rooms/rooms.module';
 import { SoundsModule } from './sounds/sounds.module';
 import { UsersModule } from './users/users.module';
@@ -29,6 +30,7 @@ import { UsersModule } from './users/users.module';
     MailModule,
     AuthModule,
     UsersModule,
+    PeersModule,
     RoomsModule,
     ChannelsModule,
     SoundsModule,

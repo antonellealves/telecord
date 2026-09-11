@@ -895,3 +895,52 @@ export interface AdminSessionTokenRow {
   expiresAt: string;
   revoked: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// Modo P2P — o segundo paradigma de transmissão
+//
+// No modo LiveKit, um SFU recebe de todos e reenvia para todos. No modo P2P,
+// cada navegador fala DIRETO com cada outro, e o servidor só apresenta os dois.
+// A troca abaixo é o aperto de mão; depois dele, nenhum byte de mídia passa
+// pelo telecord.
+// ---------------------------------------------------------------------------
+
+/** Qual pilha de transmissão a sala está usando. */
+export type TransportMode = 'livekit' | 'p2p';
+
+export const TRANSPORT_MODES: TransportMode[] = ['livekit', 'p2p'];
+
+export interface PeerInfo {
+  peerId: string;
+  displayName: string;
+  isAnonymous: boolean;
+  joinedAt: string;
+}
+
+export interface PeerRoster {
+  peers: PeerInfo[];
+}
+
+/** `offer` e `answer` carregam SDP; `ice` carrega um candidato. */
+export type PeerSignalKind = 'offer' | 'answer' | 'ice';
+
+export interface PeerEnvelope {
+  fromPeer: string;
+  kind: PeerSignalKind;
+  /** Opaco para o servidor: ele carrega, não interpreta. */
+  payload: string;
+}
+
+export interface PeerInbox {
+  signals: PeerEnvelope[];
+}
+
+/**
+ * Teto de participantes no modo P2P.
+ *
+ * Malha completa: cada par mantém uma conexão com cada outro, então o número
+ * de conexões cresce com o QUADRADO das pessoas. Com 6, são 15 conexões e
+ * cada navegador codifica o próprio vídeo 5 vezes — é onde uma máquina comum
+ * ainda dá conta. Acima disso o modo certo é o LiveKit, que codifica uma vez.
+ */
+export const P2P_MAX_PEERS = 6;

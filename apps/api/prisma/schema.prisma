@@ -522,3 +522,75 @@ model AuditLog {
   @@index([targetType, targetId])
   @@index([action, createdAt])
 }
+
+// ===========================================================================
+// Sinalização do modo P2P
+//
+// O segundo paradigma de transmissão: em vez de passar pelo SFU, os
+// navegadores falam DIRETO entre si. Para isso precisam trocar SDP e
+// candidatos ICE — e é só isso que estas duas tabelas carregam. Depois do
+// aperto de mão, nenhum byte de áudio ou vídeo passa por aqui.
+//
+// POR QUE BANCO, E NÃO WEBSOCKET
+//
+// A sinalização clássica é um socket aberto. Numa função serverless não há
+// processo vivo para manter socket, e Socket.io na Vercel cobra por conexão
+// pendurada. O que sobra, e funciona, é caixa-de-correio: quem quer falar
+// ESCREVE uma linha, quem espera LÊ por polling curto. Custa latência de
+// aperto de mão (um ou dois segundos a mais para conectar) e não custa
+// infraestrutura nenhuma.
+//
+// A conversa some sozinha: `expiresAt` com TTL do TiDB, porque sinal velho
+// não serve para nada e a tabela não pode crescer para sempre.
+// ===========================================================================
+
+/**
+ * Presença numa sala P2P.
+ *
+ * É o que substitui a lista de participantes que o SFU daria de graça. Cada
+ * navegador renova o próprio `lastSeenAt`; quem não renova é considerado fora,
+ * sem ninguém precisar avisar — aba fechada não manda despedida.
+ */
+model PeerPresence {
+  id       String @id @default(cuid())
+  roomSlug String @db.VarChar(64)
+  /// Mesma `identity` do token do LiveKit: id da conta, ou UUID do anônimo.
+  peerId   String @db.VarChar(64)
+  userId   String? @db.VarChar(32)
+  displayName String @db.VarChar(64)
+
+  joinedAt   DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  /// Um navegador, uma linha por sala. Reentrar atualiza em vez de duplicar.
+  @@unique([roomSlug, peerId])
+  @@index([roomSlug, lastSeenAt])
+}
+
+/**
+ * Um envelope de sinalização, de um par para outro.
+ *
+ * Só trafega o que o aperto de mão exige: `offer`, `answer` e `ice`. O
+ * conteúdo é opaco para o servidor — ele carrega, não interpreta.
+ *
+ * Entregue é APAGADO, não marcado: sinal lido duas vezes refaz a negociação
+ * e derruba a conexão que acabou de subir.
+ */
+model PeerSignal {
+  id       String @id @default(cuid())
+  roomSlug String @db.VarChar(64)
+  fromPeer String @db.VarChar(64)
+  toPeer   String @db.VarChar(64)
+  /// 'offer' | 'answer' | 'ice'
+  kind     String @db.VarChar(8)
+  /// SDP ou candidato ICE. Texto longo: SDP passa de 4 KB com frequência.
+  payload  String @db.Text
+
+  createdAt DateTime @default(now())
+  /// Limpeza automática; ver o TTL declarado na migração.
+  expiresAt DateTime
+
+  /// A leitura é sempre "o que chegou para mim nesta sala", em ordem.
+  @@index([roomSlug, toPeer, createdAt])
+  @@index([expiresAt])
+}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { useMediaDevices } from '../hooks/useMediaDevices';
 import { useMicrophoneTest } from '../hooks/useMicrophoneTest';
 import type { ToastKind } from '../hooks/useToasts';
@@ -28,6 +28,21 @@ interface DeviceSettingsProps {
   isSharingScreen: boolean;
 }
 
+/*
+ * Três seções, e a divisão segue o MOTIVO de alguém abrir o painel: ajustar
+ * como se fala, como se transmite, ou trocar um aparelho que acabou de ser
+ * plugado. Microfone e saída aparecem em Dispositivos, que é onde se procura
+ * por eles — o modo de voz fica em Áudio, porque é comportamento, não
+ * hardware.
+ */
+type Section = 'audio' | 'video' | 'dispositivos';
+
+const SECTIONS: { id: Section; label: string }[] = [
+  { id: 'audio', label: 'Áudio' },
+  { id: 'video', label: 'Vídeo' },
+  { id: 'dispositivos', label: 'Dispositivos' },
+];
+
 const TEST_LABEL: Record<'idle' | 'recording' | 'playing', string> = {
   idle: 'Testar',
   recording: 'Gravando…',
@@ -45,6 +60,7 @@ export function DeviceSettings({
   onChangeScreenQuality,
   isSharingScreen,
 }: DeviceSettingsProps): JSX.Element {
+  const [section, setSection] = useState<Section>('audio');
   const panelRef = useRef<HTMLDivElement | null>(null);
   const devices = useMediaDevices((message) => notify('error', message));
   const test = useMicrophoneTest(
@@ -76,14 +92,36 @@ export function DeviceSettings({
   }, [onClose, containerRef]);
 
   return (
-    <div className={styles.panel} ref={panelRef} role="dialog" aria-label="Áudio e vídeo">
+    <div className={styles.panel} ref={panelRef} role="dialog" aria-label="Configurações">
       <div className={styles.header}>
-        <h2 className={styles.heading}>Áudio e vídeo</h2>
+        <h2 className={styles.heading}>Configurações</h2>
         <button type="button" className={styles.close} onClick={onClose} aria-label="Fechar">
           ×
         </button>
       </div>
 
+      {/*
+        * Seções em vez de uma lista só: o painel juntava modo de voz,
+        * microfone, saída, câmera e qualidade de transmissão numa rolagem
+        * única, e quem vinha trocar o fone passava por tudo.
+        */}
+      <nav className={styles.sections} role="tablist" aria-label="Seções">
+        {SECTIONS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            role="tab"
+            aria-selected={section === item.id}
+            className={`${styles.sectionTab} ${section === item.id ? styles.sectionTabOn : ''}`}
+            onClick={() => setSection(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </nav>
+
+      {section === 'audio' ? (
+      <>
       <div className={styles.field}>
         <span className={styles.label}>
           <MicIcon className={styles.icon} />
@@ -116,6 +154,30 @@ export function DeviceSettings({
         </span>
       </div>
 
+      <div className={styles.field}>
+        <label className={styles.switchRow}>
+          <input
+            type="checkbox"
+            className={styles.checkbox}
+            checked={devices.noiseSuppression}
+            onChange={(event) => devices.setNoiseSuppression(event.target.checked)}
+          />
+          <span className={styles.switchTrack} aria-hidden="true">
+            <span className={styles.switchThumb} />
+          </span>
+          <span className={styles.switchLabel}>Supressão de ruído</span>
+        </label>
+        <span className={styles.hint}>
+          Corta ventilador, teclado e barulho de fundo. Desligue se estiver tocando ou cantando —
+          o filtro trata música como ruído.
+        </span>
+      </div>
+
+      </>
+      ) : null}
+
+      {section === 'dispositivos' ? (
+      <>
       {devices.labelsHidden ? (
         <p className={styles.notice}>
           O navegador esconde o nome dos dispositivos até você autorizar o microfone.
@@ -174,25 +236,6 @@ export function DeviceSettings({
         </span>
       </div>
 
-      <div className={styles.field}>
-        <label className={styles.switchRow}>
-          <input
-            type="checkbox"
-            className={styles.checkbox}
-            checked={devices.noiseSuppression}
-            onChange={(event) => devices.setNoiseSuppression(event.target.checked)}
-          />
-          <span className={styles.switchTrack} aria-hidden="true">
-            <span className={styles.switchThumb} />
-          </span>
-          <span className={styles.switchLabel}>Supressão de ruído</span>
-        </label>
-        <span className={styles.hint}>
-          Corta ventilador, teclado e barulho de fundo. Desligue se estiver tocando ou cantando —
-          o filtro trata música como ruído.
-        </span>
-      </div>
-
       <label className={styles.field}>
         <span className={styles.label}>
           <SpeakerIcon className={styles.icon} />
@@ -225,7 +268,11 @@ export function DeviceSettings({
           </span>
         )}
       </label>
+      </>
+      ) : null}
 
+      {section === 'video' ? (
+      <>
       <label className={styles.field}>
         <span className={styles.label}>
           <ScreenIcon className={styles.icon} />
@@ -284,6 +331,8 @@ export function DeviceSettings({
             : 'Vale a partir do próximo compartilhamento.'}
         </span>
       </label>
+      </>
+      ) : null}
     </div>
   );
 }
