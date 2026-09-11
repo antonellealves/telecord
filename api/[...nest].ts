@@ -19,8 +19,6 @@
  * sobra um caminho relativo dentro de `api/`, que a etapa de funções enxerga.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-expect-error — gerado por `scripts/bundle-api.mjs` no build, sem tipos.
 import nest from './_bundle/nest.cjs';
 
 type NodeHandler = (req: IncomingMessage, res: ServerResponse) => void;
