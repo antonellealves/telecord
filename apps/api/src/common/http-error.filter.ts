@@ -49,8 +49,31 @@ export class HttpErrorFilter implements ExceptionFilter {
       `${request.method} ${request.path} falhou`,
       exception instanceof Error ? exception.stack : String(exception),
     );
+
+    /*
+     * `DEBUG_ERRORS=1` devolve a causa no corpo, e fora isso nada muda.
+     *
+     * Existe porque numa função serverless o log do servidor pode ser
+     * inalcançável — a API da Vercel não expõe log de runtime, e sem isso um
+     * 500 fica indistinguível de outro: é a diferença entre "o banco recusou"
+     * e "faltou variável", e nenhuma das duas aparece na resposta genérica.
+     *
+     * FECHADO por padrão, e é assim que tem que ficar: mensagem de erro de
+     * banco é mapa do schema para quem estiver sondando. Ligar isto é medida
+     * temporária de diagnóstico, não configuração de produção.
+     */
+    const debug = process.env.DEBUG_ERRORS === '1';
+    const details =
+      debug && exception instanceof Error
+        ? { name: exception.name, message: exception.message, stack: exception.stack?.split('\n').slice(0, 6) }
+        : undefined;
+
     response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
-      error: { code: 'internal', message: 'Erro interno. Tente de novo.' },
+      error: {
+        code: 'internal',
+        message: 'Erro interno. Tente de novo.',
+        ...(details === undefined ? {} : { details }),
+      },
     } satisfies ErrorBody);
   }
 }

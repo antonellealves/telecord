@@ -57,7 +57,19 @@ export async function readSession(req: IncomingMessage): Promise<SessionClaims |
      * erro visível em lugar nenhum — porque falha aqui é, por desenho,
      * indistinguível de "não mandou token".
      */
-    const key = await importSPKI(publicKey.replace(/\\n/g, '\n'), ALG);
+    /*
+     * Tira as aspas de fora, além do `\n` escapado — mesmo tratamento de
+     * `apps/api/src/common/config.ts`, e pelo mesmo motivo: colar no painel o
+     * valor que `gen-auth-keys.mjs` imprime (`CHAVE="-----BEGIN…"`) leva as
+     * aspas do shell junto, e aí o PEM é recusado. Aqui a falha é SILENCIOSA
+     * por desenho — token inválido só faz a pessoa entrar como anônima —, o
+     * que torna a aspa perdida ainda mais difícil de achar.
+     */
+    const pem = publicKey
+      .trim()
+      .replace(/^(['"])([\s\S]*)\1$/, '$2')
+      .replace(/\\n/g, '\n');
+    const key = await importSPKI(pem, ALG);
     const { payload } = await jwtVerify(header.slice(7), key, {
       issuer: ISSUER,
       audience: AUDIENCE,

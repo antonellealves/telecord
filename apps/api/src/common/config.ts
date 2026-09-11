@@ -95,7 +95,25 @@ function trimTrailingSlash(url: string): string {
  * PEM assim, e a falha só apareceria na primeira tentativa de login.
  */
 function readPem(value: string): string {
-  return value.replace(/\\n/g, '\n');
+  /*
+   * As aspas de fora, quando vierem.
+   *
+   * `scripts/gen-auth-keys.mjs` imprime as chaves no formato pronto para colar
+   * num arquivo `.env` — `AUTH_JWT_PRIVATE_KEY="-----BEGIN…"` —, e ali as
+   * aspas são delimitador do shell. Colando o valor num campo de painel
+   * (Vercel, GitHub) elas viram PARTE do valor, e o `jose` recusa o PEM com um
+   * "must be PKCS#8 formatted string" que não diz nada sobre aspas.
+   *
+   * O sintoma disso é cruel: a chave só é usada ao ASSINAR, então o serviço
+   * sobe normalmente, o diretório de salas responde, o login com senha errada
+   * devolve 401 certinho — e só cadastrar ou entrar de verdade quebra com 500,
+   * porque só esses caminhos chegam em `signAccessToken`.
+   *
+   * Aspas em volta de um PEM nunca são conteúdo legítimo, então tirar é seguro
+   * e não esconde erro de ninguém.
+   */
+  const semAspas = value.trim().replace(/^(['"])([\s\S]*)\1$/, '$2');
+  return semAspas.replace(/\\n/g, '\n');
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
