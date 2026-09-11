@@ -11,7 +11,7 @@ export default async function handler(
 ): Promise<void> {
   const out: Record<string, unknown> = {};
   try {
-    const m = await import('@prisma/client');
+    const m = await import('@prisma/client' as string);
     out.prisma = typeof (m as { PrismaClient?: unknown }).PrismaClient;
   } catch (error) {
     out.prismaError = String(error);
