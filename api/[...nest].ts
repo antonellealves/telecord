@@ -1,34 +1,50 @@
 /**
  * Ponte entre o roteamento da Vercel e o serviço NestJS.
  *
- * Captura tudo sob `/api/` que não tenha função própria. `api/token.ts` e
- * `api/rooms.ts` continuam respondendo pelos caminhos deles: rota com segmento
- * fixo tem precedência sobre rota dinâmica, então a captura só recebe o resto.
+ * Carrega o bundle de `api-bundle/`, montado por `scripts/bundle-api.mjs`, e
+ * copiado para o pacote da função pelo `includeFiles` do `vercel.json`.
  *
- * CARREGA UM BUNDLE, e não o `dist` do serviço. O log de build da Vercel
- * mostra por quê: depois do `buildCommand`, cada arquivo de `api/` é compilado
- * numa ETAPA SEPARADA, com o próprio "Installing dependencies...", que não
- * enxerga o que o build do monorepo produziu — `apps/api/dist` não está lá, e
- * `packages/shared/dist` é o do lockfile. Alcançar o serviço daqui por caminho
- * relativo, por nome de pacote ou com `node-linker=hoisted` dependia, nos três
- * casos, de resolver algo que naquele instante não existe.
- *
- * `scripts/bundle-api.mjs` resolve antes: empacota o serviço num `.cjs` sem
- * dependência externa, em `api-bundle/` — FORA de `api/`, porque todo
- * `.js`/`.cjs` dentro de `api/` vira candidato a função serverless própria no
- * roteamento zero-config, e o cliente do Prisma sozinho traz mais de dez.
+ * O import é DINÂMICO e dentro de try/catch de propósito: enquanto o
+ * carregamento acontecia no topo do módulo, qualquer falha matava a função
+ * antes de qualquer código rodar, e o erro não aparecia em lugar nenhum —
+ * nem stack, nem log, só FUNCTION_INVOCATION_FAILED. Assim, uma falha de
+ * carregamento vira resposta legível em vez de tela preta.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import nest from '../api-bundle/bundle/nest.cjs';
 
 type NodeHandler = (req: IncomingMessage, res: ServerResponse) => void;
 
-/*
- * O `export default` é uma função declarada AQUI, e não o `nest` reexportado
- * direto: `export default nest` exporta um binding para o default de um módulo
- * CommonJS, e o empacotador da Vercel lê esse binding ao envolver o arquivo,
- * antes de a interop CJS→ESM ter resolvido o valor.
- */
-export default function handler(req: IncomingMessage, res: ServerResponse): void {
-  (nest as NodeHandler)(req, res);
+let cached: NodeHandler | null = null;
+
+export default async function handler(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  try {
+    if (cached === null) {
+      const m = (await import('../api-bundle/bundle/nest.cjs')) as unknown as {
+        default?: NodeHandler;
+      };
+      const fn = m.default ?? (m as unknown as NodeHandler);
+      if (typeof fn !== 'function') {
+        throw new TypeError(`o bundle não exportou função (veio ${typeof fn})`);
+      }
+      cached = fn;
+    }
+    cached(req, res);
+  } catch (error) {
+    res.statusCode = 500;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(
+      JSON.stringify(
+        {
+          error: { code: 'bundle_load_failed', message: String(error).slice(0, 400) },
+          stack: (error as Error)?.stack?.split('\n').slice(0, 10),
+        },
+        null,
+        2,
+      ),
+    );
+  }
 }
