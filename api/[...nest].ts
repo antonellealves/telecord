@@ -1,49 +1,23 @@
 /**
- * Ponte entre o roteamento da Vercel e o serviço NestJS.
- *
- * Captura tudo sob `/api/` que não tenha função própria.
- *
- * TEMPORÁRIO: o import do serviço está DENTRO do handler, em try/catch, e o
- * erro vira resposta. Enquanto a função morria no carregamento, o erro não
- * aparecia em lugar nenhum — nem stack, nem log, só
- * FUNCTION_INVOCATION_FAILED. Assim ele fica legível e o diagnóstico para de
- * depender de palpite. Volta a ser import estático quando a causa estiver
- * corrigida.
+ * TEMPORÁRIO: importa só o Prisma, sem o Nest, para separar as duas metades
+ * do pacote. Se ISTO falhar, o peso/engine do Prisma é a causa; se responder,
+ * a causa está do lado do Nest.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
-type NodeHandler = (req: IncomingMessage, res: ServerResponse) => void;
-
 export default async function handler(
-  req: IncomingMessage,
+  _req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
-  let nest: NodeHandler;
+  const out: Record<string, unknown> = {};
   try {
-    const mod = (await import('@telecord/api/vercel')) as unknown as {
-      default?: NodeHandler;
-    };
-    const fn = mod.default ?? (mod as unknown as NodeHandler);
-    if (typeof fn !== 'function') {
-      throw new TypeError(`o módulo não exportou função (veio ${typeof fn})`);
-    }
-    nest = fn;
+    const m = await import('@prisma/client');
+    out.prisma = typeof (m as { PrismaClient?: unknown }).PrismaClient;
   } catch (error) {
-    res.statusCode = 500;
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-store');
-    res.end(
-      JSON.stringify(
-        {
-          error: { code: 'nest_load_failed', message: String(error) },
-          stack: (error as Error)?.stack?.split('\n').slice(0, 12),
-        },
-        null,
-        2,
-      ),
-    );
-    return;
+    out.prismaError = String(error);
   }
-
-  nest(req, res);
+  res.statusCode = 200;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.end(JSON.stringify(out, null, 2));
 }
