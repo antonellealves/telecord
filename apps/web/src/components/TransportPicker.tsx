@@ -1,5 +1,5 @@
 import type { TransportMode } from '@telecord/shared';
-import { P2P_MAX_PEERS } from '@telecord/shared';
+import { P2P_COMFORT_PEERS } from '@telecord/shared';
 import styles from './TransportPicker.module.css';
 
 interface Props {
@@ -41,7 +41,7 @@ const OPTIONS: Option[] = [
     label: 'Conexão direta',
     tagline: 'WebRTC puro · experimental',
     pros: ['Latência menor', 'Nenhum servidor vê a mídia'],
-    cons: [`No máximo ${P2P_MAX_PEERS} pessoas`, 'Algumas redes não deixam conectar'],
+    cons: [`Pesa acima de ${P2P_COMFORT_PEERS} pessoas`, 'Algumas redes não deixam conectar'],
   },
 ];
 

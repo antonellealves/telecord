@@ -94,6 +94,24 @@ function hardStop(audio: HTMLAudioElement): void {
  * Nada aqui é persistido: a sala é efêmera, e o histórico morre com ela. Quem
  * entra depois não vê o que passou — é a mesma regra do resto do app.
  */
+/**
+ * Por onde as mensagens viajam.
+ *
+ * Existe para o chat e o soundboard funcionarem NOS DOIS modos sem duas
+ * cópias da mesma lógica: no LiveKit o canal é o `publishData` do SFU; no
+ * modo direto, um `RTCDataChannel` por par. O formato da mensagem é o mesmo
+ * — `parseRoomMessage` valida os dois —, e só o cano muda.
+ */
+export interface MessageTransport {
+  /** Publica para a sala inteira. */
+  publish: (raw: string) => void;
+  /** Assina a chegada; devolve o cancelamento. */
+  subscribe: (handler: (raw: string, author: string, authorId: string) => void) => () => void;
+  /** Como EU apareço nas mensagens que eu mesmo mando. */
+  localName: string;
+  localIdentity: string;
+}
+
 export function useRoomMessages(
   getVolume: () => number,
   /*
@@ -106,8 +124,19 @@ export function useRoomMessages(
    * conheço este som".
    */
   resolveSound: (soundId: string) => ResolvedSound | undefined,
+  /**
+   * Por onde publicar e receber. Sem isto, usa o canal de dados do LiveKit.
+   *
+   * É o que faz chat e soundboard existirem nos DOIS modos sem duas cópias da
+   * mesma lógica — o formato da mensagem é o mesmo, só o cano muda.
+   */
+  transport?: MessageTransport,
 ): RoomMessaging {
   const room = useRoomContext();
+  // Por ref: trocar o transporte não pode reassinar o canal e cortar o som
+  // que estiver tocando.
+  const transportRef = useRef(transport);
+  transportRef.current = transport;
   const [messages, setMessages] = useState<ChatEntry[]>([]);
   const [unread, setUnread] = useState(0);
   const [playing, setPlaying] = useState<SoundPlayback | null>(null);
@@ -325,12 +354,13 @@ export function useRoomMessages(
       publish(message);
       // Aparece na hora para quem escreveu: o canal de dados não devolve o
       // que a própria pessoa publicou.
-      const name = room.localParticipant.name;
+      const custom = transportRef.current;
+      const name = custom?.localName ?? room.localParticipant.name;
       append(
         {
           id: message.id,
           author: name !== undefined && name !== '' ? name : 'você',
-          authorIdentity: room.localParticipant.identity,
+          authorIdentity: custom?.localIdentity ?? room.localParticipant.identity,
           body: trimmed,
           sentAt: message.sentAt,
           isLocal: true,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { P2P_MAX_PEERS, type PeerInfo } from '@telecord/shared';
+import { P2P_COMFORT_PEERS, type PeerInfo } from '@telecord/shared';
 import { peerHeartbeat, peerInbox, peerLeave, peerSignal } from '../lib/peers';
 
 /** Ritmo do batimento: renova presença e busca a caixa de sinais. */
@@ -30,10 +30,14 @@ export interface RemotePeer {
 
 export interface P2PMesh {
   peers: RemotePeer[];
+  /** Streams crus por par, para quem precisa montar a cadeia de áudio. */
+  streams: Map<string, MediaStream>;
+  /** Manda uma mensagem para todos os pares conectados. */
+  broadcast: (raw: string) => void;
   /** Erro que vale mostrar; `null` quando está tudo certo. */
   error: string | null;
-  /** Passou do teto de pares — a malha para de crescer. */
-  isFull: boolean;
+  /** Passou do ponto confortável: a malha continua, mas avisa. */
+  isCrowded: boolean;
 }
 
 interface Options {
@@ -43,10 +47,14 @@ interface Options {
   /** O que ESTE navegador publica. `null` enquanto nada foi ligado. */
   localStream: MediaStream | null;
   enabled: boolean;
+  /** Chamado para cada mensagem que chega de qualquer par. */
+  onData?: (fromPeer: string, raw: string) => void;
 }
 
 interface Link {
   pc: RTCPeerConnection;
+  /** Canal de dados: chat, sons e presença de fala viajam por aqui. */
+  channel: RTCDataChannel | null;
   stream: MediaStream;
   /** Quem faz a oferta, para os dois lados não ofertarem ao mesmo tempo. */
   isInitiator: boolean;
@@ -62,7 +70,8 @@ interface Link {
  * mídia). Perde escala: as conexões crescem com o QUADRADO das pessoas, e
  * cada navegador codifica o próprio vídeo uma vez PARA CADA par. Com 6, são
  * 15 conexões e 5 codificações por máquina — é onde um computador comum ainda
- * dá conta, e por isso `P2P_MAX_PEERS` é 6.
+ * dá conta — mas não há teto: quem quiser tentar com mais gente pode, e a
+ * interface avisa a partir de `P2P_COMFORT_PEERS`.
  *
  * ## Quem oferta
  *
@@ -77,6 +86,7 @@ export function useP2PMesh({
   displayName,
   localStream,
   enabled,
+  onData,
 }: Options): P2PMesh {
   const [roster, setRoster] = useState<PeerInfo[]>([]);
   const [streams, setStreams] = useState<Map<string, MediaStream>>(new Map());
@@ -86,6 +96,9 @@ export function useP2PMesh({
   const links = useRef<Map<string, Link>>(new Map());
   const localRef = useRef<MediaStream | null>(localStream);
   localRef.current = localStream;
+  // Por ref: trocar o receptor não pode reassinar a malha inteira.
+  const onDataRef = useRef(onData);
+  onDataRef.current = onData;
 
   const marcar = useCallback((id: string, state: PeerConnectionState) => {
     setStates((atual) => {
@@ -105,8 +118,26 @@ export function useP2PMesh({
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
       const stream = new MediaStream();
       const isInitiator = peerId < outro;
-      const link: Link = { pc, stream, isInitiator, senders: [] };
+      const link: Link = { pc, channel: null, stream, isInitiator, senders: [] };
       links.current.set(outro, link);
+
+      /*
+       * O canal de dados é criado por UM lado só — o mesmo que oferta. Os dois
+       * criando abriria dois canais para a mesma conversa, e cada mensagem
+       * chegaria duplicada. O outro lado recebe por `ondatachannel`.
+       */
+      const armarCanal = (channel: RTCDataChannel): void => {
+        link.channel = channel;
+        channel.onmessage = (event) => {
+          if (typeof event.data === 'string') onDataRef.current?.(outro, event.data);
+        };
+      };
+
+      if (isInitiator) {
+        armarCanal(pc.createDataChannel('telecord', { ordered: true }));
+      } else {
+        pc.ondatachannel = (event) => armarCanal(event.channel);
+      }
 
       pc.onicecandidate = (event) => {
         if (event.candidate !== null) {
@@ -164,6 +195,11 @@ export function useP2PMesh({
     link.pc.onicecandidate = null;
     link.pc.ontrack = null;
     link.pc.onconnectionstatechange = null;
+    link.pc.ondatachannel = null;
+    if (link.channel !== null) {
+      link.channel.onmessage = null;
+      link.channel.close();
+    }
     link.pc.close();
     links.current.delete(outro);
     setStreams((atual) => {
@@ -239,7 +275,9 @@ export function useP2PMesh({
         setRoster(peers);
         setError(null);
 
-        const outros = peers.filter((p) => p.peerId !== peerId).slice(0, P2P_MAX_PEERS - 1);
+        // Sem corte: todo mundo que está na sala entra na malha. O custo
+        // cresce ao quadrado, e quem decide se vale é quem está na sala.
+        const outros = peers.filter((p) => p.peerId !== peerId);
         const esperados = new Set(outros.map((p) => p.peerId));
 
         // Quem saiu da lista perde a conexão.
@@ -299,6 +337,26 @@ export function useP2PMesh({
     }
   }, [localStream, enabled, ofertar]);
 
+  /*
+   * Manda para todos os canais abertos.
+   *
+   * Sem fila para quem ainda não abriu: mensagem de chat que chega dois
+   * segundos depois, quando a conexão subir, confunde mais do que ajuda — a
+   * conversa já seguiu. Quem entrou depois vê o que vier a partir dali.
+   */
+  const broadcast = useCallback((raw: string) => {
+    for (const link of links.current.values()) {
+      if (link.channel?.readyState === 'open') {
+        try {
+          link.channel.send(raw);
+        } catch {
+          // Canal que fechou entre a checagem e o envio: o par sai na próxima
+          // reconciliação e não há o que fazer aqui.
+        }
+      }
+    }
+  }, []);
+
   const peers = useMemo<RemotePeer[]>(
     () =>
       roster
@@ -313,5 +371,11 @@ export function useP2PMesh({
     [roster, peerId, states, streams],
   );
 
-  return { peers, error, isFull: roster.length >= P2P_MAX_PEERS };
+  return {
+    peers,
+    streams,
+    broadcast,
+    error,
+    isCrowded: roster.length > P2P_COMFORT_PEERS,
+  };
 }

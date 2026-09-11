@@ -1,12 +1,29 @@
+/*
+ * A sala do modo direto tem identidade PRÓPRIA, e isso é decisão de produto,
+ * não capricho: os dois ambientes têm limitações diferentes — aqui cabem 6
+ * pessoas e rede difícil não conecta —, e alguém que confunde os dois reclama
+ * da coisa errada. O reconhecimento precisa vir antes de qualquer etiqueta.
+ *
+ * O que muda em relação à sala do LiveKit:
+ *  - Acento ÂMBAR no lugar do azul. É a diferença que o olho pega primeiro.
+ *  - Fundo mais fechado e cantos mais duros: ambiente "de oficina".
+ *  - Quadros ARRASTÁVEIS, com a grade automática só como ponto de partida.
+ *  - Moldura tracejada no palco, dizendo que aquilo é uma superfície livre.
+ */
 .shell {
+  --p2p: #e7c07a;
+  --p2p-rgb: 231, 192, 122;
+
   position: relative;
   z-index: 1;
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 16px;
+  gap: 12px;
+  padding: 14px;
 }
+
+/* ---- cabeçalho -------------------------------------------------------- */
 
 .header {
   display: flex;
@@ -33,55 +50,131 @@
 
 .title {
   margin: 0;
-  font-size: 15px;
-  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
   color: var(--text);
 }
 
-/* Marca o paradigma na própria sala: é a diferença que mais importa aqui. */
 .modeTag {
   padding: 2px 9px;
-  border-radius: var(--radius-pill);
-  border: 1px solid rgba(var(--accent-rgb), 0.4);
-  background: rgba(var(--accent-rgb), 0.1);
+  border-radius: 4px;
+  border: 1px solid rgba(var(--p2p-rgb), 0.5);
+  background: rgba(var(--p2p-rgb), 0.12);
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.06em;
-  color: var(--accent-soft);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--p2p);
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.counter {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.ghost {
+  padding: 5px 11px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+}
+
+.ghost:hover {
+  border-color: rgba(var(--p2p-rgb), 0.5);
+  color: var(--p2p);
 }
 
 .warn {
   margin: 0;
-  padding: 10px 14px;
-  border-radius: var(--radius-sm);
-  border: 1px solid rgba(var(--warn-rgb), 0.4);
-  background: rgba(var(--warn-rgb), 0.1);
+  padding: 9px 13px;
+  border-radius: 4px;
+  border-left: 3px solid var(--p2p);
+  background: rgba(var(--p2p-rgb), 0.1);
   font-size: 13px;
-  color: var(--warn);
+  color: var(--p2p);
 }
 
-/* ---- palco ------------------------------------------------------------ */
+/* ---- corpo ------------------------------------------------------------ */
 
-.stage {
+.body {
   flex: 1;
   min-height: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  display: flex;
   gap: 12px;
+}
+
+/*
+ * O palco tem moldura tracejada: é a dica de que aquilo é superfície livre, e
+ * não uma grade rígida. Quem arrastou algum quadro passa a `stageFree`, onde
+ * os quadros são posicionados em absoluto.
+ */
+.stage {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-auto-rows: min-content;
+  gap: 10px;
+  padding: 10px;
+  border: 1px dashed rgba(var(--p2p-rgb), 0.22);
+  border-radius: 6px;
   align-content: start;
 }
+
+.stageFree {
+  position: relative;
+  display: block;
+}
+
+/* ---- quadros ---------------------------------------------------------- */
 
 .tile {
   position: relative;
   aspect-ratio: 16 / 9;
-  border-radius: var(--radius);
+  border-radius: 5px;
   border: 1px solid var(--border);
-  background: var(--bg-deep);
+  background: #05070c;
   overflow: hidden;
+  cursor: grab;
+  /* Arrastar não pode selecionar o texto da etiqueta. */
+  user-select: none;
+  touch-action: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.stageFree .tile {
+  aspect-ratio: auto;
+}
+
+.tile:hover {
+  border-color: rgba(var(--p2p-rgb), 0.45);
 }
 
 .tileSelf {
-  border-color: rgba(var(--accent-rgb), 0.35);
+  border-color: rgba(var(--p2p-rgb), 0.55);
+}
+
+/* Sem rota é o caso que exige trocar de modo: precisa saltar aos olhos. */
+.tileBad {
+  border-color: rgba(var(--danger-rgb), 0.5);
+}
+
+.tileDragging {
+  cursor: grabbing;
+  z-index: 5;
+  box-shadow: 0 18px 46px -14px rgba(0, 0, 0, 0.85);
+  border-color: var(--p2p);
 }
 
 .video {
@@ -89,9 +182,9 @@
   height: 100%;
   object-fit: contain;
   background: #000;
+  pointer-events: none;
 }
 
-/* Sem vídeo, as iniciais — em vez de um retângulo preto sem explicação. */
 .tilePlaceholder {
   position: absolute;
   inset: 0;
@@ -102,34 +195,40 @@
 
 .initials {
   font-family: var(--font-display);
-  font-size: 26px;
+  font-size: 24px;
   color: var(--text-faint);
 }
 
 .tileLabel {
   position: absolute;
-  left: 10px;
-  bottom: 10px;
+  left: 8px;
+  bottom: 8px;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 10px;
-  border-radius: var(--radius-pill);
-  background: rgba(8, 10, 14, 0.72);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  gap: 7px;
+  padding: 3px 9px;
+  border-radius: 4px;
+  background: rgba(5, 7, 12, 0.82);
   font-size: 12px;
   color: var(--text);
 }
 
-.tileState {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-faint);
+.tileName {
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* Quem não conectou precisa ser visível: é o caso que exige trocar de modo. */
-.tileStateBad {
+.tileBadge {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--p2p);
+}
+
+.tileBadgeBad {
   color: var(--danger);
 }
 
@@ -139,7 +238,7 @@
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  padding: 40px 20px;
+  padding: 44px 20px;
   text-align: center;
 }
 
@@ -158,21 +257,146 @@
   color: var(--text-dim);
 }
 
+/* ---- lista de pessoas -------------------------------------------------- */
+
+.people {
+  width: 250px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-raised);
+  overflow-y: auto;
+}
+
+.peopleHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.peopleTitle {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.count {
+  color: var(--p2p);
+}
+
+.close {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-size: 17px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.close:hover {
+  color: var(--text);
+}
+
+.peopleList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.person {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--border);
+}
+
+.person:last-child {
+  border-bottom: none;
+}
+
+.personName {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.personState {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--p2p);
+}
+
+.personStateBad {
+  color: var(--danger);
+}
+
+.volumeRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mini {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  color: var(--text-dim);
+}
+
+.mini:hover {
+  color: var(--p2p);
+  border-color: rgba(var(--p2p-rgb), 0.5);
+}
+
+.slider {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--p2p);
+}
+
+.volumeValue {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  min-width: 4ch;
+  text-align: right;
+}
+
 /* ---- controles --------------------------------------------------------- */
 
 .controls {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .button {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 16px;
-  border-radius: var(--radius-pill);
+  padding: 9px 15px;
+  /* Cantos mais duros que os da sala do LiveKit: outra linguagem. */
+  border-radius: 5px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text-dim);
@@ -181,15 +405,24 @@
   transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
 }
 
-.button:hover {
+.button:hover:not(:disabled) {
   background: var(--surface-hover);
   color: var(--text);
 }
 
+.button:disabled {
+  opacity: 0.45;
+}
+
 .active {
-  border-color: rgba(var(--accent-rgb), 0.5);
-  background: rgba(var(--accent-rgb), 0.14);
-  color: var(--accent-soft);
+  border-color: rgba(var(--p2p-rgb), 0.6);
+  background: rgba(var(--p2p-rgb), 0.16);
+  color: var(--p2p);
+}
+
+.toggled {
+  border-color: rgba(var(--p2p-rgb), 0.35);
+  color: var(--p2p);
 }
 
 .danger {
@@ -202,6 +435,21 @@
   color: var(--danger);
 }
 
+.badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--p2p);
+  color: #241a05;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
 .text {
   white-space: nowrap;
 }
@@ -212,35 +460,31 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding-top: 4px;
-  border-top: 1px solid var(--border);
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(var(--p2p-rgb), 0.2);
 }
 
 .status {
-  margin: 8px 0 0;
-  font-size: 12px;
+  margin: 0;
+  font-size: 11.5px;
   color: var(--text-faint);
   text-align: center;
 }
 
 .switcher {
-  width: min(520px, 100%);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  align-items: center;
+  width: min(460px, 100%);
 }
 
-.switcherHint {
-  font-size: 11px;
-  color: var(--text-faint);
-  text-align: center;
+@media (max-width: 860px) {
+  .people {
+    display: none;
+  }
 }
 
 @media (max-width: 560px) {
   .shell {
-    padding: 12px;
+    padding: 10px;
   }
 
   .text {

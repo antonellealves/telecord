@@ -1,5 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import type { PeerInbox, PeerRoster, PeerSignalKind } from '@telecord/shared';
+import {
+  isTilePosition,
+  MAX_TILES_SAVED,
+  type PeerInbox,
+  type PeerRoster,
+  type PeerSignalKind,
+  type TileLayout,
+} from '@telecord/shared';
+import type { Prisma } from '../generated/prisma';
 import { badRequest } from '../common/errors';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -69,9 +77,13 @@ export class PeersService {
       },
       select: { peerId: true, displayName: true, userId: true, joinedAt: true },
       orderBy: [{ joinedAt: 'asc' }, { peerId: 'asc' }],
-      // Teto duro: malha completa cresce ao quadrado, e o cliente também
-      // recusa acima disso. Aqui é a segunda tranca, do lado do servidor.
-      take: 12,
+      /*
+       * Teto ALTO, e não limite de produto: a sala aceita quem chegar, e quem
+       * decide se a malha aguenta é quem está nela. Este número existe só
+       * para uma sala absurda não devolver uma resposta gigante — não é a
+       * regra de quantas pessoas cabem.
+       */
+      take: 60,
     });
 
     return {
@@ -151,4 +163,66 @@ export class PeersService {
       })),
     };
   }
+
+  /**
+   * A arrumação dos quadros deste navegador nesta sala.
+   *
+   * Vazio quando nunca arrumaram — e vazio é resposta VÁLIDA, não erro: a
+   * maioria das salas nunca vai ter arrumação salva, e o cliente cai no
+   * layout automático.
+   */
+  async layout(roomSlug: string, ownerId: string): Promise<TileLayout> {
+    const linha = await this.prisma.peerLayout.findUnique({
+      where: { roomSlug_ownerId: { roomSlug, ownerId } },
+      select: { tiles: true },
+    });
+    if (linha === null) return {};
+
+    // O que veio do banco é uma coluna JSON: passa pela mesma validação da
+    // escrita, porque schema antigo ou linha adulterada não pode quebrar a tela.
+    return sanitizar(linha.tiles);
+  }
+
+  async saveLayout(roomSlug: string, ownerId: string, tiles: unknown): Promise<void> {
+    // O tipo do Prisma para JSON é recursivo e não aceita um Record sem
+    // afirmação; o valor já passou por `sanitizar`, que é a garantia que
+    // importa. Mesmo tratamento de `log.service.ts`.
+    const limpo = sanitizar(tiles) as unknown as Prisma.InputJsonValue;
+    await this.prisma.peerLayout.upsert({
+      where: { roomSlug_ownerId: { roomSlug, ownerId } },
+      create: { roomSlug, ownerId, tiles: limpo },
+      update: { tiles: limpo },
+    });
+  }
+}
+
+/**
+ * Deixa passar só o que é posição de quadro válida.
+ *
+ * O corpo vem do cliente e vai para uma coluna JSON, que aceita qualquer
+ * coisa — inclusive um megabyte de lixo. O teto de chaves e a checagem por
+ * campo são o que impede a tabela de virar depósito.
+ */
+function sanitizar(valor: unknown): TileLayout {
+  if (typeof valor !== 'object' || valor === null) return {};
+  const saida: TileLayout = {};
+  let contador = 0;
+  for (const [peerId, posicao] of Object.entries(valor as Record<string, unknown>)) {
+    if (contador >= MAX_TILES_SAVED) break;
+    if (peerId.length > 64) continue;
+    if (!isTilePosition(posicao)) continue;
+    saida[peerId] = {
+      x: clamp(posicao.x),
+      y: clamp(posicao.y),
+      w: clamp(posicao.w),
+      h: clamp(posicao.h),
+    };
+    contador += 1;
+  }
+  return saida;
+}
+
+/** Fora de 0..1 é quadro fora da tela; prender é melhor que recusar. */
+function clamp(valor: number): number {
+  return Math.max(0, Math.min(1, valor));
 }

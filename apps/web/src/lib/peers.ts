@@ -5,7 +5,7 @@
  * não é idempotente e não pode ser GET — um proxy que repita a requisição
  * comeria sinal de alguém.
  */
-import type { PeerInbox, PeerRoster, PeerSignalKind } from '@telecord/shared';
+import type { PeerInbox, PeerRoster, PeerSignalKind, TileLayout } from '@telecord/shared';
 import { apiJson } from './apiClient';
 
 const base = (slug: string): string => `/peers/${encodeURIComponent(slug)}`;
@@ -39,4 +39,19 @@ export async function peerSignal(
 
 export async function peerInbox(slug: string, peerId: string): Promise<PeerInbox> {
   return apiJson<PeerInbox>(`${base(slug)}/inbox`, 'POST', { peerId });
+}
+
+export async function fetchLayout(slug: string, peerId: string): Promise<TileLayout> {
+  const { tiles } = await apiJson<{ tiles: TileLayout }>(`${base(slug)}/layout`, 'POST', {
+    peerId,
+  });
+  return tiles;
+}
+
+export async function saveLayout(
+  slug: string,
+  peerId: string,
+  tiles: TileLayout,
+): Promise<void> {
+  await apiJson<{ ok: true }>(`${base(slug)}/layout/save`, 'POST', { peerId, tiles });
 }

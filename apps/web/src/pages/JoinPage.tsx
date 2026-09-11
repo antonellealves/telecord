@@ -23,7 +23,7 @@ import { generateRoomId } from '../lib/media';
 import { readLastRoom, readTransport, writeLastRoom, writeTransport } from '../lib/storage';
 import styles from './JoinPage.module.css';
 
-const NOTES = ['entra mutado', 'várias telas', 'sem gravação'];
+const NOTES = ['entra mutado', 'várias telas', 'servidor ou direto'];
 
 export function JoinPage(): JSX.Element {
   const navigate = useNavigate();

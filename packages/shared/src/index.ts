@@ -936,11 +936,46 @@ export interface PeerInbox {
 }
 
 /**
- * Teto de participantes no modo P2P.
+ * A partir de quantas pessoas o modo direto começa a doer.
  *
- * Malha completa: cada par mantém uma conexão com cada outro, então o número
- * de conexões cresce com o QUADRADO das pessoas. Com 6, são 15 conexões e
- * cada navegador codifica o próprio vídeo 5 vezes — é onde uma máquina comum
- * ainda dá conta. Acima disso o modo certo é o LiveKit, que codifica uma vez.
+ * NÃO é um teto: a sala aceita quem chegar. É o ponto em que a conta da malha
+ * completa deixa de ser confortável e a interface passa a avisar.
+ *
+ * A conta: cada par mantém uma conexão com cada outro, então as conexões
+ * crescem com o QUADRADO das pessoas, e cada navegador codifica o próprio
+ * vídeo uma vez PARA CADA par. Com 6 são 15 conexões e 5 codificações por
+ * máquina; com 10, são 45 e 9. Quem tem máquina e banda para isso deve poder
+ * tentar — o aviso existe para a lentidão não virar surpresa, e a saída
+ * (trocar para o servidor de mídia) fica a um clique.
  */
-export const P2P_MAX_PEERS = 6;
+export const P2P_COMFORT_PEERS = 6;
+
+/**
+ * Posição de um quadro na tela, em FRAÇÃO da área (0..1).
+ *
+ * Fração e não pixel: quem arruma no monitor grande e abre no notebook
+ * encontra a mesma arrumação proporcional, em vez de quadros fora da tela.
+ */
+export interface TilePosition {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** `peerId` → onde o quadro daquele par fica NA MINHA tela. */
+export type TileLayout = Record<string, TilePosition>;
+
+/** Limites de sanidade; o servidor recusa fora disso. */
+export const TILE_MIN_SIZE = 0.08;
+export const MAX_TILES_SAVED = 24;
+
+export function isTilePosition(value: unknown): value is TilePosition {
+  if (typeof value !== 'object' || value === null) return false;
+  const t = value as Record<string, unknown>;
+  return (
+    ['x', 'y', 'w', 'h'].every((k) => typeof t[k] === 'number' && Number.isFinite(t[k] as number)) &&
+    (t.w as number) >= TILE_MIN_SIZE &&
+    (t.h as number) >= TILE_MIN_SIZE
+  );
+}

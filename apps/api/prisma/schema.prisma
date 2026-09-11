@@ -594,3 +594,32 @@ model PeerSignal {
   @@index([roomSlug, toPeer, createdAt])
   @@index([expiresAt])
 }
+
+/**
+ * Onde cada quadro fica na tela do modo direto.
+ *
+ * A posição é de QUEM OLHA, não de quem é olhado: cada pessoa arruma a própria
+ * visão, e arrastar o quadro de alguém não move esse quadro na tela dos
+ * outros. Por isso a chave é (sala, dono da visão) — e o conteúdo é um mapa de
+ * `peerId` para coordenada.
+ *
+ * Guardado por sala porque a arrumação boa para uma sala de duas pessoas não
+ * é a mesma de uma de seis.
+ */
+model PeerLayout {
+  id       String @id @default(cuid())
+  roomSlug String @db.VarChar(64)
+  /// Quem arrumou. É o `peerId` do navegador, não a conta: quem entra sem
+  /// conta também merece a própria arrumação de volta.
+  ownerId  String @db.VarChar(64)
+
+  /// `{ "<peerId>": { x, y, w, h } }`, em fração da área (0..1) para a
+  /// arrumação sobreviver a uma janela de outro tamanho.
+  tiles Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([roomSlug, ownerId])
+  @@index([updatedAt])
+}

@@ -1,5 +1,5 @@
 import { Body, Controller, Param, Post } from '@nestjs/common';
-import type { PeerInbox, PeerRoster } from '@telecord/shared';
+import type { PeerInbox, PeerRoster, TileLayout } from '@telecord/shared';
 import { OptionalAuth } from '../auth/auth.decorators';
 import { CurrentUser } from '../auth/auth.decorators';
 import type { AccessClaims } from '../auth/tokens';
@@ -86,6 +86,36 @@ export class PeersController {
       throw badRequest('invalid_request', 'Informe o `peerId`.');
     }
     return this.peers.inbox(slug, peerId);
+  }
+  /*
+   * Arrumação dos quadros. É de QUEM OLHA: arrastar o quadro de alguém muda a
+   * sua tela, não a dos outros — por isso a chave é o próprio peerId.
+   */
+  @OptionalAuth()
+  @Post(':slug/layout')
+  async readLayout(
+    @Param('slug') slug: string,
+    @Body() body: Record<string, unknown>,
+  ): Promise<{ tiles: TileLayout }> {
+    const peerId = readText(body.peerId, 64);
+    if (peerId === null) {
+      throw badRequest('invalid_request', 'Informe o `peerId`.');
+    }
+    return { tiles: await this.peers.layout(slug, peerId) };
+  }
+
+  @OptionalAuth()
+  @Post(':slug/layout/save')
+  async saveLayout(
+    @Param('slug') slug: string,
+    @Body() body: Record<string, unknown>,
+  ): Promise<{ ok: true }> {
+    const peerId = readText(body.peerId, 64);
+    if (peerId === null) {
+      throw badRequest('invalid_request', 'Informe o `peerId`.');
+    }
+    await this.peers.saveLayout(slug, peerId, body.tiles);
+    return { ok: true };
   }
 }
 

@@ -38,13 +38,14 @@ const LAYERS: Layer[] = [
   {
     id: 'sfu',
     eyebrow: 'Camada 1 · tempo real',
-    title: 'O SFU é a fonte da verdade',
+    title: 'Dois caminhos para a mídia',
     body:
-      'Quem está falando, quem entrou, quem saiu — isso mora no LiveKit, não no nosso banco. ' +
-      'O estado do React é um cache derivado dos eventos da sala, reconstruível a qualquer momento. ' +
-      'Entrar numa sala não escreve uma linha em lugar nenhum.',
-    chips: ['LiveKit Cloud', 'WebRTC', 'até ~20 pessoas'],
-    survives: 'Funciona com o banco inteiro fora do ar.',
+      'No modo servidor, um SFU recebe de todos e reenvia para todos — é o que aguenta sala ' +
+      'cheia. No modo direto, cada navegador fala com cada outro e nenhum servidor vê a mídia. ' +
+      'Quem escolhe é quem cria a sala, na entrada, e os dois ambientes são visualmente ' +
+      'distintos de propósito.',
+    chips: ['LiveKit Cloud', 'WebRTC puro', 'escolha por sala'],
+    survives: 'Os dois funcionam com o banco inteiro fora do ar.',
   },
   {
     id: 'edge',
@@ -62,9 +63,10 @@ const LAYERS: Layer[] = [
     eyebrow: 'Camada 3 · o que precisa de memória',
     title: 'NestJS para tudo que lembra',
     body:
-      'Contas, salas persistidas, canais, sons enviados, log, auditoria e o painel de ' +
-      'administração. É o único que fala com o banco — e é justamente por isso que ele fica ' +
-      'separado das duas camadas acima.',
+      'Contas, salas persistidas, canais, sons enviados, log, auditoria, painel de ' +
+      'administração — e a sinalização do modo direto, que é caixa-de-correio no banco em ' +
+      'vez de WebSocket. É o único que fala com o banco, e por isso fica separado das duas ' +
+      'camadas acima.',
     chips: ['NestJS', 'Prisma', 'TiDB (MySQL)'],
     survives: 'Se cair, o telecord vira o que era antes das contas.',
   },
@@ -77,9 +79,9 @@ interface Stat {
 }
 
 const STATS: Stat[] = [
-  { value: '~48k', label: 'linhas de TypeScript', note: 'monorepo pnpm, 4 pacotes' },
+  { value: '~54k', label: 'linhas de TypeScript', note: 'monorepo pnpm, 4 pacotes' },
   { value: '4 + 6', label: 'dependências de runtime', note: 'raiz + front, e nada mais' },
-  { value: '14', label: 'tabelas no banco', note: '48 rotas HTTP' },
+  { value: '17', label: 'tabelas no banco', note: '54 rotas HTTP' },
   { value: '63', label: 'testes', note: 'rodam sem banco e sem rede' },
 ];
 
@@ -89,6 +91,23 @@ interface Decision {
 }
 
 const DECISIONS: Decision[] = [
+  {
+    title: 'Sinalização sem WebSocket',
+    body:
+      'O modo direto precisa que dois navegadores troquem SDP e ICE para se achar. A saída ' +
+      'clássica é socket aberto, que não existe em função serverless. Aqui é caixa-de-correio ' +
+      'em duas tabelas: quem escreve grava uma linha, quem espera lê por polling curto. O ' +
+      'sinal é apagado na ENTREGA — lido duas vezes, ele refaz a negociação e derruba a ' +
+      'conexão que acabou de subir.',
+  },
+  {
+    title: 'Um formato de mensagem, dois canos',
+    body:
+      'Chat e soundboard funcionam nos dois modos sem duas cópias da lógica: no LiveKit ' +
+      'viajam pelo canal de dados do SFU, no modo direto por um RTCDataChannel. A mesma ' +
+      'função valida os dois lados — o canal é aberto a quem está na sala, então é entrada ' +
+      'não confiável em qualquer um deles.',
+  },
   {
     title: 'Sem build nativo, em lugar nenhum',
     body:
@@ -110,11 +129,12 @@ const DECISIONS: Decision[] = [
       'antes e o depois.',
   },
   {
-    title: 'Gráficos em SVG à mão',
+    title: 'Aviso no lugar de teto',
     body:
-      'O painel precisa de três formas: área, barra vertical e barra horizontal. Biblioteca ' +
-      'de gráfico é das maiores dependências que um app deste tamanho adota, e o eixo Y ' +
-      'começa sempre em zero — escala que começa no mínimo é a forma mais fácil de mentir.',
+      'A malha do modo direto cresce ao quadrado: com 6 pessoas são 15 conexões e cada ' +
+      'máquina codifica o vídeo 5 vezes. Havia um limite duro de 6; virou aviso. Quem tem ' +
+      'máquina e banda para tentar com mais deve poder — o que não pode é a lentidão virar ' +
+      'surpresa, e a saída fica a um clique.',
   },
 ];
 
@@ -145,6 +165,14 @@ const SCARS: Scar[] = [
       'A chave do JWT foi colada no painel com as aspas do .env junto. O serviço subia, as ' +
       'telas carregavam, senha errada dava 401 certinho — só cadastrar e entrar quebravam, ' +
       'porque só esses caminhos assinam token. Hoje existe um teste que assina de verdade.',
+  },
+  {
+    title: 'Sem TURN, algumas redes não conectam',
+    body:
+      'Isto não é bug pendente, é limite assumido: TURN retransmitiria a mídia por um ' +
+      'servidor, que é o oposto do que o modo direto existe para fazer. Atrás de NAT ' +
+      'simétrico a conexão simplesmente não sobe — e a tela DIZ "sem rota" em vez de ficar ' +
+      'tentando para sempre.',
   },
 ];
 
@@ -220,14 +248,14 @@ export function ArchitecturePage(): JSX.Element {
             </Link>
             <p className={styles.tagline}>como é feito</p>
             <h1 className={styles.title}>
-              Três coisas rodando,
+              Dois jeitos de transmitir,
               <br />
-              <span className={styles.titleAccent}>não uma.</span>
+              <span className={styles.titleAccent}>três coisas rodando.</span>
             </h1>
             <p className={styles.lead}>
               Um Discord de voz enxuto: sala com tela compartilhada, chat e soundboard, onde
-              entrar não exige conta — mas quem quer conta tem, com painel de administração
-              por cima.
+              entrar não exige conta. A mídia pode passar por um servidor ou ir direto de um
+              navegador ao outro — e quem decide é quem cria a sala.
             </p>
           </header>
 
