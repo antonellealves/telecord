@@ -15,6 +15,18 @@
   },
   "rewrites": [
     {
+      "source": "/api/token",
+      "destination": "/api/token"
+    },
+    {
+      "source": "/api/rooms",
+      "destination": "/api/rooms"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "/api/[...nest]"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
