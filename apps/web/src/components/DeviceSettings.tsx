@@ -2,6 +2,11 @@ import { useEffect, useRef, type RefObject } from 'react';
 import { useMediaDevices } from '../hooks/useMediaDevices';
 import { useMicrophoneTest } from '../hooks/useMicrophoneTest';
 import type { ToastKind } from '../hooks/useToasts';
+import {
+  screenQuality,
+  SCREEN_QUALITY_OPTIONS,
+  type ScreenQualityId,
+} from '../lib/media';
 import type { TalkMode } from '../lib/storage';
 import { MicIcon, ScreenIcon, SpeakerIcon } from './icons';
 import styles from './DeviceSettings.module.css';
@@ -17,6 +22,8 @@ interface DeviceSettingsProps {
   onChangeTalkMode: (mode: TalkMode) => void;
   onClose: () => void;
   notify: (kind: ToastKind, message: string) => void;
+  screenQualityId: ScreenQualityId;
+  onChangeScreenQuality: (id: ScreenQualityId) => void;
 }
 
 const TEST_LABEL: Record<'idle' | 'recording' | 'playing', string> = {
@@ -25,13 +32,15 @@ const TEST_LABEL: Record<'idle' | 'recording' | 'playing', string> = {
   playing: 'Tocando…',
 };
 
-/** Painel de áudio: modo de voz, dispositivos e teste de microfone. */
+/** Painel de mídia: modo de voz, dispositivos, teste de microfone e qualidade da tela. */
 export function DeviceSettings({
   containerRef,
   talkMode,
   onChangeTalkMode,
   onClose,
   notify,
+  screenQualityId,
+  onChangeScreenQuality,
 }: DeviceSettingsProps): JSX.Element {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const devices = useMediaDevices((message) => notify('error', message));
@@ -64,9 +73,9 @@ export function DeviceSettings({
   }, [onClose, containerRef]);
 
   return (
-    <div className={styles.panel} ref={panelRef} role="dialog" aria-label="Áudio">
+    <div className={styles.panel} ref={panelRef} role="dialog" aria-label="Áudio e vídeo">
       <div className={styles.header}>
-        <h2 className={styles.heading}>Áudio</h2>
+        <h2 className={styles.heading}>Áudio e vídeo</h2>
         <button type="button" className={styles.close} onClick={onClose} aria-label="Fechar">
           ×
         </button>
@@ -239,6 +248,35 @@ export function DeviceSettings({
         <span className={styles.hint}>
           Câmera e tela compartilhada são independentes: dá para mostrar as duas ao mesmo tempo.
           A janela ou monitor compartilhado quem escolhe é o seletor do próprio navegador.
+        </span>
+      </label>
+
+      <label className={styles.field}>
+        <span className={styles.label}>
+          <ScreenIcon className={styles.icon} />
+          Qualidade da transmissão
+        </span>
+        <select
+          className={styles.select}
+          value={screenQualityId}
+          onChange={(event) => onChangeScreenQuality(event.target.value as ScreenQualityId)}
+          aria-label="Qualidade da transmissão de tela"
+        >
+          {SCREEN_QUALITY_OPTIONS.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <span className={styles.hint}>
+          {screenQuality(screenQualityId).hint}
+          {' '}
+          {/*
+            * Trocar durante uma transmissão não reencaixa a track já
+            * publicada — dizer isso evita a pessoa mexer no seletor, não ver
+            * diferença nenhuma e concluir que a opção não funciona.
+            */}
+          Vale a partir do próximo compartilhamento.
         </span>
       </label>
     </div>

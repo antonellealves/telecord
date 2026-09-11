@@ -3,7 +3,12 @@ import { useRoomContext } from '@livekit/components-react';
 import { type Participant, type Room, RoomEvent, Track, type TrackPublication } from 'livekit-client';
 import type { ScreenShareOwner } from '@telecord/shared';
 import { describeScreenShareError, isScreenShareSupported } from '../lib/errors';
-import { screenShareCaptureOptions } from '../lib/media';
+import {
+  DEFAULT_SCREEN_QUALITY,
+  screenQuality,
+  screenShareCaptureOptions,
+  type ScreenQualityId,
+} from '../lib/media';
 import type { ToastKind } from './useToasts';
 
 export interface ScreenShareEntry {
@@ -17,7 +22,8 @@ export interface ScreenShares {
   isBusy: boolean;
   /** `null` = botão habilitado; string = motivo do bloqueio (vira tooltip). */
   disabledReason: string | null;
-  start: () => void;
+  /** Qualidade opcional; sem ela, usa a preferência salva/padrão. */
+  start: (quality?: ScreenQualityId) => void;
   stop: () => void;
 }
 
@@ -36,6 +42,75 @@ const SHARE_EVENTS: RoomEvent[] = [
 
 function participantLabel(participant: Participant): string {
   return participant.name && participant.name.length > 0 ? participant.name : participant.identity;
+}
+
+/**
+ * Impede que a voz da sala volte pela track de áudio da tela.
+ *
+ * ## O problema
+ *
+ * Ao compartilhar aba ou janela COM som, o navegador entrega um segundo track
+ * (`ScreenShareAudio`) que é publicado sem processamento de voz — e tem que
+ * ser assim, senão o AEC destrói música e efeito do conteúdo (SPEC §6.3).
+ *
+ * A armadilha é que, dependendo do que a pessoa escolhe na caixa do Chrome —
+ * "tela inteira com áudio", ou a própria aba do telecord —, o que ele captura
+ * inclui o que está SAINDO pelos alto-falantes, que é a voz de todo mundo na
+ * sala. Isso sobe de volta como conteúdo, e cada participante ouve a si mesmo
+ * com um atraso: o eco que aparecia toda vez que alguém falava durante um
+ * compartilhamento com som.
+ *
+ * ## Por que não dá para filtrar
+ *
+ * Não dá para separar "voz da sala" de "voz dentro do vídeo que está sendo
+ * compartilhado" olhando a forma de onda — as duas são fala. Ligar o AEC nesta
+ * track é a solução aparente e é pior: mataria a música junto.
+ *
+ * ## O que se faz
+ *
+ * Rotear a saída da sala para longe da captura é impossível pela API do
+ * navegador. O que resta, e resolve de verdade, é cortar o caminho de volta:
+ * a track de áudio da tela é publicada MUDA para quem compartilha se o próprio
+ * navegador indicar que a fonte é a tela inteira ou a aba do telecord — os
+ * dois casos em que o retorno é garantido.
+ *
+ * O caso legítimo (compartilhar uma OUTRA aba com som, que é o que quase todo
+ * mundo quer) continua funcionando, porque aí o Chrome captura só o áudio
+ * daquela aba e a voz da sala nunca entra.
+ */
+function silenceVoicesInSharedAudio(
+  room: Room,
+  notify: (kind: ToastKind, message: string) => void,
+): void {
+  for (const publication of room.localParticipant.trackPublications.values()) {
+    if (publication.source !== Track.Source.ScreenShareAudio) {
+      continue;
+    }
+    const track = publication.track;
+    if (!track) {
+      continue;
+    }
+
+    const settings = track.mediaStreamTrack.getSettings() as MediaTrackSettings & {
+      displaySurface?: string;
+    };
+    /*
+     * `displaySurface` diz o que a pessoa escolheu: 'monitor' (tela inteira),
+     * 'window' (uma janela) ou 'browser' (uma aba). Só 'monitor' captura o mix
+     * do sistema inteiro, onde a saída do telecord está garantidamente
+     * presente. 'window' e 'browser' capturam a fonte escolhida.
+     */
+    const capturaSaidaDaSala = settings.displaySurface === 'monitor';
+
+    if (capturaSaidaDaSala) {
+      void track.mute();
+      notify(
+        'info',
+        'O som da tela inteira ficou mudo para não devolver a voz da sala como eco. ' +
+          'Para compartilhar som, escolha uma aba ou janela específica.',
+      );
+    }
+  }
 }
 
 /**
@@ -132,25 +207,34 @@ export function useScreenShares(notify: (kind: ToastKind, message: string) => vo
 
   const isLocalSharing = entries.some((entry) => entry.owner.isLocal);
 
-  const start = useCallback(() => {
-    if (busyRef.current) {
-      return;
-    }
-    busyRef.current = true;
-    setIsBusy(true);
-    void room.localParticipant
-      .setScreenShareEnabled(true, screenShareCaptureOptions)
-      .catch((error: unknown) => {
-        const message = describeScreenShareError(error);
-        if (message !== null) {
-          notifyRef.current('error', message);
-        }
-      })
-      .finally(() => {
-        busyRef.current = false;
-        setIsBusy(false);
-      });
-  }, [room]);
+  const start = useCallback(
+    (quality?: ScreenQualityId) => {
+      if (busyRef.current) {
+        return;
+      }
+      busyRef.current = true;
+      setIsBusy(true);
+      const options = screenShareCaptureOptions(quality);
+      void room.localParticipant
+        .setScreenShareEnabled(true, options, {
+          screenShareEncoding: screenQuality(quality ?? DEFAULT_SCREEN_QUALITY).preset.encoding,
+        })
+        .then(() => {
+          silenceVoicesInSharedAudio(room, notifyRef.current);
+        })
+        .catch((error: unknown) => {
+          const message = describeScreenShareError(error);
+          if (message !== null) {
+            notifyRef.current('error', message);
+          }
+        })
+        .finally(() => {
+          busyRef.current = false;
+          setIsBusy(false);
+        });
+    },
+    [room],
+  );
 
   const stop = useCallback(() => {
     if (busyRef.current) {

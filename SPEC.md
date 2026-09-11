@@ -382,10 +382,10 @@ const roomOptions: RoomOptions = {
   publishDefaults: {
     dtx: true,                                   // silêncio quase não gasta banda
     red: true,                                   // redundância de áudio contra perda de pacote
-    audioPreset: AudioPresets.speech,            // Opus mono ~20 kbps
+    audioPreset: AudioPresets.musicHighQuality,  // Opus mono 96 kbps — ver 6.1.1
     stopMicTrackOnMute: false,                   // mute instantâneo, sem repedir permissão
     videoCodec: 'vp8',                           // compatibilidade ampla
-    screenShareEncoding: ScreenSharePresets.h1080fps15.encoding,  // 1920x1080 @15 fps, ~2,5 Mbps
+    screenShareEncoding: <nível escolhido>.encoding,             // padrão 1080p@30 — ver 6.2.1
     simulcast: false,                            // ver 6.4
   },
   audioCaptureDefaults: {
@@ -397,13 +397,21 @@ const roomOptions: RoomOptions = {
 };
 ```
 
+#### 6.1.1 Qualidade de voz
+
+`musicHighQuality` (96 kbps), e não `speech` (24 kbps). O preset de fala é afinado para inteligibilidade em banda estreita, e a 24 kbps o Opus já corta a parte de cima do espectro — é o que faz voz soar "de telefone".
+
+O custo extra é por pessoa **falando**, não por pessoa na sala: com `dtx`, quem está calado quase não manda nada. Numa sala de 20 com 3 conversando, são ~220 kbps a mais no total — desprezível ao lado de uma única tela compartilhada.
+
+Mono continua: voz não tem o que estereofonar, e estéreo só dobraria a conta. O `sampleRate: 48000` acompanha por necessidade, não por capricho — sem ele o navegador pode entregar 16 kHz, e aí subir o bitrate não adianta: o que chega ao codec já vem sem as frequências altas, e o resultado é um fluxo maior com o mesmo som abafado.
+
 ### 6.2 Captura da tela
 
 ```ts
 await localParticipant.setScreenShareEnabled(true, {
   audio: true,                                   // áudio da aba/sistema, quando o browser oferecer
-  contentHint: 'detail',                         // prioriza nitidez de texto sobre fluidez
-  resolution: ScreenSharePresets.h1080fps15.resolution,
+  contentHint: 'motion',                         // prioriza fluidez — ver 6.2.1
+  resolution: <nível escolhido>.resolution,      // omitido no nível "original"
   selfBrowserSurface: 'exclude',                 // evita o efeito túnel de compartilhar a própria aba
   surfaceSwitching: 'include',                   // trocar de janela sem republicar
   systemAudio: 'exclude',   // só o áudio da aba/janela escolhida
@@ -411,6 +419,31 @@ await localParticipant.setScreenShareEnabled(true, {
 ```
 
 `15 fps` e `contentHint: 'detail'` porque o conteúdo esperado é IDE, slide e planilha — texto legível vale mais que suavidade. Se o uso virar demonstração animada, o preset certo é `h1080fps30` (~5 Mbps) com `contentHint: 'motion'`.
+
+#### 6.2.1 Níveis de qualidade da tela
+
+A resolução deixou de ser fixa. Quatro níveis, escolhidos no painel de áudio e vídeo e guardados por **máquina** (`telecord.screenQuality`) — quem está num link apertado quer o nível baixo em toda sala, e quem tem fibra não quer reescolher toda vez:
+
+| Nível | Preset | Para quê |
+| --- | --- | --- |
+| Suave | `h720fps15` | Conexão apertada. Texto legível, movimento trava. |
+| Equilibrada | `h1080fps15` | Slide e código parado. |
+| **Alta** (padrão) | `h1080fps30` | Movimento fluido, ~5 Mbps. |
+| Máxima | `original` | Sem redimensionar: 1440p/4K nativos, ~7 Mbps. |
+
+O padrão subiu de `h1080fps15` para `h1080fps30`. 15 quadros bastam para conteúdo parado — e era ali que a escolha antiga estava certa —, mas qualquer coisa em movimento fica em soluços. O dobro de quadros custa o dobro de banda, e quem não a tem agora tem onde baixar.
+
+`contentHint` passou de `'detail'` para `'motion'` pelo mesmo motivo: a dica diz ao codificador o que sacrificar quando a banda aperta, e `detail` joga fora quadros para manter cada pixel nítido — o certo para slide, o errado para vídeo e jogo.
+
+O nível `original` tem resolução `0x0`, que significa "não redimensione". Esse valor **não** pode ser passado adiante como `resolution`: nesse nível o campo é omitido da captura.
+
+#### 6.2.2 O eco do áudio de tela
+
+A track de áudio da tela sobe sem processamento de voz (§6.3), e tem que ser assim — o AEC destruiria música e efeito do conteúdo. A consequência é que, quando a pessoa escolhe **tela inteira com áudio**, o que o navegador captura é o mix do sistema, que inclui a saída do próprio telecord: a voz de todo mundo volta para a sala com atraso, e cada um se ouve em eco.
+
+Não dá para filtrar. "Voz da sala" e "voz dentro do vídeo compartilhado" são ambas fala, indistinguíveis na forma de onda; e ligar o AEC nesta track mataria a música junto.
+
+O que se faz é cortar o caminho de volta: ao publicar, o cliente lê `displaySurface` da track. Se for `'monitor'` — o único caso em que o mix do sistema entra garantidamente —, a track de áudio é publicada **muda**, e um aviso explica o porquê. Compartilhar uma aba ou janela específica com som, que é o caso comum, continua funcionando intacto: ali o navegador captura só aquela fonte.
 
 ### 6.3 Áudio da aba
 

@@ -2,6 +2,11 @@
  * localStorage guarda APENAS a preferência de nome (SPEC §3).
  * Modo privado e storage bloqueado não podem derrubar o app.
  */
+import { DEFAULT_SCREEN_QUALITY, type ScreenQualityId } from './media';
+
+/** Ids válidos, para recusar lixo vindo do localStorage. */
+const SCREEN_QUALITY_IDS: ScreenQualityId[] = ['suave', 'equilibrada', 'alta', 'maxima'];
+
 const DISPLAY_NAME_KEY = 'telecord.displayName';
 
 export function readStoredDisplayName(): string {
@@ -242,5 +247,34 @@ export function writePeerMuted(identity: string, muted: boolean): void {
     window.localStorage.setItem(PEER_MUTED_PREFIX + identity, muted ? 'yes' : 'no');
   } catch {
     // Storage indisponível.
+  }
+}
+
+const SCREEN_QUALITY_KEY = 'telecord.screenQuality';
+
+/**
+ * Qualidade escolhida para o compartilhamento de tela.
+ *
+ * Preferência por máquina, e não por sala: quem está num link apertado quer o
+ * nível baixo em toda sala que entrar, e quem tem fibra não quer reescolher
+ * "máxima" toda vez. Valor desconhecido (versão antiga, storage adulterado)
+ * cai no padrão em vez de quebrar.
+ */
+export function readScreenQuality(): ScreenQualityId {
+  try {
+    const raw = window.localStorage.getItem(SCREEN_QUALITY_KEY);
+    return SCREEN_QUALITY_IDS.includes(raw as ScreenQualityId)
+      ? (raw as ScreenQualityId)
+      : DEFAULT_SCREEN_QUALITY;
+  } catch {
+    return DEFAULT_SCREEN_QUALITY;
+  }
+}
+
+export function writeScreenQuality(id: ScreenQualityId): void {
+  try {
+    window.localStorage.setItem(SCREEN_QUALITY_KEY, id);
+  } catch {
+    // Storage indisponível: a escolha vale só para esta aba.
   }
 }

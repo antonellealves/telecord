@@ -27,6 +27,8 @@ import { useScreenShares } from '../hooks/useScreenShares';
 import { useSoundVolume } from '../hooks/useSoundVolume';
 import { useTalkControls } from '../hooks/useTalkControls';
 import { useToasts } from '../hooks/useToasts';
+import type { ScreenQualityId } from '../lib/media';
+import { readScreenQuality, writeScreenQuality } from '../lib/storage';
 import styles from './RoomPage.module.css';
 
 interface RoomShellProps {
@@ -66,6 +68,8 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
     useRoomMessages(() => sound.effective, roomSounds.find);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  // Preferência de máquina; ver `readScreenQuality`.
+  const [screenQualityId, setScreenQualityId] = useState<ScreenQualityId>(readScreenQuality);
   const [isSoundboardOpen, setIsSoundboardOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isRoomPanelOpen, setIsRoomPanelOpen] = useState(false);
@@ -213,6 +217,11 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
               onChangeTalkMode={talk.setMode}
               onClose={() => setIsSettingsOpen(false)}
               notify={push}
+              screenQualityId={screenQualityId}
+              onChangeScreenQuality={(id) => {
+                setScreenQualityId(id);
+                writeScreenQuality(id);
+              }}
             />
           ) : null}
 
@@ -249,7 +258,9 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
             onToggleCamera={cameras.isLocalOn ? cameras.stop : cameras.start}
             isSharingScreen={shares.isLocalSharing}
             shareDisabledReason={shares.disabledReason}
-            onToggleScreenShare={shares.isLocalSharing ? shares.stop : shares.start}
+            onToggleScreenShare={
+              shares.isLocalSharing ? shares.stop : () => shares.start(screenQualityId)
+            }
             isSoundboardOpen={isSoundboardOpen}
             onToggleSoundboard={() => {
               setIsSoundboardOpen((open) => !open);
