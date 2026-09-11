@@ -91,7 +91,7 @@ jobs:
 
       - name: prisma migrate deploy
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL || vars.DATABASE_URL }}
         run: |
           set -euo pipefail
           if [ -z "${DATABASE_URL:-}" ]; then
@@ -158,11 +158,15 @@ jobs:
           # contas, que é o estado anterior a este recurso.
           #
           # Segredos de verdade — senha do banco, chave que ASSINA, credencial
-          # do Google, chave do provedor de e-mail:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          AUTH_JWT_PRIVATE_KEY: ${{ secrets.AUTH_JWT_PRIVATE_KEY }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          # do Google, chave do provedor de e-mail. O lugar delas é em
+          # *secrets*, e `vars` entra só como reserva para o caso de estarem
+          # guardadas do outro jeito: lido só de um lado, o valor chegaria
+          # VAZIO e o serviço recusaria subir com o mesmo sintoma de quem não
+          # configurou nada — que foi o que aconteceu aqui.
+          DATABASE_URL: ${{ secrets.DATABASE_URL || vars.DATABASE_URL }}
+          AUTH_JWT_PRIVATE_KEY: ${{ secrets.AUTH_JWT_PRIVATE_KEY || vars.AUTH_JWT_PRIVATE_KEY }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET || vars.GOOGLE_CLIENT_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY || vars.RESEND_API_KEY }}
 
           # Não são segredo. A chave aqui é a PÚBLICA: valida o token, não
           # emite nenhum. O resto é endereço e configuração.
