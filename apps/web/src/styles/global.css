@@ -126,3 +126,101 @@ a {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ===========================================================================
+   TEMAS
+   ===========================================================================
+   O tema troca só os TOKENS acima — nenhum componente sabe qual está ativo,
+   e por isso nenhum precisa mudar quando um tema novo entra.
+
+   `dark` não aparece aqui porque é o `:root` inteiro: ele é o padrão, e
+   escrevê-lo de novo seria manter duas cópias da mesma paleta.
+   =========================================================================== */
+
+/*
+ * Conexão direta: a paleta âmbar da sala P2P aplicada ao app inteiro.
+ *
+ * Para quem vive no modo direto e quer que o resto do produto combine com a
+ * sala. Fundo mais fechado que o padrão, porque âmbar sobre carvão frio fica
+ * sujo — precisa de um preto mais neutro para o amarelo não esverdear.
+ */
+[data-theme='direta'] {
+  --bg: #0b0906;
+  --bg-deep: #070502;
+  --bg-raised: #17120a;
+
+  --accent: #e7c07a;
+  --accent-rgb: 231, 192, 122;
+  --accent-deep: #d0a253;
+  --accent-soft: #f7e6c4;
+  --accent-ink: #241a05;
+
+  --accent-2: #b5702f;
+  --accent-2-rgb: 181, 112, 47;
+  --accent-mid-rgb: 205, 150, 84;
+
+  --gradient-action: linear-gradient(120deg, #e7c07a 0%, #d09a4e 34%, #a9662a 70%, #6d3d14 100%);
+  --gradient-action-hover: linear-gradient(120deg, #f3d093 0%, #dcaa60 34%, #bb763a 70%, #7e4a1c 100%);
+  --gradient-action-ink: #1a1206;
+}
+
+/*
+ * LiveKit: o azul do padrão levado ao extremo, mais saturado e mais frio.
+ *
+ * É o irmão do tema escuro, não um tema novo: quem gosta do padrão mas quer a
+ * cor mais presente escolhe este.
+ */
+[data-theme='livekit'] {
+  --bg: #060a12;
+  --bg-deep: #03060c;
+  --bg-raised: #0b1220;
+
+  --accent: #6fc2ff;
+  --accent-rgb: 111, 194, 255;
+  --accent-deep: #3aa0ee;
+  --accent-soft: #d3ecff;
+
+  --accent-2: #2f6fd0;
+  --accent-2-rgb: 47, 111, 208;
+  --accent-mid-rgb: 79, 152, 233;
+
+  --gradient-action: linear-gradient(120deg, #6fc2ff 0%, #4f98e9 34%, #2f6fd0 70%, #1b3f82 100%);
+  --gradient-action-hover: linear-gradient(120deg, #8ed2ff 0%, #68a9f0 34%, #4382dd 70%, #26529e 100%);
+}
+
+/*
+ * Claro.
+ *
+ * Não é o escuro invertido: as superfícies deixam de ser branco translúcido
+ * (que sobre fundo claro some) e passam a ser cinza sólido, e as bordas ganham
+ * preto com pouca opacidade em vez de branco. O acento escurece bastante —
+ * o azul claro do tema escuro não tem contraste suficiente sobre branco para
+ * texto legível.
+ */
+[data-theme='claro'] {
+  --bg: #f4f6fa;
+  --bg-deep: #e9edf4;
+  --bg-raised: #ffffff;
+
+  --surface: rgba(16, 24, 40, 0.04);
+  --surface-hover: rgba(16, 24, 40, 0.08);
+  --border: rgba(16, 24, 40, 0.14);
+  --border-strong: rgba(16, 24, 40, 0.28);
+
+  --text: #121826;
+  --text-dim: #4a5468;
+  --text-faint: #6b7488;
+
+  --accent: #2f6fd0;
+  --accent-rgb: 47, 111, 208;
+  --accent-deep: #1d4f9f;
+  --accent-soft: #123a78;
+  --accent-ink: #ffffff;
+
+  --accent-2: #6a56c4;
+  --accent-2-rgb: 106, 86, 196;
+  --accent-mid-rgb: 88, 99, 210;
+
+  --shadow-soft: 0 24px 70px -34px rgba(16, 24, 40, 0.4);
+  --shadow-lift: 0 1px 0 rgba(255, 255, 255, 0.8) inset;
+}

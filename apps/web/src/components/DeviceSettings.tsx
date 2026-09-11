@@ -7,7 +7,7 @@ import {
   SCREEN_QUALITY_OPTIONS,
   type ScreenQualityId,
 } from '../lib/media';
-import type { TalkMode } from '../lib/storage';
+import type { TalkMode, ThemeId } from '../lib/storage';
 import { MicIcon, ScreenIcon, SpeakerIcon } from './icons';
 import styles from './DeviceSettings.module.css';
 
@@ -26,6 +26,12 @@ interface DeviceSettingsProps {
   onChangeScreenQuality: (id: ScreenQualityId) => void;
   /** Muda o texto de ajuda: trocar agora republica em vez de esperar. */
   isSharingScreen: boolean;
+  themeId: ThemeId;
+  onChangeTheme: (id: ThemeId) => void;
+  /** O navegador tem a janela flutuante? Sem isso o controle explica. */
+  isOverlaySupported: boolean;
+  isOverlayOpen: boolean;
+  onToggleOverlay: () => void;
 }
 
 /*
@@ -35,12 +41,20 @@ interface DeviceSettingsProps {
  * por eles — o modo de voz fica em Áudio, porque é comportamento, não
  * hardware.
  */
-type Section = 'audio' | 'video' | 'dispositivos';
+type Section = 'audio' | 'video' | 'dispositivos' | 'aparencia';
 
 const SECTIONS: { id: Section; label: string }[] = [
   { id: 'audio', label: 'Áudio' },
   { id: 'video', label: 'Vídeo' },
   { id: 'dispositivos', label: 'Dispositivos' },
+  { id: 'aparencia', label: 'Aparência' },
+];
+
+const TEMAS: { id: ThemeId; label: string; hint: string }[] = [
+  { id: 'escuro', label: 'Escuro', hint: 'O padrão: carvão frio com azul e roxo.' },
+  { id: 'claro', label: 'Claro', hint: 'Fundo claro, acento azul escurecido para contraste.' },
+  { id: 'livekit', label: 'LiveKit', hint: 'O azul do padrão mais saturado e mais frio.' },
+  { id: 'direta', label: 'Conexão direta', hint: 'A paleta âmbar da sala P2P no app inteiro.' },
 ];
 
 const TEST_LABEL: Record<'idle' | 'recording' | 'playing', string> = {
@@ -59,6 +73,11 @@ export function DeviceSettings({
   screenQualityId,
   onChangeScreenQuality,
   isSharingScreen,
+  themeId,
+  onChangeTheme,
+  isOverlaySupported,
+  isOverlayOpen,
+  onToggleOverlay,
 }: DeviceSettingsProps): JSX.Element {
   const [section, setSection] = useState<Section>('audio');
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -331,6 +350,60 @@ export function DeviceSettings({
             : 'Vale a partir do próximo compartilhamento.'}
         </span>
       </label>
+      </>
+      ) : null}
+
+      {section === 'aparencia' ? (
+      <>
+      <div className={styles.field}>
+        <span className={styles.label}>Tema</span>
+        <div className={styles.themes} role="radiogroup" aria-label="Tema">
+          {TEMAS.map((tema) => (
+            <button
+              key={tema.id}
+              type="button"
+              role="radio"
+              aria-checked={themeId === tema.id}
+              className={`${styles.theme} ${themeId === tema.id ? styles.themeOn : ''}`}
+              onClick={() => onChangeTheme(tema.id)}
+              title={tema.hint}
+            >
+              {/*
+                * A amostra usa os tokens DO TEMA, não os do tema ativo: é o
+                * único jeito de a escolha mostrar o que vai acontecer em vez
+                * de quatro retângulos iguais.
+                */}
+              <span className={styles.swatch} data-theme={tema.id === 'escuro' ? undefined : tema.id}>
+                <span className={styles.swatchBg} />
+                <span className={styles.swatchAccent} />
+              </span>
+              <span className={styles.themeName}>{tema.label}</span>
+            </button>
+          ))}
+        </div>
+        <span className={styles.hint}>{TEMAS.find((t) => t.id === themeId)?.hint}</span>
+      </div>
+
+      <div className={styles.field}>
+        <label className={styles.switchRow}>
+          <input
+            type="checkbox"
+            className={styles.checkbox}
+            checked={isOverlayOpen}
+            onChange={onToggleOverlay}
+            disabled={!isOverlaySupported}
+          />
+          <span className={styles.switchTrack} aria-hidden="true">
+            <span className={styles.switchThumb} />
+          </span>
+          <span className={styles.switchLabel}>Overlay de participantes</span>
+        </label>
+        <span className={styles.hint}>
+          {isOverlaySupported
+            ? 'Abre uma janela flutuante com quem está na sala e quem está falando. Ela fica acima de qualquer aplicativo, inclusive jogo em tela cheia.'
+            : 'Este navegador não tem a janela flutuante de documento. Funciona no Chrome, Edge e Opera de computador, versão 116 ou mais nova.'}
+        </span>
+      </div>
       </>
       ) : null}
     </div>

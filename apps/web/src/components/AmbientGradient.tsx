@@ -34,9 +34,11 @@ export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX
 
     let glow = REST_GLOW;
     let sway = 0;
+    let lift = 0;
     let tone = 0.5;
     let targetGlow = REST_GLOW;
     let targetSway = 0;
+    let targetLift = 0;
     let targetTone = 0.5;
     let frame = 0;
     let running = false;
@@ -44,6 +46,7 @@ export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX
     const apply = (): void => {
       root.style.setProperty('--glow', glow.toFixed(3));
       root.style.setProperty('--sway', sway.toFixed(3));
+      root.style.setProperty('--lift', lift.toFixed(3));
       root.style.setProperty('--tone', tone.toFixed(3));
     };
 
@@ -56,14 +59,17 @@ export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX
     const tick = (): void => {
       const deltaGlow = targetGlow - glow;
       const deltaSway = targetSway - sway;
+      const deltaLift = targetLift - lift;
       const deltaTone = targetTone - tone;
       if (
         Math.abs(deltaGlow) > 0.0015 ||
         Math.abs(deltaSway) > 0.0015 ||
+        Math.abs(deltaLift) > 0.0015 ||
         Math.abs(deltaTone) > 0.0015
       ) {
         glow += deltaGlow * 0.085;
-        sway += deltaSway * 0.05;
+        sway += deltaSway * 0.12;
+        lift += deltaLift * 0.12;
         tone += deltaTone * 0.07;
         apply();
         frame = requestAnimationFrame(tick);
@@ -89,6 +95,8 @@ export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX
 
       targetGlow = 1 - distance * 0.7;
       targetSway = horizontal;
+      // O eixo vertical passa a mover o campo também, e não só trocar a cor.
+      targetLift = (event.clientY - height / 2) / (height / 2);
       // O que mais se percebe não é o brilho, é a COR: subir o cursor puxa o
       // campo para o roxo, descer puxa para o azul. Intensidade sozinha, num
       // degradê que cobre a tela inteira, é mudança fácil de não notar.
@@ -99,6 +107,7 @@ export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX
     const handlePointerLeave = (): void => {
       targetGlow = REST_GLOW;
       targetSway = 0;
+      targetLift = 0;
       targetTone = 0.5;
       start();
     };

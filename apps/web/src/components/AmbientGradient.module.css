@@ -17,6 +17,8 @@
 .root {
   --glow: 0.5;
   --sway: 0;
+  /* Quanto o ponteiro puxa o campo no eixo vertical. -1 (topo) a 1 (base). */
+  --lift: 0;
   /* 0 = roxo (cursor no topo) · 1 = azul (cursor na base). */
   --tone: 0.5;
   /* Multiplicador global de força, reduzido na variante da sala. */
@@ -64,10 +66,20 @@
  * Ambas ancoradas fora da viewport, então somem pelas beiradas sem desenhar
  * contorno nenhum.
  */
+/*
+ * O campo ACOMPANHA o ponteiro, e com folga: 1,4vw era um deslocamento que
+ * quase ninguém percebia. Agora são 7vw na horizontal e 4vh na vertical, com
+ * um leve zoom junto — o degradê parece puxado pelo cursor em vez de apenas
+ * clarear.
+ *
+ * Continua só `transform`, que fica no compositor: mover o campo inteiro da
+ * tela não custa repintura.
+ */
 .tint {
   position: absolute;
   inset: 0;
-  transform: translateX(calc(var(--sway) * 1.4vw));
+  transform: translate3d(calc(var(--sway) * 7vw), calc(var(--lift) * 4vh), 0)
+    scale(calc(1 + var(--glow) * 0.04));
 }
 
 /* Cursor embaixo: campo azul. */
@@ -95,10 +107,12 @@
  * centro abaixo dela: o que aparece é só o topo da curva, uma subida suave de
  * luz — sem miolo brilhante nem contorno.
  */
+/* A luz de baixo anda MAIS que o campo: o descompasso entre as duas camadas
+   é o que dá sensação de profundidade em vez de imagem escorregando. */
 .sheen {
   position: absolute;
   inset: 0;
-  transform: translateX(calc(var(--sway) * 3vw));
+  transform: translate3d(calc(var(--sway) * 12vw), calc(var(--lift) * 6vh), 0);
   opacity: calc((0.35 + var(--glow) * 0.65) * var(--strength));
   background: radial-gradient(
     115% 78% at 50% 132%,

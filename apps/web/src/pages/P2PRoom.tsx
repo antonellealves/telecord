@@ -5,6 +5,7 @@ import { AmbientGradient } from '../components/AmbientGradient';
 import { ChatPanel } from '../components/ChatPanel';
 import { DeviceSettings } from '../components/DeviceSettings';
 import { Soundboard } from '../components/Soundboard';
+import { ParticipantOverlay } from '../components/ParticipantOverlay';
 import { ToastStack } from '../components/ToastStack';
 import { TransportPicker } from '../components/TransportPicker';
 import {
@@ -23,6 +24,8 @@ import { useP2PMesh, type RemotePeer } from '../hooks/useP2PMesh';
 import { useP2PVolume } from '../hooks/useP2PVolume';
 import { useRoomSounds } from '../hooks/useRoomSounds';
 import { useTileLayout } from '../hooks/useTileLayout';
+import { useOverlay } from '../hooks/useOverlay';
+import { useSpeakingDetector } from '../hooks/useSpeakingDetector';
 import { useToasts } from '../hooks/useToasts';
 import { useAuth } from '../hooks/useAuth';
 import { useSoundVolume } from '../hooks/useSoundVolume';
@@ -35,7 +38,11 @@ import {
   writeScreenQuality,
   writeTalkMode,
   writeTransport,
+  applyTheme,
+  readTheme,
+  writeTheme,
   type TalkMode,
+  type ThemeId,
 } from '../lib/storage';
 import styles from './P2PRoom.module.css';
 
@@ -168,6 +175,8 @@ export function P2PRoom({ roomId, displayName, peerId, onLeave }: Props): JSX.El
   const [isSoundboardOpen, setIsSoundboardOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isPeopleOpen, setIsPeopleOpen] = useState(readParticipantsOpen);
+  const [themeId, setThemeId] = useState<ThemeId>(readTheme);
+  const overlay = useOverlay();
 
   const controlsRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -251,11 +260,27 @@ export function P2PRoom({ roomId, displayName, peerId, onLeave }: Props): JSX.El
   }, [mesh.peers]);
 
   const peerVolume = useP2PVolume(mesh.streams);
+
+  /*
+   * Quem está falando. No modo LiveKit o SFU calcula e manda por evento; aqui
+   * não há SFU, então cada navegador mede os streams que recebe — inclusive o
+   * próprio, para a pessoa se ver falando no overlay.
+   */
+  const streamsComLocal = useMemo(() => {
+    const todos = new Map(mesh.streams);
+    if (localStream !== null) todos.set(peerId, localStream);
+    return todos;
+  }, [mesh.streams, localStream, peerId]);
+  const falando = useSpeakingDetector(streamsComLocal);
   const layout = useTileLayout(roomId, peerId);
 
   useEffect(() => {
     if (isChatOpen) setUnread(0);
   }, [isChatOpen, chat.length]);
+
+  useEffect(() => {
+    applyTheme(themeId);
+  }, [themeId]);
 
   const enviarChat = useCallback(
     (body: string) => {
@@ -590,6 +615,14 @@ export function P2PRoom({ roomId, displayName, peerId, onLeave }: Props): JSX.El
                 if (screenOn) void alternarTela(id);
               }}
               isSharingScreen={screenOn}
+              themeId={themeId}
+              onChangeTheme={(id) => {
+                setThemeId(id);
+                writeTheme(id);
+              }}
+              isOverlaySupported={overlay.isSupported}
+              isOverlayOpen={overlay.isOpen}
+              onToggleOverlay={overlay.toggle}
             />
           ) : null}
 
@@ -736,6 +769,30 @@ export function P2PRoom({ roomId, displayName, peerId, onLeave }: Props): JSX.El
           </div>
         </footer>
       </div>
+
+      <ParticipantOverlay
+        container={overlay.container}
+        roomId={roomId}
+        variant="p2p"
+        people={[
+          {
+            id: peerId,
+            displayName,
+            isSpeaking: falando.has(peerId),
+            isMuted: !micOn,
+            isLocal: true,
+            isAway: false,
+          },
+          ...mesh.peers.map((p) => ({
+            id: p.peerId,
+            displayName: p.displayName,
+            isSpeaking: falando.has(p.peerId),
+            isMuted: (mesh.streams.get(p.peerId)?.getAudioTracks().length ?? 0) === 0,
+            isLocal: false,
+            isAway: false,
+          })),
+        ]}
+      />
 
       <ToastStack toasts={toasts} onDismiss={dismiss} />
     </>

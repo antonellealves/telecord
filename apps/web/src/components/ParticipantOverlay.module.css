@@ -1,0 +1,159 @@
+/*
+ * O overlay vive numa JANELA SEPARADA do sistema, não na página.
+ *
+ * Consequências que mandam neste arquivo:
+ *  - Não há degradê ambiente nem nada atrás: o fundo tem que ser opaco e
+ *    escuro por conta própria, senão a janela sai transparente por cima do
+ *    jogo e nada fica legível.
+ *  - A janela é pequena (260 px) e olhada de canto de olho, então tudo é
+ *    maior e mais contrastado do que seria na página.
+ *  - As variáveis de cor chegam pelas folhas copiadas em `useOverlay`; os
+ *    fallbacks existem para o caso de a cópia falhar por CSS de outra origem.
+ */
+.overlay {
+  --acento: var(--accent, #8ecdff);
+  --acento-rgb: var(--accent-rgb, 142, 205, 255);
+
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  margin: 0;
+  padding: 10px;
+  gap: 8px;
+  box-sizing: border-box;
+  background: #06080d;
+  color: var(--text, #edeff3);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 13px;
+  overflow: hidden;
+}
+
+/* No modo direto, a mesma marcação âmbar da sala: a janela flutuante também
+   precisa dizer em qual paradigma ela está. */
+.p2p {
+  --acento: var(--warn, #e7c07a);
+  --acento-rgb: var(--warn-rgb, 231, 192, 122);
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.room {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--acento);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.count {
+  font-size: 10px;
+  color: var(--text-faint, #949cae);
+  white-space: nowrap;
+}
+
+.list {
+  flex: 1;
+  min-height: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 4px;
+  transition: background 0.12s ease;
+}
+
+/*
+ * A marca de fala é uma BARRA, não um ponto.
+ *
+ * Ela acompanha a altura do nome e acende inteira, o que é legível de canto de
+ * olho — que é como esta janela é olhada, por alguém que está jogando. Um
+ * ponto de 6 px exigiria foco para ser visto.
+ */
+.bar {
+  width: 3px;
+  align-self: stretch;
+  min-height: 16px;
+  flex: none;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+  transition: background 0.12s ease, box-shadow 0.12s ease;
+}
+
+.speaking {
+  background: rgba(var(--acento-rgb), 0.12);
+}
+
+.speaking .bar {
+  background: var(--acento);
+  box-shadow: 0 0 8px rgba(var(--acento-rgb), 0.7);
+}
+
+.speaking .name {
+  color: #fff;
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim, #a4abb8);
+}
+
+.you {
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint, #949cae);
+}
+
+/* Ausente continua na lista, apagado: sumir faria parecer que saiu. */
+.away {
+  opacity: 0.45;
+}
+
+.muted {
+  flex: none;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--danger, #f0888a);
+}
+
+.empty {
+  margin: auto 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-faint, #949cae);
+}
+
+.foot {
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-faint, #949cae);
+  text-align: center;
+}

@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
 import { StatusScreen } from './components/StatusScreen';
 import statusStyles from './components/StatusScreen.module.css';
+import { applyTheme, readTheme } from './lib/storage';
 import { AdminPage } from './pages/AdminPage';
 import { ArchitecturePage } from './pages/ArchitecturePage';
 import { AuthReturnPage } from './pages/AuthReturnPage';
@@ -21,6 +23,17 @@ function NotFound(): JSX.Element {
 }
 
 export function App(): JSX.Element {
+  /*
+   * O tema é aplicado na RAIZ do documento, na carga.
+   *
+   * Aqui e não dentro da sala: a escolha vale para o app inteiro — entrada,
+   * painel, página de arquitetura —, e aplicar só na sala faria a preferência
+   * sumir no instante em que alguém saísse dela.
+   */
+  useEffect(() => {
+    applyTheme(readTheme());
+  }, []);
+
   return (
     <BrowserRouter>
       <Routes>

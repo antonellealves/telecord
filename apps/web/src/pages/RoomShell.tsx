@@ -13,6 +13,7 @@ import { ParticipantSidebar } from '../components/ParticipantSidebar';
 import { RoomPanel } from '../components/RoomPanel';
 import { ScreenStage } from '../components/ScreenStage';
 import { Soundboard } from '../components/Soundboard';
+import { ParticipantOverlay } from '../components/ParticipantOverlay';
 import { ToastStack } from '../components/ToastStack';
 import { useAuth } from '../hooks/useAuth';
 import { useAway } from '../hooks/useAway';
@@ -28,13 +29,18 @@ import { useScreenShares } from '../hooks/useScreenShares';
 import { useSoundVolume } from '../hooks/useSoundVolume';
 import { useTalkControls } from '../hooks/useTalkControls';
 import { useForcedMove } from '../hooks/useForcedMove';
+import { useOverlay } from '../hooks/useOverlay';
 import { useToasts } from '../hooks/useToasts';
 import type { ScreenQualityId } from '../lib/media';
 import {
+  applyTheme,
   readParticipantsOpen,
   readScreenQuality,
+  readTheme,
   writeParticipantsOpen,
   writeScreenQuality,
+  writeTheme,
+  type ThemeId,
 } from '../lib/storage';
 import styles from './RoomPage.module.css';
 
@@ -100,6 +106,8 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
    */
   const [isParticipantsOpen, setIsParticipantsOpen] = useState(readParticipantsOpen);
   const [isRoomPanelOpen, setIsRoomPanelOpen] = useState(false);
+  const [themeId, setThemeId] = useState<ThemeId>(readTheme);
+  const overlay = useOverlay();
 
   const controlsRef = useRef<HTMLDivElement | null>(null);
   /* Âncora da ficha da sala: engloba o título e o próprio painel. */
@@ -133,6 +141,12 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
     stopCamera: cameras.stop,
     onError: (message) => push('error', message),
   });
+
+  // O tema mora no <html>, fora da árvore do React: aplicar por efeito é o
+  // que mantém o atributo em dia sem cada componente ter que saber dele.
+  useEffect(() => {
+    applyTheme(themeId);
+  }, [themeId]);
 
   // Chat aberto não acumula não-lidas.
   useEffect(() => {
@@ -255,6 +269,14 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
               notify={push}
               screenQualityId={screenQualityId}
               isSharingScreen={shares.isLocalSharing}
+              themeId={themeId}
+              onChangeTheme={(id) => {
+                setThemeId(id);
+                writeTheme(id);
+              }}
+              isOverlaySupported={overlay.isSupported}
+              isOverlayOpen={overlay.isOpen}
+              onToggleOverlay={overlay.toggle}
               onChangeScreenQuality={(id) => {
                 setScreenQualityId(id);
                 writeScreenQuality(id);
@@ -332,6 +354,25 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
             disabled={status !== 'connected'}
           />
         </div>
+
+        {/*
+          * O overlay é montado por portal numa janela do sistema operacional,
+          * então não importa onde esta linha esteja na árvore — o que importa
+          * é ela existir enquanto a sala existir.
+          */}
+        <ParticipantOverlay
+          container={overlay.container}
+          roomId={roomId}
+          variant="livekit"
+          people={participants.map((p) => ({
+            id: p.identity,
+            displayName: p.displayName,
+            isSpeaking: p.isSpeaking,
+            isMuted: !p.isMicrophoneEnabled,
+            isLocal: p.isLocal,
+            isAway: p.isAway,
+          }))}
+        />
 
         <ToastStack toasts={toasts} onDismiss={dismiss} />
       </div>

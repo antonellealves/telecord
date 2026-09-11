@@ -354,3 +354,73 @@ export function readPeerId(): string {
     return novo();
   }
 }
+
+const OVERLAY_KEY = 'telecord.overlay';
+
+/**
+ * Abrir o overlay sozinho ao entrar numa sala.
+ *
+ * DESLIGADO por padrão: abrir uma janela flutuante sem alguém pedir é
+ * invasivo, e o navegador só permite a abertura a partir de um gesto — então
+ * o automático só funciona depois do primeiro clique manual de qualquer
+ * forma. A preferência serve para quem usa sempre não ter que reabrir.
+ */
+export function readOverlayAuto(): boolean {
+  try {
+    return window.localStorage.getItem(OVERLAY_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function writeOverlayAuto(enabled: boolean): void {
+  try {
+    window.localStorage.setItem(OVERLAY_KEY, enabled ? 'true' : 'false');
+  } catch {
+    // Storage indisponível: a escolha vale só para esta aba.
+  }
+}
+
+const THEME_KEY = 'telecord.theme';
+
+/**
+ * Tema da interface.
+ *
+ * `escuro` é o padrão e é o `:root` do CSS — os demais só sobrescrevem
+ * tokens. Valor desconhecido cai no padrão em vez de quebrar a tela.
+ */
+export type ThemeId = 'escuro' | 'claro' | 'direta' | 'livekit';
+
+const THEMES: ThemeId[] = ['escuro', 'claro', 'direta', 'livekit'];
+
+export function readTheme(): ThemeId {
+  try {
+    const raw = window.localStorage.getItem(THEME_KEY);
+    return THEMES.includes(raw as ThemeId) ? (raw as ThemeId) : 'escuro';
+  } catch {
+    return 'escuro';
+  }
+}
+
+export function writeTheme(id: ThemeId): void {
+  try {
+    window.localStorage.setItem(THEME_KEY, id);
+  } catch {
+    // Storage indisponível: o tema vale só para esta aba.
+  }
+}
+
+/**
+ * Aplica o tema na raiz do documento.
+ *
+ * `escuro` REMOVE o atributo em vez de gravá-lo: o padrão é o `:root`, e um
+ * `data-theme="escuro"` sem bloco correspondente no CSS seria só ruído.
+ */
+export function applyTheme(id: ThemeId): void {
+  const raiz = document.documentElement;
+  if (id === 'escuro') {
+    raiz.removeAttribute('data-theme');
+    return;
+  }
+  raiz.setAttribute('data-theme', id);
+}
