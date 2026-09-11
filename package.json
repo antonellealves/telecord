@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "pnpm --filter web dev",
-    "build": "pnpm --filter @telecord/shared build && pnpm --filter @telecord/api build && pnpm --filter web build && node scripts/check-bundle.mjs",
+    "build": "pnpm --filter @telecord/shared build && pnpm --filter @telecord/api build && node scripts/bundle-api.mjs && pnpm --filter web build && node scripts/check-bundle.mjs",
     "typecheck": "pnpm --filter @telecord/shared build && pnpm --filter @telecord/api build && pnpm --recursive typecheck && tsc --project tsconfig.api.json --noEmit",
     "lint": "pnpm run typecheck",
     "test": "pnpm --filter @telecord/api test",

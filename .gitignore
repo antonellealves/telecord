@@ -24,3 +24,8 @@ apps/api/prisma/seed.mjs
 # Cliente do Prisma gerado dentro do serviço (ver o `output` no schema).
 # Sai do `prisma generate`, que roda no build — aqui e na Vercel.
 apps/api/src/generated/
+
+# Saída de `scripts/bundle-api.mjs`: o serviço empacotado e o cliente do
+# Prisma ao lado dele, ambos gerados no build.
+api/_bundle/
+api/generated/

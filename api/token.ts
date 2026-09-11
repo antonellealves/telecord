@@ -121,9 +121,21 @@ export default async function handler(
     return;
   }
 
+  /*
+   * A recusa é desestruturada com o tipo escrito à mão, em vez de confiar no
+   * estreitamento de `validation.ok`.
+   *
+   * A Vercel compila cada função de `api/` numa etapa separada, com uma
+   * instalação própria que NÃO tem o `packages/shared/dist` recém-construído —
+   * ela lê o `dist` que veio do lockfile. Quando o contrato muda, o `.d.ts`
+   * que ela enxerga é o antigo, e o estreitamento do union falha lá enquanto
+   * passa aqui: foi o TS2339 "Property 'code' does not exist" que só aparecia
+   * no log de build.
+   */
   const validation = validateTokenRequest(body);
   if (!validation.ok) {
-    sendError(res, 400, validation.code, validation.message);
+    const refusal = validation as { code: TokenErrorCode; message: string };
+    sendError(res, 400, refusal.code, refusal.message);
     return;
   }
 
