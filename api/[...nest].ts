@@ -1,14 +1,21 @@
 /**
  * Ponte entre o roteamento da Vercel e o serviço NestJS.
  *
- * Carrega o bundle de `api-bundle/`, montado por `scripts/bundle-api.mjs`, e
- * copiado para o pacote da função pelo `includeFiles` do `vercel.json`.
+ * Captura tudo sob `/api/` que não tenha função própria. `api/token.ts` e
+ * `api/rooms.ts` continuam respondendo pelos caminhos deles: rota com segmento
+ * fixo tem precedência sobre rota dinâmica, então a captura só recebe o resto.
  *
- * O import é DINÂMICO e dentro de try/catch de propósito: enquanto o
- * carregamento acontecia no topo do módulo, qualquer falha matava a função
- * antes de qualquer código rodar, e o erro não aparecia em lugar nenhum —
- * nem stack, nem log, só FUNCTION_INVOCATION_FAILED. Assim, uma falha de
- * carregamento vira resposta legível em vez de tela preta.
+ * CARREGA UM BUNDLE, e não o `dist` do serviço. O log de build da Vercel
+ * mostra por quê: depois do `buildCommand`, cada arquivo de `api/` é compilado
+ * numa ETAPA SEPARADA, com o próprio "Installing dependencies...", que não
+ * enxerga o que o build do monorepo produziu. `scripts/bundle-api.mjs` resolve
+ * antes, empacotando o serviço num `.cjs` sem dependência externa em
+ * `api-bundle/` — fora de `api/`, porque todo `.js` ali dentro viraria uma
+ * função serverless própria.
+ *
+ * Falha de CONFIGURAÇÃO não passa por aqui: o próprio serviço responde 503 com
+ * a causa (ver `abortOnError` em `apps/api/src/vercel.ts`). O try/catch abaixo
+ * cobre só o que pode dar errado antes disso — o bundle não estar no pacote.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
@@ -22,29 +29,24 @@ export default async function handler(
 ): Promise<void> {
   try {
     if (cached === null) {
-      const m = (await import('../api-bundle/bundle/nest.cjs')) as unknown as {
+      const mod = (await import('../api-bundle/bundle/nest.cjs')) as unknown as {
         default?: NodeHandler;
       };
-      const fn = m.default ?? (m as unknown as NodeHandler);
+      const fn = mod.default ?? (mod as unknown as NodeHandler);
       if (typeof fn !== 'function') {
-        throw new TypeError(`o bundle não exportou função (veio ${typeof fn})`);
+        throw new TypeError(`o bundle não exportou uma função (veio ${typeof fn}).`);
       }
       cached = fn;
     }
-    cached(req, res);
   } catch (error) {
-    res.statusCode = 500;
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('não foi possível carregar o serviço:', message);
+    res.statusCode = 503;
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
-    res.end(
-      JSON.stringify(
-        {
-          error: { code: 'bundle_load_failed', message: String(error).slice(0, 400) },
-          stack: (error as Error)?.stack?.split('\n').slice(0, 10),
-        },
-        null,
-        2,
-      ),
-    );
+    res.end(JSON.stringify({ error: { code: 'service_unavailable', message } }));
+    return;
   }
+
+  cached(req, res);
 }
