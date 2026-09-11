@@ -7,9 +7,16 @@
  * recebe 403 igual.
  */
 import type {
+  AdminChannelRow,
+  AdminRoomRow,
+  AdminSessionRow,
+  AdminSessionTokenRow,
+  AdminSoundRow,
   AdminUserRow,
   AuditLogEntry,
   DashboardMetrics,
+  LiveParticipant,
+  LiveRoom,
   LogLevel,
   Page,
   SystemLogEntry,
@@ -71,4 +78,84 @@ export async function updateUser(
   patch: { role?: 'USER' | 'ADMIN'; status?: 'ACTIVE' | 'SUSPENDED' | 'BANNED' },
 ): Promise<AdminUserRow> {
   return apiJson<AdminUserRow>(`/admin/users/${encodeURIComponent(id)}`, 'PATCH', patch);
+}
+
+// ---------------------------------------------------------------------------
+// As demais tabelas
+// ---------------------------------------------------------------------------
+
+/** Todas paginam igual: keyset por `cursor`, busca opcional por `q`. */
+export interface TableQuery {
+  cursor?: string | null;
+  q?: string | null;
+  limit?: number;
+}
+
+function table<T>(path: string, options: TableQuery, signal?: AbortSignal): Promise<Page<T>> {
+  return apiGet<Page<T>>(
+    `/admin/${path}${query({ cursor: options.cursor, q: options.q, limit: options.limit ?? 50 })}`,
+    signal,
+  );
+}
+
+export const fetchAdminRooms = (o: TableQuery = {}, s?: AbortSignal): Promise<Page<AdminRoomRow>> =>
+  table<AdminRoomRow>('rooms', o, s);
+
+export const fetchAdminChannels = (
+  o: TableQuery = {},
+  s?: AbortSignal,
+): Promise<Page<AdminChannelRow>> => table<AdminChannelRow>('channels', o, s);
+
+export const fetchAdminSounds = (
+  o: TableQuery = {},
+  s?: AbortSignal,
+): Promise<Page<AdminSoundRow>> => table<AdminSoundRow>('sounds', o, s);
+
+export const fetchAdminSessions = (
+  o: TableQuery = {},
+  s?: AbortSignal,
+): Promise<Page<AdminSessionRow>> => table<AdminSessionRow>('sessions', o, s);
+
+export const fetchAdminLogins = (
+  o: TableQuery = {},
+  s?: AbortSignal,
+): Promise<Page<AdminSessionTokenRow>> => table<AdminSessionTokenRow>('logins', o, s);
+
+// ---------------------------------------------------------------------------
+// Moderação ao vivo
+// ---------------------------------------------------------------------------
+
+export async function fetchLiveRooms(signal?: AbortSignal): Promise<LiveRoom[]> {
+  return apiGet<LiveRoom[]>('/admin/live', signal);
+}
+
+export async function fetchLiveParticipants(
+  slug: string,
+  signal?: AbortSignal,
+): Promise<LiveParticipant[]> {
+  return apiGet<LiveParticipant[]>(`/admin/live/${encodeURIComponent(slug)}`, signal);
+}
+
+const live = (slug: string, identity: string): string =>
+  `/admin/live/${encodeURIComponent(slug)}/${encodeURIComponent(identity)}`;
+
+/** `muted` explícito: o painel pode estar com um estado velho na tela. */
+export async function muteParticipant(
+  slug: string,
+  identity: string,
+  muted: boolean,
+): Promise<void> {
+  await apiJson<{ ok: true }>(`${live(slug, identity)}/mute`, 'POST', { muted });
+}
+
+export async function moveParticipant(
+  slug: string,
+  identity: string,
+  destino: string,
+): Promise<void> {
+  await apiJson<{ ok: true }>(`${live(slug, identity)}/move`, 'POST', { destino });
+}
+
+export async function removeParticipant(slug: string, identity: string): Promise<void> {
+  await apiJson<{ ok: true }>(live(slug, identity), 'DELETE', undefined);
 }

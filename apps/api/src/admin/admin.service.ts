@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '../generated/prisma';
 import type {
+  AdminChannelRow,
+  AdminRoomRow,
+  AdminSessionRow,
+  AdminSessionTokenRow,
+  AdminSoundRow,
   AdminUserRow,
   AuditLogEntry,
   LogLevel,
@@ -303,5 +308,212 @@ export class AdminService {
       select: { id: true, displayName: true },
     });
     return new Map(users.map((user) => [user.id, user.displayName]));
+  }
+
+  // -------------------------------------------------------------------------
+  // As demais tabelas, em visão de leitura
+  //
+  // Todas paginam por keyset sobre `(createdAt, id)`, como o resto do painel:
+  // `OFFSET` grande vira varredura, e o painel é justamente onde alguém rola
+  // até o fim. Nenhuma delas devolve conteúdo binário nem hash — `SoundBlob`
+  // fica de fora de propósito, e de `RefreshToken` sai o metadado, nunca o
+  // `tokenHash`, que é o que dá acesso.
+  // -------------------------------------------------------------------------
+
+  async rooms(cursor: Keyset | null, limit: number, search: string | null): Promise<Page<AdminRoomRow>> {
+    const rows = await this.prisma.room.findMany({
+      where: {
+        deletedAt: null,
+        ...(search === null
+          ? {}
+          : { OR: [{ slug: { contains: search } }, { name: { contains: search } }] }),
+        ...(keysetBefore(cursor, 'createdAt') as Prisma.RoomWhereInput),
+      },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        visibility: true,
+        createdAt: true,
+        lastActiveAt: true,
+        owner: { select: { displayName: true } },
+        channel: { select: { slug: true } },
+        _count: { select: { members: true, sounds: true } },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+    });
+
+    return buildPage(
+      rows,
+      limit,
+      (row): AdminRoomRow => ({
+        id: row.id,
+        slug: row.slug,
+        name: row.name,
+        visibility: row.visibility,
+        ownerLabel: row.owner?.displayName ?? null,
+        channelSlug: row.channel?.slug ?? null,
+        members: row._count.members,
+        sounds: row._count.sounds,
+        createdAt: row.createdAt.toISOString(),
+        lastActiveAt: row.lastActiveAt.toISOString(),
+      }),
+      (row) => encodeCursor(row.createdAt, row.id),
+    );
+  }
+
+  async channels(cursor: Keyset | null, limit: number, search: string | null): Promise<Page<AdminChannelRow>> {
+    const rows = await this.prisma.channel.findMany({
+      where: {
+        deletedAt: null,
+        ...(search === null
+          ? {}
+          : { OR: [{ slug: { contains: search } }, { name: { contains: search } }] }),
+        ...(keysetBefore(cursor, 'createdAt') as Prisma.ChannelWhereInput),
+      },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        visibility: true,
+        createdAt: true,
+        owner: { select: { displayName: true } },
+        _count: { select: { rooms: true, members: true } },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+    });
+
+    return buildPage(
+      rows,
+      limit,
+      (row): AdminChannelRow => ({
+        id: row.id,
+        slug: row.slug,
+        name: row.name,
+        visibility: row.visibility,
+        ownerLabel: row.owner?.displayName ?? null,
+        rooms: row._count.rooms,
+        members: row._count.members,
+        createdAt: row.createdAt.toISOString(),
+      }),
+      (row) => encodeCursor(row.createdAt, row.id),
+    );
+  }
+
+  async sounds(cursor: Keyset | null, limit: number, search: string | null): Promise<Page<AdminSoundRow>> {
+    const rows = await this.prisma.sound.findMany({
+      where: {
+        deletedAt: null,
+        ...(search === null ? {} : { label: { contains: search } }),
+        ...(keysetBefore(cursor, 'createdAt') as Prisma.SoundWhereInput),
+      },
+      // Sem `blob`: são megabytes de áudio, e a listagem só desenha o nome.
+      select: {
+        id: true,
+        label: true,
+        emoji: true,
+        byteSize: true,
+        mimeType: true,
+        createdAt: true,
+        room: { select: { slug: true } },
+        uploadedBy: { select: { displayName: true } },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+    });
+
+    return buildPage(
+      rows,
+      limit,
+      (row): AdminSoundRow => ({
+        id: row.id,
+        label: row.label,
+        emoji: row.emoji,
+        roomSlug: row.room?.slug ?? null,
+        uploadedByLabel: row.uploadedBy?.displayName ?? null,
+        byteSize: row.byteSize,
+        mimeType: row.mimeType,
+        createdAt: row.createdAt.toISOString(),
+      }),
+      (row) => encodeCursor(row.createdAt, row.id),
+    );
+  }
+
+  /** Sessões de MÍDIA: quem esteve em qual sala, medido pelo webhook do SFU. */
+  async mediaSessions(cursor: Keyset | null, limit: number, search: string | null): Promise<Page<AdminSessionRow>> {
+    const rows = await this.prisma.mediaSession.findMany({
+      where: {
+        ...(search === null
+          ? {}
+          : { OR: [{ roomSlug: { contains: search } }, { participantName: { contains: search } }] }),
+        ...(keysetBefore(cursor, 'createdAt') as Prisma.MediaSessionWhereInput),
+      },
+      select: {
+        id: true,
+        roomSlug: true,
+        participantName: true,
+        identity: true,
+        joinedAt: true,
+        leftAt: true,
+        durationSeconds: true,
+        createdAt: true,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+    });
+
+    return buildPage(
+      rows,
+      limit,
+      (row): AdminSessionRow => ({
+        id: row.id,
+        roomSlug: row.roomSlug,
+        participantName: row.participantName,
+        identity: row.identity,
+        joinedAt: row.joinedAt.toISOString(),
+        leftAt: row.leftAt?.toISOString() ?? null,
+        durationSeconds: row.durationSeconds,
+      }),
+      (row) => encodeCursor(row.createdAt, row.id),
+    );
+  }
+
+  /**
+   * Sessões de LOGIN. O `tokenHash` NUNCA sai daqui: é ele que vale como
+   * credencial, e listar seria entregar a sessão de todo mundo a quem abrir o
+   * painel. O que se mostra é de onde e até quando.
+   */
+  async loginSessions(cursor: Keyset | null, limit: number): Promise<Page<AdminSessionTokenRow>> {
+    const rows = await this.prisma.refreshToken.findMany({
+      where: keysetBefore(cursor, 'createdAt') as Prisma.RefreshTokenWhereInput,
+      select: {
+        id: true,
+        ip: true,
+        userAgent: true,
+        createdAt: true,
+        expiresAt: true,
+        revokedAt: true,
+        user: { select: { displayName: true } },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+    });
+
+    return buildPage(
+      rows,
+      limit,
+      (row): AdminSessionTokenRow => ({
+        id: row.id,
+        userLabel: row.user.displayName,
+        ip: row.ip,
+        userAgent: row.userAgent,
+        createdAt: row.createdAt.toISOString(),
+        expiresAt: row.expiresAt.toISOString(),
+        revoked: row.revokedAt !== null,
+      }),
+      (row) => encodeCursor(row.createdAt, row.id),
+    );
   }
 }

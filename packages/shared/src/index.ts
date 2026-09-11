@@ -809,3 +809,89 @@ export interface AdminUserRow {
   createdAt: string;
   lastSeenAt: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// Moderação ao vivo e as demais tabelas no painel
+// ---------------------------------------------------------------------------
+
+/** Sala com gente dentro AGORA, lida do SFU e não do banco. */
+export interface LiveRoom {
+  slug: string;
+  participants: number;
+  createdAt: string;
+}
+
+export interface LiveTrack {
+  sid: string;
+  source: string;
+  muted: boolean;
+}
+
+export interface LiveParticipant {
+  identity: string;
+  displayName: string;
+  joinedAt: string;
+  /**
+   * Entrou sem conta. Em quem é anônimo só dá para agir na SALA (mutar, mover,
+   * remover); suspender e banir agem na conta, que essa pessoa não tem.
+   */
+  isAnonymous: boolean;
+  tracks: LiveTrack[];
+}
+
+/** Linha de `Room` como o painel lê — a ficha, não a sala viva. */
+export interface AdminRoomRow {
+  id: string;
+  slug: string;
+  name: string;
+  visibility: RoomVisibility;
+  ownerLabel: string | null;
+  channelSlug: string | null;
+  members: number;
+  sounds: number;
+  createdAt: string;
+  lastActiveAt: string;
+}
+
+export interface AdminChannelRow {
+  id: string;
+  slug: string;
+  name: string;
+  visibility: RoomVisibility;
+  ownerLabel: string | null;
+  rooms: number;
+  members: number;
+  createdAt: string;
+}
+
+export interface AdminSoundRow {
+  id: string;
+  label: string;
+  emoji: string | null;
+  roomSlug: string | null;
+  uploadedByLabel: string | null;
+  byteSize: number;
+  mimeType: string;
+  createdAt: string;
+}
+
+export interface AdminSessionRow {
+  id: string;
+  roomSlug: string;
+  participantName: string;
+  identity: string;
+  joinedAt: string;
+  leftAt: string | null;
+  durationSeconds: number | null;
+}
+
+/** Sessão de login viva: um `RefreshToken` não expirado nem revogado. */
+export interface AdminSessionTokenRow {
+  id: string;
+  userLabel: string;
+  ip: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  expiresAt: string;
+  revoked: boolean;
+}

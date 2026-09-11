@@ -2,8 +2,18 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { DashboardMetrics, Kpi } from '@telecord/shared';
 import { AdminAudit } from '../components/AdminAudit';
+import { AdminLive } from '../components/AdminLive';
+import { AdminTable, formatBytes, formatDuration } from '../components/AdminTable';
 import { AdminLogs } from '../components/AdminLogs';
 import { AdminUsers } from '../components/AdminUsers';
+import { formatWhen } from '../components/AdminLogs';
+import {
+  fetchAdminChannels,
+  fetchAdminLogins,
+  fetchAdminRooms,
+  fetchAdminSessions,
+  fetchAdminSounds,
+} from '../lib/admin';
 import { AmbientGradient } from '../components/AmbientGradient';
 import { StatusScreen } from '../components/StatusScreen';
 import { AreaChart, BarChart, BarList } from '../components/charts';
@@ -14,10 +24,16 @@ import styles from '../components/Admin.module.css';
 import statusStyles from '../components/StatusScreen.module.css';
 
 const PERIODS = [7, 30, 90] as const;
-type Tab = 'visao' | 'log' | 'auditoria' | 'contas';
+type Tab = 'visao' | 'aovivo' | 'salas' | 'canais' | 'sons' | 'sessoes' | 'logins' | 'log' | 'auditoria' | 'contas';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'visao', label: 'Visão geral' },
+  { id: 'aovivo', label: 'Ao vivo' },
+  { id: 'salas', label: 'Salas' },
+  { id: 'canais', label: 'Canais' },
+  { id: 'sons', label: 'Sons' },
+  { id: 'sessoes', label: 'Sessões' },
+  { id: 'logins', label: 'Logins' },
   { id: 'log', label: 'Log' },
   { id: 'auditoria', label: 'Auditoria' },
   { id: 'contas', label: 'Contas' },
@@ -148,6 +164,90 @@ export function AdminPage(): JSX.Element {
 
           {tab === 'visao' ? (
             <Overview metrics={metrics} isLoading={isLoading} error={error} days={days} />
+          ) : null}
+          {tab === 'aovivo' ? <AdminLive /> : null}
+          {tab === 'salas' ? (
+            <AdminTable
+              fetchPage={(options, signal) => fetchAdminRooms(options, signal)}
+              rowKey={(row) => row.id}
+              searchPlaceholder="Buscar por slug ou nome"
+              emptyLabel="Nenhuma sala registrada."
+              columns={[
+                { header: 'Slug', cell: (row) => row.slug },
+                { header: 'Nome', cell: (row) => row.name },
+                { header: 'Dono', cell: (row) => row.ownerLabel },
+                { header: 'Canal', cell: (row) => row.channelSlug },
+                { header: 'Visibilidade', cell: (row) => row.visibility },
+                { header: 'Membros', cell: (row) => row.members },
+                { header: 'Sons', cell: (row) => row.sounds },
+                { header: 'Criada', cell: (row) => formatWhen(row.createdAt) },
+                { header: 'Ativa', cell: (row) => formatWhen(row.lastActiveAt) },
+              ]}
+            />
+          ) : null}
+          {tab === 'canais' ? (
+            <AdminTable
+              fetchPage={(options, signal) => fetchAdminChannels(options, signal)}
+              rowKey={(row) => row.id}
+              searchPlaceholder="Buscar por slug ou nome"
+              emptyLabel="Nenhum canal registrado."
+              columns={[
+                { header: 'Slug', cell: (row) => row.slug },
+                { header: 'Nome', cell: (row) => row.name },
+                { header: 'Dono', cell: (row) => row.ownerLabel },
+                { header: 'Visibilidade', cell: (row) => row.visibility },
+                { header: 'Salas', cell: (row) => row.rooms },
+                { header: 'Membros', cell: (row) => row.members },
+                { header: 'Criado', cell: (row) => formatWhen(row.createdAt) },
+              ]}
+            />
+          ) : null}
+          {tab === 'sons' ? (
+            <AdminTable
+              fetchPage={(options, signal) => fetchAdminSounds(options, signal)}
+              rowKey={(row) => row.id}
+              searchPlaceholder="Buscar pelo nome do som"
+              emptyLabel="Nenhum som enviado."
+              columns={[
+                { header: '', cell: (row) => row.emoji },
+                { header: 'Nome', cell: (row) => row.label },
+                { header: 'Sala', cell: (row) => row.roomSlug ?? 'global' },
+                { header: 'Enviado por', cell: (row) => row.uploadedByLabel },
+                { header: 'Tamanho', cell: (row) => formatBytes(row.byteSize) },
+                { header: 'Formato', cell: (row) => row.mimeType },
+                { header: 'Quando', cell: (row) => formatWhen(row.createdAt) },
+              ]}
+            />
+          ) : null}
+          {tab === 'sessoes' ? (
+            <AdminTable
+              fetchPage={(options, signal) => fetchAdminSessions(options, signal)}
+              rowKey={(row) => row.id}
+              searchPlaceholder="Buscar por sala ou pessoa"
+              emptyLabel="Nenhuma sessão medida. Sem o webhook do LiveKit, esta tabela fica vazia."
+              columns={[
+                { header: 'Sala', cell: (row) => row.roomSlug },
+                { header: 'Pessoa', cell: (row) => row.participantName },
+                { header: 'Entrou', cell: (row) => formatWhen(row.joinedAt) },
+                { header: 'Saiu', cell: (row) => (row.leftAt === null ? 'ainda dentro' : formatWhen(row.leftAt)) },
+                { header: 'Duração', cell: (row) => formatDuration(row.durationSeconds) },
+              ]}
+            />
+          ) : null}
+          {tab === 'logins' ? (
+            <AdminTable
+              fetchPage={(options, signal) => fetchAdminLogins(options, signal)}
+              rowKey={(row) => row.id}
+              emptyLabel="Nenhuma sessão de login registrada."
+              columns={[
+                { header: 'Pessoa', cell: (row) => row.userLabel },
+                { header: 'Situação', cell: (row) => (row.revoked ? 'revogada' : 'ativa') },
+                { header: 'IP', cell: (row) => row.ip },
+                { header: 'Navegador', cell: (row) => row.userAgent },
+                { header: 'Criada', cell: (row) => formatWhen(row.createdAt) },
+                { header: 'Expira', cell: (row) => formatWhen(row.expiresAt) },
+              ]}
+            />
           ) : null}
           {tab === 'log' ? <AdminLogs /> : null}
           {tab === 'auditoria' ? <AdminAudit /> : null}

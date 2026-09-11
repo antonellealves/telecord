@@ -1,10 +1,17 @@
-import { Body, Controller, Get, Param, Patch, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import {
   LOG_LEVELS,
+  type AdminChannelRow,
+  type AdminRoomRow,
+  type AdminSessionRow,
+  type AdminSessionTokenRow,
+  type AdminSoundRow,
   type AdminUserRow,
   type AuditLogEntry,
   type DashboardMetrics,
+  type LiveParticipant,
+  type LiveRoom,
   type LogLevel,
   type Page,
   type SystemLogEntry,
@@ -16,6 +23,7 @@ import { decodeCursor, parseLimit } from '../common/pagination';
 import { actorOf, clientOf } from '../rooms/rooms.controller';
 import { AdminService } from './admin.service';
 import { MetricsService } from './metrics.service';
+import { ModerationService } from './moderation.service';
 
 const STATUSES = ['ACTIVE', 'SUSPENDED', 'BANNED'] as const;
 const ROLES = ['USER', 'ADMIN'] as const;
@@ -40,6 +48,7 @@ export class AdminController {
   constructor(
     private readonly admin: AdminService,
     private readonly metrics: MetricsService,
+    private readonly moderation: ModerationService,
   ) {}
 
   @Get('metrics')
@@ -106,6 +115,126 @@ export class AdminController {
     }
 
     return this.admin.updateUser(id, patch, actorOf(claims), clientOf(request));
+  }
+  // -------------------------------------------------------------------------
+  // As demais tabelas
+  // -------------------------------------------------------------------------
+
+  @Get('rooms')
+  async rooms(
+    @Query('cursor') cursor: string | undefined,
+    @Query('limit') limit: string | undefined,
+    @Query('q') search: string | undefined,
+  ): Promise<Page<AdminRoomRow>> {
+    return this.admin.rooms(decodeCursor(cursor), parseLimit(limit), readText(search, 80));
+  }
+
+  @Get('channels')
+  async channels(
+    @Query('cursor') cursor: string | undefined,
+    @Query('limit') limit: string | undefined,
+    @Query('q') search: string | undefined,
+  ): Promise<Page<AdminChannelRow>> {
+    return this.admin.channels(decodeCursor(cursor), parseLimit(limit), readText(search, 80));
+  }
+
+  @Get('sounds')
+  async sounds(
+    @Query('cursor') cursor: string | undefined,
+    @Query('limit') limit: string | undefined,
+    @Query('q') search: string | undefined,
+  ): Promise<Page<AdminSoundRow>> {
+    return this.admin.sounds(decodeCursor(cursor), parseLimit(limit), readText(search, 80));
+  }
+
+  @Get('sessions')
+  async sessions(
+    @Query('cursor') cursor: string | undefined,
+    @Query('limit') limit: string | undefined,
+    @Query('q') search: string | undefined,
+  ): Promise<Page<AdminSessionRow>> {
+    return this.admin.mediaSessions(decodeCursor(cursor), parseLimit(limit), readText(search, 80));
+  }
+
+  @Get('logins')
+  async logins(
+    @Query('cursor') cursor: string | undefined,
+    @Query('limit') limit: string | undefined,
+  ): Promise<Page<AdminSessionTokenRow>> {
+    return this.admin.loginSessions(decodeCursor(cursor), parseLimit(limit));
+  }
+
+  // -------------------------------------------------------------------------
+  // Moderação da sala VIVA
+  //
+  // Estas rotas falam com o SFU, não com o banco: quem está conectado agora só
+  // o LiveKit sabe. Todas passam por auditoria — ver `ModerationService`.
+  // -------------------------------------------------------------------------
+
+  @Get('live')
+  async live(): Promise<LiveRoom[]> {
+    return this.moderation.liveRooms();
+  }
+
+  @Get('live/:slug')
+  async liveRoom(@Param('slug') slug: string): Promise<LiveParticipant[]> {
+    return this.moderation.liveParticipants(slug);
+  }
+
+  @Post('live/:slug/:identity/mute')
+  async mute(
+    @Param('slug') slug: string,
+    @Param('identity') identity: string,
+    @Body() body: Record<string, unknown>,
+    @CurrentUser() claims: AccessClaims | undefined,
+    @Req() request: Request,
+  ): Promise<{ ok: true }> {
+    // `muted` explícito, e não alternância: o painel pode estar vendo um estado
+    // velho, e "alternar" a partir dele faria o botão mutar quem já está mudo.
+    if (typeof body.muted !== 'boolean') {
+      throw badRequest('invalid_request', 'Informe `muted` como true ou false.');
+    }
+    await this.moderation.muteParticipant(
+      slug,
+      identity,
+      body.muted,
+      actorOf(claims),
+      clientOf(request),
+    );
+    return { ok: true };
+  }
+
+  @Post('live/:slug/:identity/move')
+  async move(
+    @Param('slug') slug: string,
+    @Param('identity') identity: string,
+    @Body() body: Record<string, unknown>,
+    @CurrentUser() claims: AccessClaims | undefined,
+    @Req() request: Request,
+  ): Promise<{ ok: true }> {
+    const destino = typeof body.destino === 'string' ? body.destino.trim().slice(0, 64) : '';
+    if (destino === '') {
+      throw badRequest('invalid_request', 'Informe a sala de destino.');
+    }
+    await this.moderation.moveParticipant(
+      slug,
+      identity,
+      destino,
+      actorOf(claims),
+      clientOf(request),
+    );
+    return { ok: true };
+  }
+
+  @Delete('live/:slug/:identity')
+  async kick(
+    @Param('slug') slug: string,
+    @Param('identity') identity: string,
+    @CurrentUser() claims: AccessClaims | undefined,
+    @Req() request: Request,
+  ): Promise<{ ok: true }> {
+    await this.moderation.removeParticipant(slug, identity, actorOf(claims), clientOf(request));
+    return { ok: true };
   }
 }
 

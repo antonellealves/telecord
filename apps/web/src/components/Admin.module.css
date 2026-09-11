@@ -474,3 +474,61 @@
     font-size: 20px;
   }
 }
+
+/* --- Moderação ao vivo ------------------------------------------------- */
+
+.subheading {
+  margin: 18px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* "anônimo" ao lado do nome: entrou sem conta, então não há o que suspender. */
+.badgeSoft {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  vertical-align: middle;
+}
+
+/* Os botões de ação quebram linha em vez de esticar a coluna. */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.danger {
+  padding: 5px 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(var(--danger-rgb), 0.4);
+  background: rgba(var(--danger-rgb), 0.12);
+  color: var(--danger);
+  font: inherit;
+  font-size: 12px;
+}
+
+.danger:hover:not(:disabled) {
+  background: rgba(var(--danger-rgb), 0.2);
+}
+
+.danger:disabled {
+  opacity: 0.45;
+}
+
+/* O campo de destino aparece na própria linha, junto do botão que o abriu. */
+.inlineForm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.inlineForm .input {
+  width: 150px;
+}

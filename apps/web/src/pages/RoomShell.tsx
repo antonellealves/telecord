@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { RoomAudioRenderer, useRoomContext } from '@livekit/components-react';
+import { useNavigate } from 'react-router-dom';
 import { AmbientGradient } from '../components/AmbientGradient';
 import { AudioPlaybackGate } from '../components/AudioPlaybackGate';
 import { CameraStrip } from '../components/CameraStrip';
@@ -26,6 +27,7 @@ import { useRoomSounds } from '../hooks/useRoomSounds';
 import { useScreenShares } from '../hooks/useScreenShares';
 import { useSoundVolume } from '../hooks/useSoundVolume';
 import { useTalkControls } from '../hooks/useTalkControls';
+import { useForcedMove } from '../hooks/useForcedMove';
 import { useToasts } from '../hooks/useToasts';
 import type { ScreenQualityId } from '../lib/media';
 import {
@@ -54,6 +56,20 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
   const peerVolume = usePeerVolume();
   const channelNav = useChannelNav(roomId);
   const { toasts, push, dismiss } = useToasts();
+  const navigate = useNavigate();
+  /*
+   * Obedece a ordem de mover vinda da administração. Sem isto, ser movido
+   * seria indistinguível de cair: a desconexão é a mesma, e só o metadata
+   * gravado antes do corte diz para onde ir.
+   */
+  useForcedMove(
+    useCallback(
+      (destino: string) => {
+        navigate(`/sala/${encodeURIComponent(destino)}`);
+      },
+      [navigate],
+    ),
+  );
   const shares = useScreenShares(push);
   const cameras = useCameras(push);
   const talk = useTalkControls((message) => push('error', message));
