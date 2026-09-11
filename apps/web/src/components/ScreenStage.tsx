@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { RemoteTrackPublication } from 'livekit-client';
 import type { ScreenShareEntry } from '../hooks/useScreenShares';
 import { useZoomPan } from '../hooks/useZoomPan';
-import { ExpandIcon, ShrinkIcon } from './icons';
+import { ExpandIcon, EyeIcon, EyeOffIcon, ShrinkIcon } from './icons';
 import styles from './ScreenStage.module.css';
 
 interface ScreenStageProps {
@@ -25,6 +26,44 @@ function ScreenTile({ entry }: { entry: ScreenShareEntry }): JSX.Element {
   const [mode, setMode] = useState<TileMode>('normal');
   const zoom = useZoomPan();
   const track = entry.publication.track ?? null;
+
+  /*
+   * Parar de assistir DESASSINA a track, em vez de só esconder o vídeo.
+   *
+   * Esconder com CSS pararia de desenhar e continuaria baixando: o SFU seguiria
+   * mandando a tela inteira, e quem parou de assistir justamente porque a
+   * conexão não aguenta não ganharia nada. `setSubscribed(false)` corta o
+   * envio na origem — é a única forma de o botão realmente aliviar a banda.
+   *
+   * Vale só para tela dos outros: publicação local não é assinatura, e o
+   * `setSubscribed` nem existe nela.
+   */
+  const remote =
+    !entry.owner.isLocal && 'setSubscribed' in entry.publication
+      ? (entry.publication as RemoteTrackPublication)
+      : null;
+  const canUnsubscribe = remote !== null;
+  const [isWatching, setIsWatching] = useState(true);
+
+  const toggleWatching = useCallback(() => {
+    if (remote === null) {
+      return;
+    }
+    const next = !isWatching;
+    remote.setSubscribed(next);
+    setIsWatching(next);
+  }, [remote, isWatching]);
+
+  /*
+   * Quem parou de assistir e saiu da sala não deve levar a escolha adiante: a
+   * assinatura é reposta ao desmontar, senão a track ficaria desassinada para
+   * a próxima vez que o mesmo quadro aparecesse.
+   */
+  useEffect(() => {
+    return () => {
+      remote?.setSubscribed(true);
+    };
+  }, [remote]);
 
   useEffect(() => {
     const element = videoRef.current;
@@ -109,6 +148,24 @@ function ScreenTile({ entry }: { entry: ScreenShareEntry }): JSX.Element {
         <div className={styles.surface} ref={zoom.contentRef}>
           <video ref={videoRef} className={styles.video} autoPlay playsInline muted />
         </div>
+
+        {/*
+          * Sem isto, parar de assistir deixaria um retângulo preto e mudo, que
+          * é indistinguível de transmissão travada — o aviso diz que a
+          * escolha foi sua e como desfazê-la.
+          */}
+        {!isWatching ? (
+          <div className={styles.paused}>
+            <EyeOffIcon className={styles.pausedIcon} />
+            <p className={styles.pausedTitle}>Você parou de assistir</p>
+            <p className={styles.pausedHint}>
+              {entry.owner.displayName} continua compartilhando. Nada está sendo baixado.
+            </p>
+            <button type="button" className={styles.pausedButton} onClick={toggleWatching}>
+              Voltar a assistir
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <span className={styles.label}>
@@ -158,6 +215,27 @@ function ScreenTile({ entry }: { entry: ScreenShareEntry }): JSX.Element {
         >
           {isExpanded ? <ShrinkIcon /> : <ExpandIcon />}
         </button>
+
+        {/*
+          * Só faz sentido na tela dos OUTROS: parar de assistir a própria
+          * seria só esconder o que você mesmo está publicando, e para isso já
+          * existe o botão de parar de compartilhar.
+          */}
+        {canUnsubscribe ? (
+          <button
+            type="button"
+            className={styles.tool}
+            onClick={toggleWatching}
+            title={
+              isWatching
+                ? 'Parar de assistir — libera a banda desta tela'
+                : 'Voltar a assistir esta tela'
+            }
+            aria-label={isWatching ? 'Parar de assistir' : 'Voltar a assistir'}
+          >
+            {isWatching ? <EyeOffIcon /> : <EyeIcon />}
+          </button>
+        ) : null}
       </div>
     </div>
   );

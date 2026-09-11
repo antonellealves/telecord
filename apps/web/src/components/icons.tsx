@@ -299,3 +299,27 @@ export function GoogleMark({ className }: { className?: string }): JSX.Element {
     </svg>
   );
 }
+
+export function EyeIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g>
+        <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
+        <circle cx="12" cy="12" r="3" />
+      </g>
+    </Icon>
+  );
+}
+
+/** Olho cortado: "parar de assistir". O traço diagonal é o mesmo do mudo. */
+export function EyeOffIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g>
+        <path d="M10.6 6.2A9.9 9.9 0 0 1 12 6c6.5 0 10 6 10 6a17 17 0 0 1-3.1 3.8M6.3 6.5C3.6 8.2 2 12 2 12s3.5 6 10 6a9.9 9.9 0 0 0 4-.8" />
+        <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+        <path d="M3 3l18 18" />
+      </g>
+    </Icon>
+  );
+}

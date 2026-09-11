@@ -107,6 +107,7 @@
   position: absolute;
   left: 10px;
   bottom: 10px;
+  z-index: 2;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -146,6 +147,8 @@
   position: absolute;
   right: 10px;
   top: 10px;
+  /* Acima do quadro de pausa: é dali que se volta a assistir. */
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -255,4 +258,64 @@
   max-width: 40ch;
   font-size: 13px;
   line-height: 1.6;
+}
+
+/*
+ * Quadro de quem parou de assistir.
+ *
+ * Cobre o vídeo inteiro porque a track foi DESASSINADA: não há mais imagem
+ * chegando, e sem isto sobraria um retângulo preto indistinguível de
+ * transmissão travada.
+ */
+.paused {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px;
+  text-align: center;
+  background: var(--surface-2, rgba(14, 16, 22, 0.92));
+  /* Acima do vídeo e abaixo da barra de ferramentas e da etiqueta de nome. */
+  z-index: 1;
+}
+
+.pausedIcon {
+  width: 26px;
+  height: 26px;
+  color: var(--text-dim);
+  margin-bottom: 2px;
+}
+
+.pausedTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.pausedHint {
+  margin: 0;
+  max-width: 34ch;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.pausedButton {
+  margin-top: 8px;
+  padding: 7px 14px;
+  border: 1px solid rgba(var(--accent-rgb), 0.45);
+  border-radius: var(--radius-pill);
+  background: rgba(var(--accent-rgb), 0.14);
+  color: var(--accent-soft);
+  font: inherit;
+  font-size: 12px;
+  transition: background 0.16s ease;
+}
+
+.pausedButton:hover {
+  background: rgba(var(--accent-rgb), 0.24);
 }

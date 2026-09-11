@@ -455,7 +455,7 @@ Tratar como **opcional e ausente por padrão**: só navegadores Chromium em desk
 - Por participante: 1 vídeo + até 19 áudios + eventualmente 1 áudio de tela. 19 decodificações Opus são baratas; o gargalo é o vídeo.
 - `adaptiveStream` pausa o vídeo quando o elemento não está visível (aba em background, sidebar por cima).
 - `simulcast: false` para a tela: com um único publicador e ≤20 espectadores, camadas extras custam CPU de encoding e upstream do apresentador sem ganho real. **Trade-off assumido**: espectador em rede ruim não tem camada menor para cair — ele perde qualidade pela degradação do próprio encoder, não pela troca de camada. Se aparecer relato de travamento, ligar simulcast é uma linha.
-- Nada de `setSubscribed(false)` manual no MVP.
+- **Parar de assistir** usa `setSubscribed(false)` na tela de um colega, por decisão de quem assiste. Revoga o "nada de setSubscribed manual no MVP": o botão existe justamente para quem não aguenta a banda de uma tela que não está olhando, e esconder com CSS não resolveria — o SFU continuaria mandando o vídeo inteiro. É por quadro e por pessoa; não afeta ninguém mais, e a assinatura é reposta ao desmontar o quadro, para a escolha não vazar para a próxima sala.
 
 ### 6.5 Contas de banda (por que isso importa)
 
