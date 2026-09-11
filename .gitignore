@@ -27,5 +27,5 @@ apps/api/src/generated/
 
 # Saída de `scripts/bundle-api.mjs`: o serviço empacotado e o cliente do
 # Prisma ao lado dele, ambos gerados no build.
-api/_bundle/
-api/generated/
+.vercel-api/
+
