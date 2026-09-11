@@ -278,3 +278,28 @@ export function writeScreenQuality(id: ScreenQualityId): void {
     // Storage indisponível: a escolha vale só para esta aba.
   }
 }
+
+const PARTICIPANTS_OPEN_KEY = 'telecord.participantsOpen';
+
+/**
+ * Lista de participantes visível ou escondida.
+ *
+ * Aberta por padrão: saber quem está na sala é o estado normal, e quem nunca
+ * mexeu não deve entrar numa sala sem a lista. Guardado porque esconder é uma
+ * escolha de espaço de tela — vale para todas as salas, não para uma.
+ */
+export function readParticipantsOpen(): boolean {
+  try {
+    return window.localStorage.getItem(PARTICIPANTS_OPEN_KEY) !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+export function writeParticipantsOpen(open: boolean): void {
+  try {
+    window.localStorage.setItem(PARTICIPANTS_OPEN_KEY, open ? 'true' : 'false');
+  } catch {
+    // Storage indisponível: a escolha vale só para esta aba.
+  }
+}

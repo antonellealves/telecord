@@ -49,7 +49,7 @@ export function ChatPanel({ messages, onSend, onClose, peerVolume }: ChatPanelPr
   }
 
   return (
-    <aside className={styles.panel} aria-label="Chat da sala">
+    <aside className={styles.panel} data-panel="chat" aria-label="Chat da sala">
       <div className={styles.header}>
         <h2 className={styles.heading}>Chat</h2>
         <button type="button" className={styles.close} onClick={onClose} aria-label="Fechar o chat">

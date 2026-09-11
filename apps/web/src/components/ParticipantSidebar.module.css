@@ -21,6 +21,27 @@
   overflow: hidden;
 }
 
+/* Título e o × de esconder na mesma linha. */
+.headingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.close {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.close:hover {
+  color: var(--text);
+}
+
 .heading {
   margin: 0;
   font-family: var(--font-mono);

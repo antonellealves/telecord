@@ -157,7 +157,7 @@
     display: none;
   }
 
-  .main > aside:last-child {
+  .main > [data-panel="chat"] {
     position: absolute;
     right: 0;
     top: 0;
@@ -189,12 +189,12 @@
 
   /* Empilhado, a largura arrastada não faz sentido — o CSS vence a custom
      property, que fica só esperando a volta do layout largo. */
-  .main > aside:first-child {
+  .main > [data-panel="participantes"] {
     width: 100%;
     max-height: 150px;
   }
 
-  .main > aside:last-child {
+  .main > [data-panel="chat"] {
     width: min(340px, 90vw);
   }
 
@@ -210,7 +210,7 @@
 /* Telefone deitado: sobra pouca altura, então a lista de participantes vira
    uma faixa curta e o palco fica com o resto. */
 @media (max-height: 520px) and (orientation: landscape) {
-  .main > aside:first-child {
+  .main > [data-panel="participantes"] {
     max-height: 104px;
   }
 

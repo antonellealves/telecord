@@ -7,6 +7,7 @@ import {
   LeaveIcon,
   MicIcon,
   MicOffIcon,
+  PeopleIcon,
   ScreenIcon,
   SlidersIcon,
   SoundIcon,
@@ -31,6 +32,8 @@ interface ControlBarProps {
   isChatOpen: boolean;
   unreadCount: number;
   onToggleChat: () => void;
+  isParticipantsOpen: boolean;
+  onToggleParticipants: () => void;
   isSettingsOpen: boolean;
   onToggleSettings: () => void;
   onLeave: () => void;
@@ -55,6 +58,8 @@ export function ControlBar({
   isChatOpen,
   unreadCount,
   onToggleChat,
+  isParticipantsOpen,
+  onToggleParticipants,
   isSettingsOpen,
   onToggleSettings,
   onLeave,
@@ -150,6 +155,17 @@ export function ControlBar({
       >
         <SoundIcon />
         <span className={styles.text}>Sons</span>
+      </button>
+
+      <button
+        type="button"
+        className={`${styles.button} ${isParticipantsOpen ? styles.toggled : ''}`}
+        onClick={onToggleParticipants}
+        aria-expanded={isParticipantsOpen}
+        title={isParticipantsOpen ? 'Esconder quem está na sala' : 'Mostrar quem está na sala'}
+      >
+        <PeopleIcon />
+        <span className={styles.text}>Pessoas</span>
       </button>
 
       <button

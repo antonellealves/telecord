@@ -14,6 +14,8 @@ interface ParticipantSidebarProps {
   onToggleAway: () => void;
   /** Volume individual de cada participante remoto. */
   peerVolume: PeerVolumeState;
+  /** Esconde a lista. Mesmo gesto do chat. */
+  onClose: () => void;
 }
 
 function initials(name: string): string {
@@ -117,6 +119,7 @@ export function ParticipantSidebar({
   isAwayBusy,
   onToggleAway,
   peerVolume,
+  onClose,
 }: ParticipantSidebarProps): JSX.Element {
   const present = participants.filter((participant) => !participant.isAway);
   const away = participants.filter((participant) => participant.isAway);
@@ -127,11 +130,22 @@ export function ParticipantSidebar({
   };
 
   return (
-    <aside className={styles.sidebar} aria-label="Participantes">
-      <h2 className={styles.heading}>
-        {/* A conta é da sala inteira: ausente continua na sala. */}
-        Participantes <span className={styles.count}>{participants.length}</span>
-      </h2>
+    <aside className={styles.sidebar} data-panel="participantes" aria-label="Participantes">
+      <div className={styles.headingRow}>
+        <h2 className={styles.heading}>
+          {/* A conta é da sala inteira: ausente continua na sala. */}
+          Participantes <span className={styles.count}>{participants.length}</span>
+        </h2>
+        <button
+          type="button"
+          className={styles.close}
+          onClick={onClose}
+          aria-label="Esconder a lista de participantes"
+          title="Esconder a lista"
+        >
+          ×
+        </button>
+      </div>
       <ul className={styles.list}>
         {present.map((participant) => (
           <Row

@@ -323,3 +323,16 @@ export function EyeOffIcon(props: IconProps): JSX.Element {
     </Icon>
   );
 }
+
+/** Duas pessoas: a lista de participantes. */
+export function PeopleIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g>
+        <path d="M16 19v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 17.5V19" />
+        <circle cx="10" cy="7.5" r="3" />
+        <path d="M20 19v-1.5a3.5 3.5 0 0 0-2.6-3.4M15.5 4.7a3 3 0 0 1 0 5.6" />
+      </g>
+    </Icon>
+  );
+}

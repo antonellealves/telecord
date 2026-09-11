@@ -28,7 +28,12 @@ import { useSoundVolume } from '../hooks/useSoundVolume';
 import { useTalkControls } from '../hooks/useTalkControls';
 import { useToasts } from '../hooks/useToasts';
 import type { ScreenQualityId } from '../lib/media';
-import { readScreenQuality, writeScreenQuality } from '../lib/storage';
+import {
+  readParticipantsOpen,
+  readScreenQuality,
+  writeParticipantsOpen,
+  writeScreenQuality,
+} from '../lib/storage';
 import styles from './RoomPage.module.css';
 
 interface RoomShellProps {
@@ -72,6 +77,12 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
   const [screenQualityId, setScreenQualityId] = useState<ScreenQualityId>(readScreenQuality);
   const [isSoundboardOpen, setIsSoundboardOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  /*
+   * Aberta por padrão: saber quem está na sala é o estado normal. Esconder é
+   * para quem quer a tela compartilhada maior — e a escolha fica guardada,
+   * senão teria que ser refeita a cada sala.
+   */
+  const [isParticipantsOpen, setIsParticipantsOpen] = useState(readParticipantsOpen);
   const [isRoomPanelOpen, setIsRoomPanelOpen] = useState(false);
 
   const controlsRef = useRef<HTMLDivElement | null>(null);
@@ -175,16 +186,25 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
           className={`${styles.main} ${sidebar.isResizing || chatPanel.isResizing ? styles.resizing : ''}`}
           style={mainStyle}
         >
-          <ParticipantSidebar
-            participants={participants}
-            isAway={isAway}
-            isAwayBusy={away.isBusy}
-            onToggleAway={away.toggle}
-            peerVolume={peerVolume}
-          />
-          <div className={styles.resizer} {...sidebar.handleProps}>
-            <span className={styles.grip} aria-hidden="true" />
-          </div>
+          {isParticipantsOpen ? (
+            <>
+              <ParticipantSidebar
+                participants={participants}
+                isAway={isAway}
+                isAwayBusy={away.isBusy}
+                onToggleAway={away.toggle}
+                peerVolume={peerVolume}
+                onClose={() => {
+                  setIsParticipantsOpen(false);
+                  writeParticipantsOpen(false);
+                }}
+              />
+              {/* A divisória some junto: sem a lista, ela não separa nada. */}
+              <div className={styles.resizer} {...sidebar.handleProps}>
+                <span className={styles.grip} aria-hidden="true" />
+              </div>
+            </>
+          ) : null}
           <div className={styles.stageArea}>
             <CameraStrip entries={cameras.entries} expanded={shares.entries.length === 0} />
             {shares.entries.length > 0 || cameras.entries.length === 0 ? (
@@ -265,6 +285,13 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
             onToggleSoundboard={() => {
               setIsSoundboardOpen((open) => !open);
               setIsSettingsOpen(false);
+            }}
+            isParticipantsOpen={isParticipantsOpen}
+            onToggleParticipants={() => {
+              setIsParticipantsOpen((open) => {
+                writeParticipantsOpen(!open);
+                return !open;
+              });
             }}
             isChatOpen={isChatOpen}
             unreadCount={unread}
