@@ -129,10 +129,42 @@ const AUTH_ENV = [
   'VITE_API_URL',
 ];
 
+/*
+ * O que NÃO chegou é tão informativo quanto o que chegou, e antes disto o
+ * silêncio custou caro: faltando `DATABASE_URL` e as chaves do JWT, o serviço
+ * recusava subir em produção e aqui não se via nada — o deploy seguia verde e
+ * o motivo só aparecia no log de runtime da função.
+ *
+ * Lista só NOMES, nunca valor. Quem está publicando precisa ver, no log do
+ * deploy, exatamente quais variáveis o ambiente não entregou.
+ */
+const ausentes = [];
 for (const key of AUTH_ENV) {
   if (process.env[key]) {
     await upsertEnv(key, process.env[key]);
+  } else {
+    ausentes.push(key);
   }
+}
+
+if (ausentes.length > 0) {
+  console.log(`\n  não vieram do ambiente: ${ausentes.join(', ')}`);
+}
+
+/*
+ * Estas três o serviço de autenticação EXIGE para subir (`loadConfig`). Sem
+ * qualquer uma delas, toda rota sob `/api/` que não seja `token` ou `rooms`
+ * responde 503 — login e cadastro inclusive. Não falha o deploy, porque
+ * publicar sem contas é um estado legítimo do produto, mas avisa alto.
+ */
+const ESSENCIAIS = ['DATABASE_URL', 'AUTH_JWT_PRIVATE_KEY', 'AUTH_JWT_PUBLIC_KEY'];
+const faltando = ESSENCIAIS.filter((k) => !process.env[k]);
+if (faltando.length > 0) {
+  console.log(
+    `::warning::Sem ${faltando.join(', ')} o serviço de autenticação não sobe: ` +
+      'login, cadastro e painel responderão 503. ' +
+      'Configure em Settings → Secrets and variables → Actions (Environment "Production").',
+  );
 }
 
 // ---------------------------------------------------------------------------
