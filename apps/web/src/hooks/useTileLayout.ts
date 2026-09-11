@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { TileLayout, TilePosition } from '@telecord/shared';
+import { TILE_MIN_SIZE, type TileLayout, type TilePosition } from '@telecord/shared';
 import { fetchLayout, saveLayout } from '../lib/peers';
 
 /** Espera antes de gravar: arrastar dispara dezenas de posições por segundo. */
@@ -10,6 +10,12 @@ export interface TileLayoutState {
   tiles: TileLayout;
   /** Começa a arrastar um quadro. */
   beginDrag: (peerId: string, event: React.PointerEvent<HTMLElement>) => void;
+  /** Começa a redimensionar pelo canto. */
+  beginResize: (peerId: string, event: React.PointerEvent<HTMLElement>) => void;
+  /** Ocupa o palco inteiro, ou volta ao tamanho anterior. */
+  toggleMaximized: (peerId: string) => void;
+  /** Qual quadro está maximizado agora, se algum. */
+  maximized: string | null;
   /** Devolve tudo ao automático. */
   reset: () => void;
   /** Algum quadro foi movido: liga o botão de desfazer. */
@@ -118,11 +124,123 @@ export function useTileLayout(roomSlug: string, peerId: string): TileLayoutState
     [agendarSalvar],
   );
 
+
+  /**
+   * Redimensiona pelo canto inferior direito.
+   *
+   * Só um canto, e não os oito de uma janela: o palco é livre e os quadros não
+   * encostam em beirada nenhuma, então puxar pelo canto de baixo-direita
+   * resolve qualquer tamanho — os outros sete seriam sete alvos de arrasto
+   * competindo com o gesto de mover, que é o gesto principal aqui.
+   */
+  const beginResize = useCallback(
+    (alvo: string, event: React.PointerEvent<HTMLElement>) => {
+      if (event.button !== 0) return;
+
+      const punho = event.currentTarget;
+      const tile = punho.parentElement;
+      const palco = tile?.parentElement;
+      if (tile == null || palco == null) return;
+
+      const areaPalco = palco.getBoundingClientRect();
+      const areaTile = tile.getBoundingClientRect();
+      const x = (areaTile.left - areaPalco.left) / areaPalco.width;
+      const y = (areaTile.top - areaPalco.top) / areaPalco.height;
+
+      // Não deixa o gesto virar arrasto do quadro inteiro.
+      event.preventDefault();
+      event.stopPropagation();
+      punho.setPointerCapture(event.pointerId);
+      setDragging(alvo);
+
+      const mover = (e: PointerEvent): void => {
+        const w = (e.clientX - areaTile.left) / areaPalco.width;
+        const h = (e.clientY - areaTile.top) / areaPalco.height;
+        setTiles((atual) => ({
+          ...atual,
+          [alvo]: {
+            x,
+            y,
+            // Piso para o quadro não sumir, e teto para não passar do palco.
+            w: Math.max(TILE_MIN_SIZE, Math.min(1 - x, w)),
+            h: Math.max(TILE_MIN_SIZE, Math.min(1 - y, h)),
+          },
+        }));
+      };
+
+      const soltar = (): void => {
+        punho.removeEventListener('pointermove', mover);
+        punho.removeEventListener('pointerup', soltar);
+        punho.removeEventListener('pointercancel', soltar);
+        setDragging(null);
+        agendarSalvar();
+      };
+
+      punho.addEventListener('pointermove', mover);
+      punho.addEventListener('pointerup', soltar);
+      punho.addEventListener('pointercancel', soltar);
+    },
+    [agendarSalvar],
+  );
+
+  /**
+   * Maximiza um quadro, ou devolve ao tamanho que ele tinha.
+   *
+   * O tamanho anterior fica guardado em memória, não no banco: maximizar é
+   * gesto de momento — "quero ver esta tela agora" —, e gravar isso faria a
+   * pessoa voltar na próxima sessão com um quadro ocupando tudo sem lembrar
+   * por quê. O que se grava é o tamanho de onde ela saiu.
+   */
+  const anteriorRef = useRef<{ id: string; posicao: TilePosition | undefined } | null>(null);
+  const [maximized, setMaximized] = useState<string | null>(null);
+
+  const toggleMaximized = useCallback(
+    (alvo: string) => {
+      if (maximized === alvo) {
+        const anterior = anteriorRef.current;
+        setTiles((atual) => {
+          const proximo = { ...atual };
+          if (anterior?.posicao === undefined) delete proximo[alvo];
+          else proximo[alvo] = anterior.posicao;
+          return proximo;
+        });
+        anteriorRef.current = null;
+        setMaximized(null);
+        agendarSalvar();
+        return;
+      }
+
+      anteriorRef.current = { id: alvo, posicao: tilesRef.current[alvo] };
+      setTiles((atual) => ({ ...atual, [alvo]: { x: 0, y: 0, w: 1, h: 1 } }));
+      setMaximized(alvo);
+    },
+    [maximized, agendarSalvar],
+  );
+
+  /* Esc devolve o quadro maximizado, como em qualquer tela cheia. */
+  useEffect(() => {
+    if (maximized === null) return;
+    const aoTeclar = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') toggleMaximized(maximized);
+    };
+    window.addEventListener('keydown', aoTeclar);
+    return () => window.removeEventListener('keydown', aoTeclar);
+  }, [maximized, toggleMaximized]);
+
   const reset = useCallback(() => {
     setTiles({});
     window.clearTimeout(saveTimer.current);
     void saveLayout(roomSlug, peerId, {}).catch(() => undefined);
   }, [roomSlug, peerId]);
 
-  return { tiles, beginDrag, reset, isCustom: Object.keys(tiles).length > 0, dragging };
+  return {
+    tiles,
+    beginDrag,
+    beginResize,
+    toggleMaximized,
+    maximized,
+    reset,
+    isCustom: Object.keys(tiles).length > 0,
+    dragging,
+  };
 }

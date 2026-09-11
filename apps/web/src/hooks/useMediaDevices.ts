@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRoomContext } from '@livekit/components-react';
+import { useMaybeRoomContext } from '@livekit/components-react';
 import { LocalAudioTrack, Room, RoomEvent, Track, supportsAudioOutputSelection } from 'livekit-client';
 import { describeMicrophoneError } from '../lib/errors';
 import {
@@ -58,7 +58,16 @@ function toOptions(devices: MediaDeviceInfo[], fallbackLabel: string): DeviceOpt
  * oferece revelar os nomes em vez de pedir permissão por conta própria.
  */
 export function useMediaDevices(onError: (message: string) => void): MediaDeviceSettings {
-  const room = useRoomContext();
+  /*
+   * `useMaybeRoomContext`, e não `useRoomContext`.
+   *
+   * Este painel também abre na sala do MODO DIRETO, que não tem contexto de
+   * LiveKit nenhum — e `useRoomContext` LANÇA fora dele, derrubando a página
+   * inteira ao abrir Configurações. Sem sala, o hook ainda lista e escolhe
+   * dispositivos pela API do navegador; o que ele perde é só espelhar a
+   * escolha no SFU, que ali não existe.
+   */
+  const room = useMaybeRoomContext();
   const [audioInputs, setAudioInputs] = useState<DeviceOption[]>([]);
   const [audioOutputs, setAudioOutputs] = useState<DeviceOption[]>([]);
   const [videoInputs, setVideoInputs] = useState<DeviceOption[]>([]);
@@ -87,9 +96,11 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
       setAudioOutputs(toOptions(outputs, 'Saída de áudio'));
       setVideoInputs(toOptions(cameras, 'Câmera'));
       setLabelsHidden(inputs.length > 0 && inputs.every((device) => device.label === ''));
-      setActiveAudioInput(room.getActiveDevice('audioinput') ?? DEFAULT_DEVICE);
-      setActiveAudioOutput(room.getActiveDevice('audiooutput') ?? DEFAULT_DEVICE);
-      setActiveVideoInput(room.getActiveDevice('videoinput') ?? DEFAULT_DEVICE);
+      if (room !== undefined) {
+        setActiveAudioInput(room.getActiveDevice('audioinput') ?? DEFAULT_DEVICE);
+        setActiveAudioOutput(room.getActiveDevice('audiooutput') ?? DEFAULT_DEVICE);
+        setActiveVideoInput(room.getActiveDevice('videoinput') ?? DEFAULT_DEVICE);
+      }
     } catch {
       onErrorRef.current('Não foi possível listar os dispositivos de áudio deste navegador.');
     }
@@ -107,6 +118,7 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
       if (kind === 'videoinput') setActiveVideoInput(deviceId);
     };
 
+    if (room === undefined) return;
     room.on(RoomEvent.MediaDevicesChanged, handleDevicesChanged);
     room.on(RoomEvent.ActiveDeviceChanged, handleActiveChanged);
     return () => {
@@ -120,6 +132,18 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
       if (isSwitching) {
         return;
       }
+      /*
+       * Sem sala (modo direto), a escolha vale localmente: o estado guarda o
+       * dispositivo e as próximas capturas o usam. O que não acontece é o SFU
+       * trocar a track publicada, porque não há SFU.
+       */
+      if (room === undefined) {
+        if (kind === 'audioinput') setActiveAudioInput(deviceId);
+        if (kind === 'audiooutput') setActiveAudioOutput(deviceId);
+        if (kind === 'videoinput') setActiveVideoInput(deviceId);
+        return;
+      }
+
       setIsSwitching(true);
       void room
         .switchActiveDevice(kind, deviceId)
@@ -204,6 +228,9 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
     (enabled: boolean) => {
       setNoiseSuppressionState(enabled);
       writeNoiseSuppression(enabled);
+
+      // Sem sala, a preferência fica guardada e vale na próxima captura.
+      if (room === undefined) return;
 
       const defaults = {
         ...room.options.audioCaptureDefaults,

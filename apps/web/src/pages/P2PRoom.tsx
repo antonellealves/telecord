@@ -16,7 +16,9 @@ import {
   MicIcon,
   MicOffIcon,
   PeopleIcon,
+  ExpandIcon,
   ScreenIcon,
+  ShrinkIcon,
   SlidersIcon,
   SoundIcon,
 } from '../components/icons';
@@ -68,8 +70,11 @@ interface TileProps {
   isSelf: boolean;
   isBad: boolean;
   isDragging: boolean;
+  isMaximized: boolean;
   position: { x: number; y: number; w: number; h: number } | undefined;
   onDragStart: (event: React.PointerEvent<HTMLElement>) => void;
+  onResizeStart: (event: React.PointerEvent<HTMLElement>) => void;
+  onToggleMaximized: () => void;
 }
 
 function Tile({
@@ -79,8 +84,11 @@ function Tile({
   isSelf,
   isBad,
   isDragging,
+  isMaximized,
   position,
   onDragStart,
+  onResizeStart,
+  onToggleMaximized,
 }: TileProps): JSX.Element {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -119,6 +127,7 @@ function Tile({
         isSelf ? styles.tileSelf : '',
         isBad ? styles.tileBad : '',
         isDragging ? styles.tileDragging : '',
+        isMaximized ? styles.tileMax : '',
       ]
         .filter(Boolean)
         .join(' ')}
@@ -136,6 +145,31 @@ function Tile({
         <span className={styles.tileName}>{isSelf ? 'você' : displayName}</span>
         <span className={`${styles.tileBadge} ${isBad ? styles.tileBadgeBad : ''}`}>{badge}</span>
       </span>
+
+      <button
+        type="button"
+        className={styles.tileZoom}
+        onClick={onToggleMaximized}
+        title={isMaximized ? 'Voltar ao tamanho (Esc)' : 'Ocupar o palco inteiro'}
+        aria-label={isMaximized ? 'Voltar ao tamanho' : 'Maximizar'}
+      >
+        {isMaximized ? <ShrinkIcon /> : <ExpandIcon />}
+      </button>
+
+      {/*
+        * O punho só existe quando o quadro JÁ tem posição própria: no modo
+        * grade quem manda no tamanho é o CSS, e um punho ali prometeria um
+        * arrasto que o layout desfaria no próximo quadro.
+        */}
+      {position !== undefined && !isMaximized ? (
+        <span
+          className={styles.tileResize}
+          onPointerDown={onResizeStart}
+          role="separator"
+          aria-label="Redimensionar"
+          title="Arraste para redimensionar"
+        />
+      ) : null}
     </article>
   );
 }
@@ -557,8 +591,11 @@ export function P2PRoom({ roomId, displayName, peerId, onLeave }: Props): JSX.El
               isSelf
               isBad={false}
               isDragging={layout.dragging === peerId}
+              isMaximized={layout.maximized === peerId}
               position={layout.tiles[peerId]}
               onDragStart={(e) => layout.beginDrag(peerId, e)}
+              onResizeStart={(e) => layout.beginResize(peerId, e)}
+              onToggleMaximized={() => layout.toggleMaximized(peerId)}
             />
 
             {mesh.peers.map((p) => (
@@ -571,8 +608,11 @@ export function P2PRoom({ roomId, displayName, peerId, onLeave }: Props): JSX.El
                 isSelf={false}
                 isBad={p.state === 'falhou'}
                 isDragging={layout.dragging === p.peerId}
+                isMaximized={layout.maximized === p.peerId}
                 position={layout.tiles[p.peerId]}
                 onDragStart={(e) => layout.beginDrag(p.peerId, e)}
+                onResizeStart={(e) => layout.beginResize(p.peerId, e)}
+                onToggleMaximized={() => layout.toggleMaximized(p.peerId)}
               />
             ))}
 

@@ -94,10 +94,36 @@ export function DeviceSettings({
       }
     };
     const handlePointerDown = (event: PointerEvent): void => {
+      /*
+       * "Dentro" é o container OU o próprio painel.
+       *
+       * O painel é filho do container hoje, mas depender disso era o bug:
+       * bastava alguém mover o painel para outro lugar da árvore para ele
+       * passar a fechar sozinho. Checar os dois torna a regra explícita.
+       */
+      const alvo = event.target;
+      if (!(alvo instanceof Node)) return;
+
       const container = containerRef.current;
-      if (container !== null && event.target instanceof Node && !container.contains(event.target)) {
-        onClose();
-      }
+      const painel = panelRef.current;
+      if (container?.contains(alvo) === true) return;
+      if (painel?.contains(alvo) === true) return;
+
+      /*
+       * O MENU NATIVO DE UM <select> NÃO É DOM.
+       *
+       * Ele é desenhado pelo sistema operacional, fora da página, então
+       * escolher uma opção dispara `pointerdown` num alvo que não está dentro
+       * de container nenhum — e o painel fechava antes de a escolha valer.
+       * Era isto que quebrava escolher microfone, câmera, saída e qualidade.
+       *
+       * Enquanto o foco está num `<select>`, qualquer clique fora é
+       * interação com o menu dele, e não vontade de fechar o painel.
+       */
+      const focado = document.activeElement;
+      if (focado instanceof HTMLSelectElement) return;
+
+      onClose();
     };
 
     document.addEventListener('keydown', handleKey);

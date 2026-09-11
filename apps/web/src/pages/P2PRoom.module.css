@@ -491,3 +491,70 @@
     display: none;
   }
 }
+
+/* ---- maximizar e redimensionar ----------------------------------------- */
+
+/*
+ * Aparecem só no hover do quadro: são controles de arrumação, e a sala é para
+ * assistir. Com `focus-within` junto, quem navega por teclado ainda alcança.
+ */
+.tileZoom {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: rgba(5, 7, 12, 0.78);
+  color: var(--text-dim);
+  opacity: 0;
+  transition: opacity 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+
+.tile:hover .tileZoom,
+.tile:focus-within .tileZoom {
+  opacity: 1;
+}
+
+.tileZoom:hover {
+  color: var(--p2p);
+  border-color: rgba(var(--p2p-rgb), 0.55);
+}
+
+/*
+ * Punho no canto inferior direito. Um canto só: o palco é livre e os quadros
+ * não encostam em beirada nenhuma, então este resolve qualquer tamanho — os
+ * outros sete seriam alvos competindo com o gesto de mover, que é o principal.
+ *
+ * A faixa diagonal é desenhada com gradiente para não custar um elemento a
+ * mais nem um ícone.
+ */
+.tileResize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  height: 20px;
+  cursor: nwse-resize;
+  opacity: 0;
+  touch-action: none;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 3px,
+    rgba(var(--p2p-rgb), 0.75) 3px 4px
+  );
+  transition: opacity 0.16s ease;
+}
+
+.tile:hover .tileResize {
+  opacity: 1;
+}
+
+/* Maximizado cobre o palco e fica acima dos outros quadros. */
+.tileMax {
+  z-index: 4;
+}
