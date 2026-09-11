@@ -1,6 +1,21 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import type { NestExpressApplication } from '@nestjs/platform-express';
+/*
+ * `ExpressAdapter` entra como VALOR, e não só como tipo.
+ *
+ * Sem isto, `@nestjs/platform-express` não aparece em lugar nenhum do JS
+ * compilado: as três referências no serviço eram `import type`, que o
+ * compilador apaga. Quem carregava o pacote era o próprio Nest, lá dentro do
+ * `NestFactory.create`, por um `require` preguiçoso dentro de callback
+ * (`loadAdapter`) — invisível para a análise estática que monta o pacote da
+ * função na Vercel. O pacote ficava de fora, o `create` não achava o adaptador
+ * e a função morria na PARTIDA: FUNCTION_INVOCATION_FAILED sem stack, com o
+ * id de uma região só, que foi o sintoma o tempo todo.
+ *
+ * Passar o adaptador à mão faz a dependência ser real e rastreável, e ainda
+ * tira um `require` dinâmico do caminho de boot de cada instância fria.
+ */
+import { ExpressAdapter, type NestExpressApplication } from '@nestjs/platform-express';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { AppModule } from './app.module';
 import { configureApp } from './bootstrap';
@@ -23,7 +38,7 @@ type NodeHandler = (req: IncomingMessage, res: ServerResponse) => void;
 let pending: Promise<NodeHandler> | null = null;
 
 async function boot(): Promise<NodeHandler> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, new ExpressAdapter(), {
     // Sem o logger de boot: numa função, cada instância fria repetiria o mapa
     // de rotas inteiro no log, e o que interessa ali é erro.
     logger: ['error', 'warn'],
