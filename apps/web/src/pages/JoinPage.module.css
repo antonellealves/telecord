@@ -423,3 +423,20 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/*
+ * O caminho para a página que explica o projeto. Fica na assinatura, no tom
+ * mais apagado da tela: quem entra quer criar uma sala, não ler sobre
+ * arquitetura — mas quem procura acha.
+ */
+.signatureLink {
+  color: var(--text-dim);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.3);
+  transition: color 0.16s ease, border-color 0.16s ease;
+}
+
+.signatureLink:hover {
+  color: var(--accent-soft);
+  border-color: var(--accent);
+}

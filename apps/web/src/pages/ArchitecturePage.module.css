@@ -1,0 +1,419 @@
+.page {
+  position: relative;
+  z-index: 1;
+  min-height: 100%;
+  display: grid;
+  justify-items: center;
+  padding: 56px 24px 80px;
+}
+
+.shell {
+  width: min(880px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 60px;
+}
+
+/* ---- revelação ------------------------------------------------------- */
+
+/*
+ * Só `opacity` e `transform`: as duas ficam no compositor, então a revelação
+ * de dez blocos não força recálculo de layout enquanto a página rola.
+ */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 0.5s ease,
+    transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.revealOn {
+  opacity: 1;
+  transform: none;
+}
+
+/* ---- hero ------------------------------------------------------------ */
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.back {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  text-decoration: none;
+  transition: color 0.16s ease;
+}
+
+.back:hover {
+  color: var(--accent-soft);
+}
+
+.tagline {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(30px, 6vw, 50px);
+  font-weight: 600;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+/* O degradê da marca, aplicado só à segunda linha do título. */
+.titleAccent {
+  background: linear-gradient(102deg, #ffffff 0%, var(--accent) 44%, #8f7ae8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.lead {
+  margin: 0;
+  max-width: 60ch;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text-dim);
+}
+
+/* ---- o diagrama das camadas ------------------------------------------ */
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.layer {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-lift);
+  overflow: hidden;
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.layer:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+
+/*
+ * A faixa de cor é o que liga visualmente as três camadas: cada uma tem a
+ * sua, e é a única diferença cromática entre elas. Sem número escrito — a
+ * posição na pilha já diz a ordem.
+ */
+.layerBar {
+  width: 4px;
+  flex: none;
+}
+
+.layer1 .layerBar {
+  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-deep) 100%);
+}
+
+.layer2 .layerBar {
+  background: linear-gradient(180deg, var(--accent-deep) 0%, #8091e4 100%);
+}
+
+.layer3 .layerBar {
+  background: linear-gradient(180deg, #8091e4 0%, var(--accent-2) 100%);
+}
+
+.layerBody {
+  flex: 1;
+  min-width: 0;
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.eyebrow {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.layerTitle {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.layerText {
+  margin: 0;
+  max-width: 68ch;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text-dim);
+}
+
+.chips {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* A frase que diz o que aquela camada garante sozinha. */
+.survives {
+  margin: 6px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--accent-soft);
+}
+
+.survivesDot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.14);
+  animation: pulse 2.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.14);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(var(--accent-rgb), 0.04);
+  }
+}
+
+.punchline {
+  margin: 10px 0 0;
+  padding: 18px 22px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(var(--accent-rgb), 0.28);
+  background: rgba(var(--accent-rgb), 0.07);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--accent-soft);
+}
+
+/* ---- números ---------------------------------------------------------- */
+
+.statsBlock {
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 26px 0;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 22px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.statValue {
+  font-family: var(--font-display);
+  font-size: 26px;
+  line-height: 1;
+  color: var(--text);
+}
+
+.statLabel {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.statNote {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* ---- seções de cartão -------------------------------------------------- */
+
+.sectionTitle {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.sectionLead {
+  margin: 0 0 18px;
+  max-width: 62ch;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text-dim);
+}
+
+/*
+ * Duas colunas, e não `auto-fit`.
+ *
+ * Com `auto-fit` e quatro cartões, a largura desta página cabia três numa
+ * linha e deixava o quarto sozinho — um buraco de duas colunas do lado dele.
+ * Em duas colunas os quatro fecham 2×2, e a leitura não tropeça num vazio.
+ */
+.grid {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+
+@media (max-width: 700px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card,
+.scar {
+  height: 100%;
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-lift);
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.card:hover,
+.scar:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+
+/* As cicatrizes levam a cor de aviso na borda esquerda — não é erro atual,
+   é história, então âmbar e não vermelho. */
+.scar {
+  border-left: 2px solid rgba(var(--warn-rgb), 0.5);
+}
+
+.scars {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cardTitle {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cardText {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--text-dim);
+}
+
+/* ---- rodapé ------------------------------------------------------------ */
+
+.footer {
+  display: flex;
+  justify-content: center;
+  padding-top: 8px;
+}
+
+.cta {
+  padding: 12px 28px;
+  border-radius: var(--radius-pill);
+  border: none;
+  background: var(--gradient-action);
+  color: var(--gradient-action-ink);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.cta:hover {
+  background: var(--gradient-action-hover);
+  transform: translateY(-1px);
+}
+
+/* ---- telas estreitas --------------------------------------------------- */
+
+@media (max-width: 620px) {
+  .page {
+    padding: 36px 16px 56px;
+  }
+
+  .shell {
+    gap: 44px;
+  }
+
+  .layerBody {
+    padding: 18px 18px;
+  }
+}
+
+/*
+ * Movimento reduzido: tudo nasce visível e nada transiciona. A revelação é
+ * enfeite, e enfeite não pode ser a condição para o conteúdo aparecer.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .layer:hover,
+  .card:hover,
+  .scar:hover,
+  .cta:hover {
+    transform: none;
+  }
+
+  .survivesDot {
+    animation: none;
+  }
+}

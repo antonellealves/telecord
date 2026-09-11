@@ -247,7 +247,13 @@ export function JoinPage(): JSX.Element {
             ))}
           </ul>
 
-          <p className={styles.signature}>feito com carinho para a galera do dota teleton</p>
+          <p className={styles.signature}>
+            feito com carinho para a galera do dota teleton
+            {' · '}
+            <Link to="/arquitetura" className={styles.signatureLink}>
+              como é feito
+            </Link>
+          </p>
         </div>
       </div>
     </>

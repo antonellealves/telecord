@@ -2,6 +2,7 @@ import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
 import { StatusScreen } from './components/StatusScreen';
 import statusStyles from './components/StatusScreen.module.css';
 import { AdminPage } from './pages/AdminPage';
+import { ArchitecturePage } from './pages/ArchitecturePage';
 import { AuthReturnPage } from './pages/AuthReturnPage';
 import { ChannelPage } from './pages/ChannelPage';
 import { JoinPage } from './pages/JoinPage';
@@ -43,6 +44,11 @@ export function App(): JSX.Element {
           * pelo `LiveKitRoom` — é uma página comum, entrável mesmo sem
           * ninguém conectado a nada.
           */}
+        {/*
+          * Página que explica como o projeto é feito. Rota própria para poder
+          * ser mandada a alguém — é conteúdo, não configuração.
+          */}
+        <Route path="/arquitetura" element={<ArchitecturePage />} />
         <Route path="/canal/:channelSlug" element={<ChannelPage />} />
         <Route path="/sala/:roomId" element={<RoomPage />} />
         <Route path="*" element={<NotFound />} />
