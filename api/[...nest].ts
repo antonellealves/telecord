@@ -1,44 +1,49 @@
 /**
  * Ponte entre o roteamento da Vercel e o serviço NestJS.
  *
- * Captura tudo sob `/api/` que não tenha função própria. `api/token.ts` e
- * `api/rooms.ts` continuam respondendo pelos caminhos deles: rota com segmento
- * fixo tem precedência sobre rota dinâmica, então a captura só recebe o resto.
+ * Captura tudo sob `/api/` que não tenha função própria.
  *
- * Importa a saída COMPILADA, e não a fonte. O Nest resolve dependência lendo o
- * tipo dos parâmetros do construtor em tempo de execução, o que exige
- * `emitDecoratorMetadata` — que o compilador de funções da Vercel não liga. Com
- * a fonte, todo `@Injectable` receberia `undefined` e o serviço quebraria no
- * boot. Por isso `pnpm build` compila `apps/api` antes do front.
+ * TEMPORÁRIO: o import do serviço está DENTRO do handler, em try/catch, e o
+ * erro vira resposta. Enquanto a função morria no carregamento, o erro não
+ * aparecia em lugar nenhum — nem stack, nem log, só
+ * FUNCTION_INVOCATION_FAILED. Assim ele fica legível e o diagnóstico para de
+ * depender de palpite. Volta a ser import estático quando a causa estiver
+ * corrigida.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
-/*
- * Pelo NOME do pacote (`@telecord/api/vercel`), e NUNCA por um
- * `../apps/api/dist/...` relativo.
- *
- * A diferença é onde o Node procura as dependências de quem foi importado.
- * Esta função mora na raiz do repositório, e o pnpm isola: `@nestjs/*`,
- * `@prisma/client` e `reflect-metadata` existem só em `apps/api/node_modules`,
- * não no `node_modules` da raiz. Alcançado por caminho relativo, o
- * `require("@nestjs/core")` de dentro do `dist` resolvia a partir da RAIZ e não
- * achava nada — e a função morria na partida, antes de executar:
- * FUNCTION_INVOCATION_FAILED sem stack, com `x-vercel-id` de uma região só.
- *
- * Entrando pelo nome do pacote, o arquivo é alcançado dentro de `apps/api`, e
- * as dependências dele resolvem no `node_modules` de lá, como no Docker.
- * `@telecord/api` está nas dependências da raiz para o link existir.
- */
-import nest from '@telecord/api/vercel';
 
-/*
- * O `export default` PRECISA ser uma função declarada aqui, e não o `nest`
- * reexportado direto.
- *
- * `export default nest` exporta um BINDING para o default de um módulo
- * CommonJS (`module.exports = handler`), e o empacotador de funções da Vercel
- * lê esse binding ao envolver o arquivo para achar o handler — cedo demais,
- * antes de a interop CJS→ESM ter resolvido o valor.
- */
-export default function handler(req: IncomingMessage, res: ServerResponse): void {
+type NodeHandler = (req: IncomingMessage, res: ServerResponse) => void;
+
+export default async function handler(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  let nest: NodeHandler;
+  try {
+    const mod = (await import('@telecord/api/vercel')) as unknown as {
+      default?: NodeHandler;
+    };
+    const fn = mod.default ?? (mod as unknown as NodeHandler);
+    if (typeof fn !== 'function') {
+      throw new TypeError(`o módulo não exportou função (veio ${typeof fn})`);
+    }
+    nest = fn;
+  } catch (error) {
+    res.statusCode = 500;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(
+      JSON.stringify(
+        {
+          error: { code: 'nest_load_failed', message: String(error) },
+          stack: (error as Error)?.stack?.split('\n').slice(0, 12),
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
   nest(req, res);
 }
