@@ -152,7 +152,7 @@ jobs:
         env:
           LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY || vars.LIVEKIT_API_KEY }}
           LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET || vars.LIVEKIT_API_SECRET }}
-          VITE_LIVEKIT_URL: ${{ vars.VITE_LIVEKIT_URL }}
+          VITE_LIVEKIT_URL: ${{ secrets.VITE_LIVEKIT_URL || vars.VITE_LIVEKIT_URL }}
 
           # Autenticação. Todas OPCIONAIS: sem elas o app publicado não tem
           # contas, que é o estado anterior a este recurso.
@@ -166,13 +166,21 @@ jobs:
 
           # Não são segredo. A chave aqui é a PÚBLICA: valida o token, não
           # emite nenhum. O resto é endereço e configuração.
-          AUTH_JWT_PUBLIC_KEY: ${{ vars.AUTH_JWT_PUBLIC_KEY }}
-          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
-          APP_URL: ${{ vars.APP_URL }}
-          API_URL: ${{ vars.API_URL }}
-          VITE_API_URL: ${{ vars.VITE_API_URL }}
-          MAIL_DRIVER: ${{ vars.MAIL_DRIVER }}
-          MAIL_FROM: ${{ vars.MAIL_FROM }}
+          #
+          # `secrets` com `vars` de reserva, e não só `vars`: guardar a chave
+          # pública como *secret* funciona igual e é o que acontece quando
+          # alguém cola as duas metades do par no mesmo lugar. Lendo só de
+          # `vars`, a variável chegaria VAZIA, o serviço recusaria subir por
+          # falta dela e o sintoma seria idêntico ao de não ter configurado
+          # nada — que é exatamente o buraco em que este deploy caiu.
+          AUTH_JWT_PUBLIC_KEY: ${{ secrets.AUTH_JWT_PUBLIC_KEY || vars.AUTH_JWT_PUBLIC_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID || vars.GOOGLE_CLIENT_ID }}
+          APP_URL: ${{ secrets.APP_URL || vars.APP_URL }}
+          API_URL: ${{ secrets.API_URL || vars.API_URL }}
+          VITE_API_URL: ${{ secrets.VITE_API_URL || vars.VITE_API_URL }}
+          MAIL_DRIVER: ${{ secrets.MAIL_DRIVER || vars.MAIL_DRIVER }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM || vars.MAIL_FROM }}
+          AUTH_COOKIE_SAMESITE: ${{ secrets.AUTH_COOKIE_SAMESITE || vars.AUTH_COOKIE_SAMESITE }}
         run: node scripts/vercel-deploy.mjs
 
       # Fecha o ciclo: sem isto, um deploy "verde" ainda pode estar sem
