@@ -18,6 +18,7 @@
     "auth:keys": "node scripts/gen-auth-keys.mjs"
   },
   "dependencies": {
+    "@telecord/api": "workspace:*",
     "@telecord/shared": "workspace:*",
     "jose": "^5.9.0",
     "livekit-server-sdk": "^2.9.0"

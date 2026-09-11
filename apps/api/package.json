@@ -4,6 +4,9 @@
   "private": true,
   "type": "commonjs",
   "main": "dist/src/main.js",
+  "exports": {
+    "./vercel": "./dist/src/vercel.js"
+  },
   "scripts": {
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && prisma generate && tsc --project tsconfig.json && node -e \"require('fs').writeFileSync('dist/package.json','{ \\\"type\\\": \\\"commonjs\\\" }\\n')\"",
     "start": "node dist/src/main.js",

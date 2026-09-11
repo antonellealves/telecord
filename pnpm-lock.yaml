@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@telecord/api':
+        specifier: workspace:*
+        version: link:apps/api
       '@telecord/shared':
         specifier: workspace:*
         version: link:packages/shared
