@@ -21,8 +21,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
    * `$connect()` lançando aqui aborta a criação do módulo inteiro, e numa
    * função da Vercel isso significa que TODA rota passa a responder 500 —
    * inclusive as que não tocam o banco, e inclusive `/api/nada`, que deveria
-   * ser 404. Um banco momentaneamente fora do ar virava app inteiro fora do
-   * ar, e o sintoma (`FUNCTION_INVOCATION_FAILED`) não dizia qual era a causa.
+   * ser 404. Um banco momentaneamente fora do ar virava app inteiro fora do ar.
+   *
+   * NÃO foi esta a causa do deploy vermelho de b13fb12 — aquilo era o módulo
+   * nem carregar, por ESM/CJS. Isto aqui é o modo de falha VIZINHO, que só
+   * apareceria no primeiro soluço do TiDB e daria o mesmo 500 indistinguível.
    *
    * O Prisma reconecta sozinho na primeira consulta, então perder esta
    * conexão adiantada não custa correção nenhuma: custa a latência de abrir o

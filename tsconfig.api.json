@@ -1,6 +1,21 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
+    /*
+     * `NodeNext`, e NÃO o `Bundler` herdado do base.
+     *
+     * Ninguém empacota `api/**`: a Vercel entrega estes arquivos ao Node, e o
+     * `package.json` da raiz diz `"type": "module"` — então cada função roda
+     * como ESM de verdade, onde import relativo EXIGE a extensão. O `Bundler`
+     * aceita `'./_session'` sem extensão, e o typecheck passava enquanto a
+     * função quebrava em produção no carregamento do módulo, com
+     * FUNCTION_INVOCATION_FAILED e sem apontar a linha.
+     *
+     * Com `NodeNext` o compilador passa a exigir aqui a mesma regra que o
+     * runtime exige lá, e o erro volta a aparecer no CI em vez de no deploy.
+     */
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "types": ["node"],
     "baseUrl": ".",
     "paths": {

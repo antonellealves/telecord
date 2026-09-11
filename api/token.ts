@@ -11,7 +11,7 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { AccessToken, TrackSource } from 'livekit-server-sdk';
-import { readSession } from './_session';
+import { readSession } from './_session.js';
 import {
   MAX_TOKEN_REQUEST_BYTES,
   TOKEN_TTL_SECONDS,
