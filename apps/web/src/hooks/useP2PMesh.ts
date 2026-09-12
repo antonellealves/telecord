@@ -1,21 +1,100 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { P2P_COMFORT_PEERS, type PeerInfo } from '@telecord/shared';
+import { DEFAULT_ICE_SERVERS } from '../lib/ice';
+import type { VideoSendProfile } from '../lib/media';
 import { peerHeartbeat, peerInbox, peerLeave, peerSignal } from '../lib/peers';
 
 /** Ritmo do batimento: renova presença e busca a caixa de sinais. */
 const TICK_MS = 2500;
 
 /**
- * STUN público do Google.
- *
- * Só STUN, sem TURN: STUN descobre o próprio endereço externo e é o que
- * resolve a maioria das redes domésticas. TURN RETRANSMITE a mídia quando o
- * caminho direto não existe (NAT simétrico, rede corporativa) — e um servidor
- * TURN pagando banda de vídeo é exatamente o que o modo P2P existe para
- * evitar. Sem TURN, alguns pares simplesmente não conectam, e a interface diz
- * isso em vez de fingir que está conectando.
+ * Voz um pouco acima do padrão do Opus (~32 kbps): 64 kbps devolve o brilho
+ * das frequências altas sem custo que importe numa malha pequena.
  */
-const ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }];
+const AUDIO_MAX_BITRATE = 64_000;
+
+/** `degradationPreference` não está no lib.dom, mas Chrome e Firefox o aceitam. */
+interface SendParams extends RTCRtpSendParameters {
+  degradationPreference?: VideoSendProfile['degradationPreference'];
+}
+
+/*
+ * Ordem de preferência dos codecs de vídeo, resolvida uma vez.
+ *
+ * VP9 na frente: para tela cheia de texto ele resolve borda de letra que o VP8
+ * borra, no mesmo bitrate — a maior parte da diferença entre "1080p nítido" e
+ * "1080p que parece 720p". H264 depois, por ser barato de codificar (hardware);
+ * VP8 de reserva. Só REORDENA, nunca remove: a negociação sempre acha um codec
+ * comum, e quem não tem VP9 recebe o próximo da lista em vez de nada.
+ */
+// O nome do tipo do codec mudou entre versões do lib.dom; derivá-lo da própria
+// API evita depender de qual nome está disponível.
+type CodecCapability = NonNullable<ReturnType<typeof RTCRtpSender.getCapabilities>>['codecs'][number];
+
+let codecsVideoOrdenados: CodecCapability[] | null | undefined;
+function ordenarCodecsVideo(): CodecCapability[] | null {
+  if (codecsVideoOrdenados !== undefined) return codecsVideoOrdenados;
+  const caps =
+    typeof RTCRtpSender !== 'undefined' && 'getCapabilities' in RTCRtpSender
+      ? RTCRtpSender.getCapabilities('video')
+      : null;
+  if (caps === null) {
+    codecsVideoOrdenados = null;
+    return null;
+  }
+  const ordem = ['video/vp9', 'video/h264', 'video/vp8'];
+  const rank = (codec: CodecCapability): number => {
+    const posicao = ordem.indexOf(codec.mimeType.toLowerCase());
+    return posicao === -1 ? ordem.length : posicao;
+  };
+  codecsVideoOrdenados = [...caps.codecs].sort((a, b) => rank(a) - rank(b));
+  return codecsVideoOrdenados;
+}
+
+/** Põe o codec preferido na frente. Antes da oferta/resposta, no transceiver de vídeo. */
+function preferirCodecsVideo(pc: RTCPeerConnection): void {
+  const codecs = ordenarCodecsVideo();
+  if (codecs === null) return;
+  for (const transceiver of pc.getTransceivers()) {
+    if (transceiver.sender.track?.kind !== 'video') continue;
+    try {
+      transceiver.setCodecPreferences(codecs);
+    } catch {
+      // Navegador sem `setCodecPreferences`: a negociação segue no padrão dele.
+    }
+  }
+}
+
+/**
+ * Aplica o teto de bitrate/quadro e a preferência de degradação aos senders.
+ *
+ * É o que destrava a qualidade no modo direto: sem isto o navegador segura a
+ * tela em ~2,5 Mbps. Roda DEPOIS de `setLocalDescription`, quando os
+ * `encodings` já existem para receber os valores.
+ */
+function aplicarPerfilVideo(senders: RTCRtpSender[], profile: VideoSendProfile | null): void {
+  for (const sender of senders) {
+    const kind = sender.track?.kind;
+    if (kind === 'video') {
+      if (profile === null) continue;
+      const params = sender.getParameters() as SendParams;
+      if (params.encodings.length === 0) params.encodings = [{}];
+      const encoding = params.encodings[0];
+      if (encoding === undefined) continue;
+      encoding.maxBitrate = profile.maxBitrate;
+      encoding.maxFramerate = profile.maxFramerate;
+      params.degradationPreference = profile.degradationPreference;
+      void sender.setParameters(params).catch(() => undefined);
+    } else if (kind === 'audio') {
+      const params = sender.getParameters();
+      if (params.encodings.length === 0) params.encodings = [{}];
+      const encoding = params.encodings[0];
+      if (encoding === undefined) continue;
+      encoding.maxBitrate = AUDIO_MAX_BITRATE;
+      void sender.setParameters(params).catch(() => undefined);
+    }
+  }
+}
 
 export type PeerConnectionState = 'novo' | 'ligando' | 'ligado' | 'falhou';
 
@@ -49,6 +128,17 @@ interface Options {
   enabled: boolean;
   /** Chamado para cada mensagem que chega de qualquer par. */
   onData?: (fromPeer: string, raw: string) => void;
+  /**
+   * Servidores de gelo, buscados de `/api/ice`. Sem isto, o STUN público.
+   * Conexões já abertas recebem a lista nova por `setConfiguration`.
+   */
+  iceServers?: RTCIceServer[];
+  /**
+   * Teto de qualidade do vídeo que ESTE navegador envia. `null` quando não há
+   * vídeo. Aplicado a cada par e reaplicado quando muda (troca de nível, ou de
+   * câmera para tela).
+   */
+  videoProfile?: VideoSendProfile | null;
 }
 
 interface Link {
@@ -87,6 +177,8 @@ export function useP2PMesh({
   localStream,
   enabled,
   onData,
+  iceServers,
+  videoProfile,
 }: Options): P2PMesh {
   const [roster, setRoster] = useState<PeerInfo[]>([]);
   const [streams, setStreams] = useState<Map<string, MediaStream>>(new Map());
@@ -99,6 +191,15 @@ export function useP2PMesh({
   // Por ref: trocar o receptor não pode reassinar a malha inteira.
   const onDataRef = useRef(onData);
   onDataRef.current = onData;
+  // Por ref pelo mesmo motivo: uma conexão nova pega a lista mais recente sem
+  // que uma mudança de ICE reconstrua todo o efeito da malha.
+  const iceRef = useRef<RTCIceServer[]>(
+    iceServers !== undefined && iceServers.length > 0 ? iceServers : DEFAULT_ICE_SERVERS,
+  );
+  iceRef.current =
+    iceServers !== undefined && iceServers.length > 0 ? iceServers : DEFAULT_ICE_SERVERS;
+  const videoRef = useRef<VideoSendProfile | null>(videoProfile ?? null);
+  videoRef.current = videoProfile ?? null;
 
   const marcar = useCallback((id: string, state: PeerConnectionState) => {
     setStates((atual) => {
@@ -115,7 +216,7 @@ export function useP2PMesh({
       const existente = links.current.get(outro);
       if (existente !== undefined) return existente;
 
-      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      const pc = new RTCPeerConnection({ iceServers: iceRef.current });
       const stream = new MediaStream();
       const isInitiator = peerId < outro;
       const link: Link = { pc, channel: null, stream, isInitiator, senders: [] };
@@ -222,8 +323,12 @@ export function useP2PMesh({
 
       if (kind === 'offer') {
         await pc.setRemoteDescription({ type: 'offer', sdp: payload });
+        // Antes de responder: fixa o codec preferido no transceiver de vídeo.
+        preferirCodecsVideo(pc);
         const resposta = await pc.createAnswer();
         await pc.setLocalDescription(resposta);
+        // Depois da descrição local: os `encodings` existem e aceitam o teto.
+        aplicarPerfilVideo(link.senders, videoRef.current);
         await peerSignal(roomSlug, peerId, de, 'answer', resposta.sdp ?? '');
         return;
       }
@@ -254,8 +359,10 @@ export function useP2PMesh({
       if (link.pc.signalingState !== 'stable') return;
 
       marcar(outro, 'ligando');
+      preferirCodecsVideo(link.pc);
       const oferta = await link.pc.createOffer();
       await link.pc.setLocalDescription(oferta);
+      aplicarPerfilVideo(link.senders, videoRef.current);
       await peerSignal(roomSlug, peerId, outro, 'offer', oferta.sdp ?? '');
     },
     [conectar, marcar, peerId, roomSlug],
@@ -336,6 +443,35 @@ export function useP2PMesh({
       if (link.isInitiator) void ofertar(outro);
     }
   }, [localStream, enabled, ofertar]);
+
+  /*
+   * ICE chegou (ou mudou) depois de a malha já ter conexões abertas: aplica a
+   * lista nova sem derrubá-las. É o que faz um TURN configurado valer para
+   * quem já estava na sala, e não só para quem entrar depois.
+   */
+  useEffect(() => {
+    const servidores =
+      iceServers !== undefined && iceServers.length > 0 ? iceServers : DEFAULT_ICE_SERVERS;
+    for (const link of links.current.values()) {
+      try {
+        link.pc.setConfiguration({ iceServers: servidores });
+      } catch {
+        // Navegador sem `setConfiguration`: as conexões seguem com o que tinham
+        // ao nascer, e as próximas já usam a lista nova pela `iceRef`.
+      }
+    }
+  }, [iceServers]);
+
+  /*
+   * Perfil de vídeo mudou (trocou o nível, ou de câmera para tela): reaplica o
+   * teto aos senders já existentes. Sem isto, a mudança só valeria na próxima
+   * renegociação.
+   */
+  useEffect(() => {
+    for (const link of links.current.values()) {
+      aplicarPerfilVideo(link.senders, videoProfile ?? null);
+    }
+  }, [videoProfile]);
 
   /*
    * Manda para todos os canais abertos.

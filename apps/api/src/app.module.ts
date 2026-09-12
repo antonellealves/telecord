@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { ChannelsModule } from './channels/channels.module';
 import { ConfigModule } from './common/config.module';
 import { HttpErrorFilter } from './common/http-error.filter';
+import { IceModule } from './ice/ice.module';
 import { LiveKitModule } from './livekit/livekit.module';
 import { LoggingModule } from './logging/logging.module';
 import { MailModule } from './mail/mail.module';
@@ -35,6 +36,7 @@ import { UsersModule } from './users/users.module';
     ChannelsModule,
     SoundsModule,
     LiveKitModule,
+    IceModule,
     AdminModule,
   ],
   providers: [

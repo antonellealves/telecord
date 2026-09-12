@@ -107,6 +107,48 @@ export function screenEncoding(id: ScreenQualityId): VideoEncoding {
   };
 }
 
+/**
+ * Perfil de envio de um sender WebRTC no modo direto.
+ *
+ * No LiveKit é o SFU que respeita `maxBitrate`; no modo direto NINGUÉM respeita
+ * até este perfil ir para o `RTCRtpSender.setParameters`. E é isso que faltava:
+ * sem teto explícito, o navegador limita a tela compartilhada a ~2,5 Mbps por
+ * padrão — o motivo de o 1080p do P2P chegar borrado. Aqui o teto é o mesmo do
+ * nível escolhido.
+ */
+export interface VideoSendProfile {
+  maxBitrate: number;
+  maxFramerate: number;
+  /**
+   * O que sacrificar quando aperta. Tela é texto: preferir perder QUADRO a
+   * perder pixel (`maintain-resolution`). Câmera é o oposto — rosto fluido
+   * importa mais que nitidez de fundo —, daí `balanced`.
+   */
+  degradationPreference: 'maintain-resolution' | 'maintain-framerate' | 'balanced';
+}
+
+/** Perfil de envio da tela para um nível de qualidade, no modo direto. */
+export function screenSendProfile(id: ScreenQualityId): VideoSendProfile {
+  const option = screenQuality(id);
+  return {
+    maxBitrate: option.bitrate,
+    maxFramerate: option.fps,
+    degradationPreference: 'maintain-resolution',
+  };
+}
+
+/**
+ * Perfil de envio da câmera no modo direto.
+ *
+ * 2,5 Mbps a 30 fps dá conta de 720p de rosto com folga; acima disso o ganho é
+ * invisível e o custo é banda de subida que a malha multiplica por par.
+ */
+export const CAMERA_SEND_PROFILE: VideoSendProfile = {
+  maxBitrate: 2_500_000,
+  maxFramerate: 30,
+  degradationPreference: 'balanced',
+};
+
 /** SPEC §6.1. */
 export const roomOptions: RoomOptions = {
   /*

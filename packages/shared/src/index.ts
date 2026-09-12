@@ -936,6 +936,35 @@ export interface PeerInbox {
 }
 
 /**
+ * Um servidor de gelo (ICE) para o modo direto: STUN ou TURN.
+ *
+ * Espelha o `RTCIceServer` do navegador de propósito — o cliente repassa o que
+ * chega direto para o `RTCPeerConnection`, sem tradução. STUN só leva `urls`;
+ * TURN leva também `username` e `credential`, que quando temporários (padrão
+ * coturn) vêm assinados pelo servidor e expiram.
+ */
+export interface IceServerConfig {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+}
+
+/**
+ * Configuração de ICE entregue por `GET /api/ice`.
+ *
+ * Vem do servidor, e não fixada no bundle, por dois motivos: dá para acrescentar
+ * ou trocar um TURN sem publicar o front de novo, e credencial de TURN
+ * temporária NÃO pode viver em JavaScript público — ela é gerada por requisição
+ * e válida só por `ttlSeconds`. Sem TURN configurado, vem só o STUN, que já
+ * resolve a maioria das redes.
+ */
+export interface IceConfig {
+  iceServers: IceServerConfig[];
+  /** Por quanto tempo o cliente pode reusar esta lista antes de buscar de novo. */
+  ttlSeconds: number;
+}
+
+/**
  * A partir de quantas pessoas o modo direto começa a doer.
  *
  * NÃO é um teto: a sala aceita quem chegar. É o ponto em que a conta da malha

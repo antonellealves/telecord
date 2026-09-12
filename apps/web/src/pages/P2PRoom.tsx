@@ -35,7 +35,15 @@ import { useSpeakingDetector } from '../hooks/useSpeakingDetector';
 import { useToasts } from '../hooks/useToasts';
 import { useAuth } from '../hooks/useAuth';
 import { useSoundVolume } from '../hooks/useSoundVolume';
-import { screenQuality, screenShareCaptureOptions, type ScreenQualityId } from '../lib/media';
+import { fetchIceServers, DEFAULT_ICE_SERVERS } from '../lib/ice';
+import {
+  screenQuality,
+  screenSendProfile,
+  screenShareCaptureOptions,
+  CAMERA_SEND_PROFILE,
+  type ScreenQualityId,
+  type VideoSendProfile,
+} from '../lib/media';
 import {
   readParticipantsOpen,
   readScreenQuality,
@@ -284,6 +292,33 @@ export function P2PRoom({ roomId, displayName, peerId, onLeave }: Props): JSX.El
     [tocarLocal, pararLocal],
   );
 
+  /*
+   * Servidores de gelo do servidor (STUN, e TURN se houver). Começa no STUN
+   * público para a malha poder subir na hora, e troca pela lista de verdade
+   * quando ela chega — o hook aplica nas conexões já abertas.
+   */
+  const [iceServers, setIceServers] = useState<RTCIceServer[]>(DEFAULT_ICE_SERVERS);
+  useEffect(() => {
+    let vivo = true;
+    void fetchIceServers().then((servidores) => {
+      if (vivo) setIceServers(servidores);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  /*
+   * O teto de qualidade do vídeo que sai daqui. Tela usa o bitrate do nível
+   * escolhido; câmera, o perfil dela; nada ligado, sem perfil. Memoizado para o
+   * hook só reaplicar quando de fato mudar.
+   */
+  const videoProfile = useMemo<VideoSendProfile | null>(() => {
+    if (screenOn) return screenSendProfile(screenQualityId);
+    if (camOn) return CAMERA_SEND_PROFILE;
+    return null;
+  }, [screenOn, camOn, screenQualityId]);
+
   const mesh = useP2PMesh({
     roomSlug: roomId,
     peerId,
@@ -291,6 +326,8 @@ export function P2PRoom({ roomId, displayName, peerId, onLeave }: Props): JSX.El
     localStream,
     enabled: true,
     onData: aoReceberDados,
+    iceServers,
+    videoProfile,
   });
 
   // O mapa de nomes alimenta o autor das mensagens que chegam.
@@ -465,7 +502,11 @@ export function P2PRoom({ roomId, displayName, peerId, onLeave }: Props): JSX.El
     }
     try {
       const s = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
-      trocarFaixas(s.getVideoTracks(), 'video');
+      const faixas = s.getVideoTracks();
+      // `motion`: rosto é movimento, e o codificador deve preferir fluidez a
+      // detalhe quando apertar — o oposto da tela.
+      for (const faixa of faixas) faixa.contentHint = 'motion';
+      trocarFaixas(faixas, 'video');
       setCamOn(true);
       setScreenOn(false);
     } catch {
@@ -485,6 +526,9 @@ export function P2PRoom({ roomId, displayName, peerId, onLeave }: Props): JSX.El
           screenShareCaptureOptions(quality ?? screenQualityId) as DisplayMediaStreamOptions,
         );
         const video = s.getVideoTracks();
+        // `text`: tela é quase toda texto e linha fina — o codificador deve
+        // preferir perder quadro a borrar letra.
+        for (const faixa of video) faixa.contentHint = 'text';
         video[0]?.addEventListener('ended', () => {
           trocarFaixas([], 'video');
           setScreenOn(false);
