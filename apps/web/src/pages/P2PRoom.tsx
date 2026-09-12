@@ -28,6 +28,7 @@ import { useP2PVolume } from '../hooks/useP2PVolume';
 import { useRoomGamification } from '../hooks/useRoomGamification';
 import { trackEvent, trackSoundPlayed } from '../lib/gamification';
 import { useRoomSounds } from '../hooks/useRoomSounds';
+import { useSoundPlayer } from '../hooks/useSoundPlayer';
 import { useTileLayout } from '../hooks/useTileLayout';
 import { useOverlay } from '../hooks/useOverlay';
 import { useSpeakingDetector } from '../hooks/useSpeakingDetector';
@@ -231,16 +232,14 @@ export function P2PRoom({ roomId, displayName, peerId, onLeave }: Props): JSX.El
     notify: push,
   });
 
-  /** Toca um som localmente, no volume do soundboard. */
-  const tocar = useCallback(
-    (soundId: string) => {
-      const encontrado = roomSounds.find(soundId);
-      if (encontrado === undefined) return;
-      const audio = new Audio(encontrado.file);
-      audio.volume = Math.max(0, Math.min(1, sound.effective));
-      void audio.play().catch(() => undefined);
-    },
-    [roomSounds, sound],
+  /*
+   * Toca os sons localmente e mantém o estado do que está no ar — é o que
+   * alimenta o anel de progresso na borda e o botão de parar. Mesma lógica do
+   * modo LiveKit, agora compartilhada em vez de reescrita.
+   */
+  const { playing, play: tocarLocal, stop: pararLocal } = useSoundPlayer(
+    () => sound.effective,
+    roomSounds.find,
   );
 
   const nomesRef = useRef<Map<string, string>>(new Map());
@@ -259,10 +258,13 @@ export function P2PRoom({ roomId, displayName, peerId, onLeave }: Props): JSX.El
       if (message === null) return;
 
       if (message.type === 'sound') {
-        tocar(message.soundId);
+        tocarLocal(message.soundId);
         return;
       }
-      if (message.type === 'sound-stop') return;
+      if (message.type === 'sound-stop') {
+        pararLocal(message.soundId);
+        return;
+      }
 
       setChat((atual) =>
         [
@@ -279,7 +281,7 @@ export function P2PRoom({ roomId, displayName, peerId, onLeave }: Props): JSX.El
       );
       setUnread((n) => n + 1);
     },
-    [tocar],
+    [tocarLocal, pararLocal],
   );
 
   const mesh = useP2PMesh({
@@ -355,10 +357,25 @@ export function P2PRoom({ roomId, displayName, peerId, onLeave }: Props): JSX.El
   const tocarSom = useCallback(
     (soundId: string) => {
       trackSoundPlayed();
-      mesh.broadcast(JSON.stringify({ type: 'sound', soundId, sentAt: Date.now() }));
-      tocar(soundId);
+      // `id` é obrigatório: sem ele, `parseRoomMessage` recusa o aviso do outro
+      // lado e o som tocaria só aqui, nunca para o resto da sala.
+      mesh.broadcast(
+        JSON.stringify({ type: 'sound', id: crypto.randomUUID(), soundId, sentAt: Date.now() }),
+      );
+      tocarLocal(soundId);
     },
-    [mesh, tocar],
+    [mesh, tocarLocal],
+  );
+
+  /* Parar é um aviso para todos, como no LiveKit: corta o clipe na sala inteira. */
+  const pararSom = useCallback(
+    (soundId: string) => {
+      mesh.broadcast(
+        JSON.stringify({ type: 'sound-stop', id: crypto.randomUUID(), soundId, sentAt: Date.now() }),
+      );
+      pararLocal(soundId);
+    },
+    [mesh, pararLocal],
   );
 
   /* --- mídia local ------------------------------------------------------ */
@@ -699,8 +716,8 @@ export function P2PRoom({ roomId, displayName, peerId, onLeave }: Props): JSX.El
               onDelete={roomSounds.remove}
               onPlay={tocarSom}
               onClose={() => setIsSoundboardOpen(false)}
-              playing={null}
-              onStop={() => undefined}
+              playing={playing}
+              onStop={pararSom}
               volume={sound.volume}
               onVolumeChange={sound.setVolume}
               muted={sound.muted}

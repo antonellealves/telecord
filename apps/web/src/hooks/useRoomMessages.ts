@@ -7,11 +7,12 @@ import {
   parseRoomMessage,
   type RoomMessage,
 } from '@telecord/shared';
+import { useSoundPlayer, type SoundPlayback } from './useSoundPlayer';
 
-/** O mínimo que este hook precisa saber de um som para tocá-lo. */
-export interface ResolvedSound {
-  file: string;
-}
+// Tocar o som e desenhar o progresso viraram um hook próprio (`useSoundPlayer`),
+// compartilhado com o modo direto. Os tipos continuam saindo daqui para quem já
+// os importava.
+export type { ResolvedSound, SoundPlayback } from './useSoundPlayer';
 
 export interface ChatEntry {
   id: string;
@@ -26,23 +27,6 @@ export interface ChatEntry {
   body: string;
   sentAt: number;
   isLocal: boolean;
-}
-
-/** O som que este cliente está tocando agora. */
-export interface SoundPlayback {
-  soundId: string;
-  /**
-   * Sobe a cada disparo. É o que reinicia a barra de progresso quando o mesmo
-   * som é disparado por cima de si mesmo — sem isso o React reaproveitaria o
-   * nó e a animação continuaria de onde estava.
-   */
-  token: number;
-  /**
-   * Duração em segundos, conhecida só quando a reprodução começa de fato.
-   * Fica `null` se o navegador não souber dizer (arquivo sem cabeçalho
-   * decente), e aí não há progresso para desenhar.
-   */
-  duration: number | null;
 }
 
 export interface RoomMessaging {
@@ -63,25 +47,6 @@ const decoder = new TextDecoder();
 
 function newId(): string {
   return crypto.randomUUID();
-}
-
-/**
- * Encerra o elemento, em vez de só pausar.
- *
- * `pause()` sozinho deixa o elemento vivo, e uma chamada de `play()` ainda
- * pendente pode retomar depois dele — o que chega a quem clicou como "apertei
- * parar e o som continuou". Soltar a fonte e recarregar cancela qualquer
- * carregamento ou reprodução em curso, sem depender de ordem.
- */
-function hardStop(audio: HTMLAudioElement): void {
-  audio.pause();
-  try {
-    audio.currentTime = 0;
-  } catch {
-    // Alguns navegadores recusam a escrita antes de haver mídia carregada.
-  }
-  audio.removeAttribute('src');
-  audio.load();
 }
 
 /**
@@ -123,7 +88,7 @@ export function useRoomMessages(
    * faria todo clipe enviado ser ignorado com a mesma mensagem de "não
    * conheço este som".
    */
-  resolveSound: (soundId: string) => ResolvedSound | undefined,
+  resolveSound: (soundId: string) => { file: string } | undefined,
   /**
    * Por onde publicar e receber. Sem isto, usa o canal de dados do LiveKit.
    *
@@ -139,121 +104,11 @@ export function useRoomMessages(
   transportRef.current = transport;
   const [messages, setMessages] = useState<ChatEntry[]>([]);
   const [unread, setUnread] = useState(0);
-  const [playing, setPlaying] = useState<SoundPlayback | null>(null);
+
+  // Tocar o som e o estado do progresso vivem no player compartilhado.
+  const { playing, play: playLocally, stop: stopLocally } = useSoundPlayer(getVolume, resolveSound);
 
   const seenRef = useRef(new Set<string>());
-  /*
-   * Todo áudio do soundboard vivo neste cliente.
-   *
-   * É uma lista, não uma referência única, porque parar precisa alcançar
-   * qualquer elemento daquele som. Com uma referência só, um áudio que
-   * escapasse de uma corrida entre dois avisos ficaria tocando sem nada
-   * apontando para ele — e nenhum clique em parar o alcançaria mais.
-   */
-  const liveRef = useRef<{ soundId: string; audio: HTMLAudioElement }[]>([]);
-  // Espelho do que está tocando: os eventos do <audio> disparam fora do ciclo
-  // do React e precisam decidir sem depender do que já foi renderizado.
-  const playingRef = useRef<string | null>(null);
-  const tokenRef = useRef(0);
-  const getVolumeRef = useRef(getVolume);
-  getVolumeRef.current = getVolume;
-  /*
-   * Por referência, e não por dependência do `useCallback`: a lista de sons da
-   * sala muda quando alguém envia um clipe, e reconstruir `playLocally` a cada
-   * mudança reassinaria o efeito do canal de dados — que corta o som que
-   * estiver tocando naquele instante.
-   */
-  const resolveSoundRef = useRef(resolveSound);
-  resolveSoundRef.current = resolveSound;
-
-  const playLocally = useCallback((soundId: string) => {
-    const sound = resolveSoundRef.current(soundId);
-    if (sound === undefined) {
-      // Som que este cliente não conhece: catálogo diferente entre versões do
-      // app, ou um clipe enviado que a lista daqui ainda não trouxe. Ignorar é
-      // melhor do que estourar erro na cara de quem ouve.
-      return;
-    }
-    const volume = getVolumeRef.current();
-    if (volume <= 0) {
-      // Mudo ou volume zerado: nem cria o elemento. O aviso continua chegando
-      // e sendo aceito — quem silenciou foi só este cliente.
-      return;
-    }
-
-    // Um som por vez: o novo encerra o que estava tocando.
-    for (const entry of liveRef.current) {
-      hardStop(entry.audio);
-    }
-    liveRef.current = [];
-
-    const audio = new Audio(sound.file);
-    audio.volume = Math.min(1, volume);
-    liveRef.current = [{ soundId, audio }];
-    playingRef.current = soundId;
-    tokenRef.current += 1;
-    const token = tokenRef.current;
-    setPlaying({ soundId, token, duration: null });
-
-    /*
-     * A duração só entra no estado quando o som começa a sair de fato. Entrar
-     * antes, no `loadedmetadata`, adiantaria a barra em relação ao áudio pelo
-     * tempo que o navegador levasse para soltar o primeiro sample.
-     */
-    audio.addEventListener(
-      'playing',
-      () => {
-        const seconds = audio.duration;
-        if (!Number.isFinite(seconds) || seconds <= 0) {
-          return;
-        }
-        setPlaying((current) =>
-          current !== null && current.token === token ? { ...current, duration: seconds } : current,
-        );
-      },
-      { once: true },
-    );
-
-    const forget = (): void => {
-      liveRef.current = liveRef.current.filter((entry) => entry.audio !== audio);
-      // Só apaga o estado se ninguém tiver assumido o lugar desde então: um som
-      // disparado por cima do outro faria o `ended` do antigo apagar o novo.
-      if (playingRef.current === soundId && liveRef.current.length === 0) {
-        playingRef.current = null;
-        setPlaying(null);
-      }
-    };
-    audio.addEventListener('ended', forget, { once: true });
-    audio.addEventListener('error', forget, { once: true });
-    void audio.play().catch(forget);
-  }, []);
-
-  const stopLocally = useCallback((soundId: string) => {
-    // Encerra qualquer elemento daquele som, não só o registrado como corrente:
-    // se sobrou algum de uma corrida, é justamente ele que a pessoa continua
-    // ouvindo depois de apertar parar.
-    const restantes: { soundId: string; audio: HTMLAudioElement }[] = [];
-    let encerrou = false;
-    for (const entry of liveRef.current) {
-      if (entry.soundId === soundId) {
-        hardStop(entry.audio);
-        encerrou = true;
-      } else {
-        restantes.push(entry);
-      }
-    }
-    liveRef.current = restantes;
-
-    if (!encerrou) {
-      // Pedido atrasado, para um som que já terminou ou já foi substituído:
-      // não pode derrubar o que está tocando agora.
-      return;
-    }
-    if (playingRef.current === soundId) {
-      playingRef.current = null;
-      setPlaying(null);
-    }
-  }, []);
 
   const append = useCallback((entry: ChatEntry, countUnread: boolean) => {
     if (seenRef.current.has(entry.id)) {
@@ -316,20 +171,6 @@ export function useRoomMessages(
       room.off(RoomEvent.DataReceived, handleData);
     };
   }, [room, append, playLocally, stopLocally]);
-
-  /*
-   * Encerrar o áudio vive num efeito próprio, sem dependências: junto com o
-   * efeito do canal de dados, cada reassinatura dele cortaria o som que estiver
-   * tocando. Aqui só roda na saída da sala.
-   */
-  useEffect(() => {
-    return () => {
-      for (const entry of liveRef.current) {
-        hardStop(entry.audio);
-      }
-      liveRef.current = [];
-    };
-  }, []);
 
   const publish = useCallback(
     (message: RoomMessage) => {
