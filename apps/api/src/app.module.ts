@@ -4,6 +4,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AdminModule } from './admin/admin.module';
 import { AuthGuard } from './auth/auth.guard';
 import { AuthModule } from './auth/auth.module';
+import { CfsfuModule } from './cfsfu/cfsfu.module';
 import { ChannelsModule } from './channels/channels.module';
 import { ConfigModule } from './common/config.module';
 import { HttpErrorFilter } from './common/http-error.filter';
@@ -37,6 +38,7 @@ import { UsersModule } from './users/users.module';
     SoundsModule,
     LiveKitModule,
     IceModule,
+    CfsfuModule,
     AdminModule,
   ],
   providers: [

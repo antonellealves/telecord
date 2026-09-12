@@ -22,7 +22,18 @@ import { useDisplayName } from '../hooks/useDisplayName';
 import { useMicrophonePermission } from '../hooks/useMicrophonePermission';
 import { trackEvent } from '../lib/gamification';
 import { generateRoomId } from '../lib/media';
-import { readLastRoom, readTransport, writeLastRoom, writeTransport } from '../lib/storage';
+import { fetchCfSfuConfig } from '../lib/cfsfu';
+import { BITRATE_CEILINGS } from '../lib/cfsfuQuality';
+import {
+  readCfSfuBitrate,
+  readLastRoom,
+  readTransport,
+  writeCfSfuBitrate,
+  writeLastRoom,
+  writeTransport,
+  type CfSfuBitrateId,
+} from '../lib/storage';
+import type { CfSfuUsage } from '@telecord/shared';
 import styles from './JoinPage.module.css';
 
 const NOTES = ['entra mutado', 'várias telas', 'servidor ou direto'];
@@ -60,6 +71,35 @@ export function JoinPage(): JSX.Element {
   const microphone = useMicrophonePermission();
   const [lastRoom] = useState(() => readLastRoom());
   const [transport, setTransport] = useState<TransportMode>(readTransport);
+
+  /*
+   * Edge global só aparece quando o servidor confirma que está ligado — o
+   * cartão nasce escondido e entra se `enabled`. Junto vem a cota do mês, que
+   * avisa perto do teto e bloqueia criar sala cfsfu ao estourar.
+   */
+  const [cfEnabled, setCfEnabled] = useState(false);
+  const [cfUsage, setCfUsage] = useState<CfSfuUsage | null>(null);
+  const [bitrate, setBitrate] = useState<CfSfuBitrateId>(readCfSfuBitrate);
+  useEffect(() => {
+    let vivo = true;
+    void fetchCfSfuConfig()
+      .then((config) => {
+        if (!vivo) return;
+        setCfEnabled(config.enabled);
+        setCfUsage(config.usage);
+        // Estourou a cota: não deixa entrar já escolhido no modo bloqueado.
+        if (config.enabled && config.usage.blocked && readTransport() === 'cfsfu') {
+          setTransport('livekit');
+          writeTransport('livekit');
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  const cfBlocked = cfUsage?.blocked === true;
 
   const previewSlug = room.trim() === '' ? '' : slugifyRoomId(room);
 
@@ -153,11 +193,40 @@ export function JoinPage(): JSX.Element {
               <span className={styles.label}>Como a transmissão viaja</span>
               <TransportPicker
                 value={transport}
+                hidden={cfEnabled && !cfBlocked ? [] : ['cfsfu']}
                 onChange={(mode) => {
                   setTransport(mode);
                   writeTransport(mode);
                 }}
               />
+              {transport === 'cfsfu' ? (
+                <div className={styles.cfsfuOptions}>
+                  <span className={styles.hint}>Teto de bitrate do vídeo</span>
+                  <div className={styles.bitrateRow} role="radiogroup" aria-label="Teto de bitrate">
+                    {BITRATE_CEILINGS.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={bitrate === option.id}
+                        className={`${styles.bitrate} ${bitrate === option.id ? styles.bitrateOn : ''}`}
+                        onClick={() => {
+                          setBitrate(option.id);
+                          writeCfSfuBitrate(option.id);
+                        }}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                  {cfUsage !== null && cfUsage.fraction >= 0.8 ? (
+                    <p className={styles.hint}>
+                      Cota do mês em {Math.round(cfUsage.fraction * 100)}% ({Math.round(cfUsage.usedGb)} de{' '}
+                      {cfUsage.monthlyLimitGb} GB). Perto do teto, considere o Servidor de mídia.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             {lastRoom !== '' && lastRoom !== previewSlug ? (

@@ -562,6 +562,11 @@ model PeerPresence {
   joinedAt   DateTime @default(now())
   lastSeenAt DateTime @default(now())
 
+  /// Anúncio opaco carregado pelo roster. No modo cfsfu leva o `sessionId` e os
+  /// `trackName`s que este par publicou no SFU — é como os outros descobrem o
+  /// que puxar, já que o SFU não tem descoberta. Nulo nos modos LiveKit e P2P.
+  meta Json?
+
   /// Um navegador, uma linha por sala. Reentrar atualiza em vez de duplicar.
   @@unique([roomSlug, peerId])
   @@index([roomSlug, lastSeenAt])
@@ -622,4 +627,31 @@ model PeerLayout {
 
   @@unique([roomSlug, ownerId])
   @@index([updatedAt])
+}
+
+// ===========================================================================
+// Cloudflare Realtime SFU (transporte 'cfsfu')
+// ===========================================================================
+
+/**
+ * Consumo estimado de egress do transporte cfsfu, agregado por mês.
+ *
+ * O free tier da Cloudflare Realtime conta o EGRESS (SFU → assinantes; o
+ * ingress é grátis). Cada assinante reporta o próprio `bytesReceived` ao
+ * backend, que soma aqui — é o número mais próximo do real sem falar com a API
+ * de billing da Cloudflare. Uma linha por mês (`yearMonth` = 'YYYY-MM' em UTC);
+ * a UI avisa perto da cota e bloqueia CRIAR sala cfsfu quando estoura.
+ *
+ * É estado persistente de aplicação, não mídia: nenhum frame, SDP ou candidato
+ * mora aqui — só um contador.
+ */
+model CfsfuUsage {
+  id          String   @id @default(cuid())
+  /// 'YYYY-MM' em UTC. Uma linha por mês de competência.
+  yearMonth   String   @unique @db.VarChar(7)
+  /// Bytes de egress somados no mês. BIGINT: 1.000 GB já passa do teto de INT.
+  egressBytes BigInt   @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

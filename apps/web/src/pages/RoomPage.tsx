@@ -6,6 +6,7 @@ import { StatusScreen } from '../components/StatusScreen';
 import { useDisplayName } from '../hooks/useDisplayName';
 import { readPeerId, readTransport } from '../lib/storage';
 import { P2PRoom } from './P2PRoom';
+import { CloudflareRoom } from './CloudflareRoom';
 import { useToken } from '../hooks/useToken';
 import { LIVEKIT_URL, getConfigError } from '../lib/config';
 import { roomOptions } from '../lib/media';
@@ -54,9 +55,21 @@ export function RoomPage(): JSX.Element {
    * troca acontece aqui, uma vez, em vez de cada componente lá dentro ter que
    * saber em qual modo está.
    */
-  if (readTransport() === 'p2p') {
+  const transport = readTransport();
+  if (transport === 'p2p') {
     return (
       <P2PRoom
+        roomId={roomId}
+        displayName={displayName}
+        peerId={peerId}
+        onLeave={() => navigate('/')}
+      />
+    );
+  }
+
+  if (transport === 'cfsfu') {
+    return (
+      <CloudflareRoom
         roomId={roomId}
         displayName={displayName}
         peerId={peerId}

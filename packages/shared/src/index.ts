@@ -905,16 +905,31 @@ export interface AdminSessionTokenRow {
 // pelo telecord.
 // ---------------------------------------------------------------------------
 
-/** Qual pilha de transmissão a sala está usando. */
-export type TransportMode = 'livekit' | 'p2p';
+/**
+ * Qual pilha de transmissão a sala está usando.
+ *
+ * `cfsfu` é o Cloudflare Realtime SFU — a terceira opção, "Edge global": um SFU
+ * de borda que NÃO recodifica a mídia (passthrough), então a qualidade final é
+ * a que o navegador de quem compartilha conseguir codificar. Existe para
+ * compartilhamento de tela em alta resolução com latência baixa e escala melhor
+ * que a malha P2P.
+ */
+export type TransportMode = 'livekit' | 'p2p' | 'cfsfu';
 
-export const TRANSPORT_MODES: TransportMode[] = ['livekit', 'p2p'];
+export const TRANSPORT_MODES: TransportMode[] = ['livekit', 'p2p', 'cfsfu'];
 
 export interface PeerInfo {
   peerId: string;
   displayName: string;
   isAnonymous: boolean;
   joinedAt: string;
+  /**
+   * O que este par publicou no SFU cfsfu, quando a sala está nesse modo. É como
+   * os outros descobrem qual `sessionId`/`trackName` puxar — o roster do
+   * heartbeat carrega o anúncio, sem precisar de um segundo canal de sinal.
+   * `null`/ausente nos modos LiveKit e P2P.
+   */
+  cfsfu?: CfSfuAnnounce | null;
 }
 
 export interface PeerRoster {
@@ -962,6 +977,127 @@ export interface IceConfig {
   iceServers: IceServerConfig[];
   /** Por quanto tempo o cliente pode reusar esta lista antes de buscar de novo. */
   ttlSeconds: number;
+}
+
+// ---------------------------------------------------------------------------
+// Cloudflare Realtime SFU (transporte 'cfsfu' — "Edge global")
+//
+// O SFU da Cloudflare é pub/sub de Sessions e Tracks, SEM conceito de sala: o
+// roster e a descoberta de tracks são do telecord (carregados pelo heartbeat).
+// O App Secret vive só no backend; o cliente conversa com o SFU através do
+// proxy /api/cfsfu/*, que assina as chamadas. Os tipos abaixo descrevem o corpo
+// desse proxy — que espelha a API HTTPS do SFU — e são validados na borda.
+// ---------------------------------------------------------------------------
+
+/** SDP trocado com o SFU. Mesma forma de `RTCSessionDescriptionInit`. */
+export interface CfSdp {
+  type: 'offer' | 'answer';
+  sdp: string;
+}
+
+/** Uma track ao pedir push (local) ou pull (remoto) ao SFU. */
+export type CfTrackRequest =
+  | { location: 'local'; mid: string; trackName: string }
+  | { location: 'remote'; sessionId: string; trackName: string };
+
+/** Track como o SFU a devolve. */
+export interface CfTrackResult {
+  mid?: string;
+  trackName?: string;
+  sessionId?: string;
+  errorCode?: string;
+  errorDescription?: string;
+}
+
+/** Resposta de `POST /sessions/new`. */
+export interface CfSessionResult {
+  sessionId: string;
+  errorCode?: string;
+  errorDescription?: string;
+}
+
+/** Corpo aceito pelo proxy `POST /api/cfsfu/sessions/:id/tracks`. */
+export interface CfTracksBody {
+  sessionDescription?: CfSdp;
+  tracks: CfTrackRequest[];
+}
+
+/** Resposta de `tracks/new`. */
+export interface CfTracksResult {
+  requiresImmediateRenegotiation: boolean;
+  sessionDescription?: CfSdp;
+  tracks: CfTrackResult[];
+  errorCode?: string;
+  errorDescription?: string;
+}
+
+/** Corpo de `PUT /renegotiate`. */
+export interface CfRenegotiateBody {
+  sessionDescription: CfSdp;
+}
+
+/** Resposta de `renegotiate` e `tracks/close` (vazia em sucesso). */
+export interface CfSimpleResult {
+  errorCode?: string;
+  errorDescription?: string;
+}
+
+/** Corpo de `PUT /tracks/close`. */
+export interface CfCloseBody {
+  tracks: { mid: string }[];
+  sessionDescription: CfSdp;
+  force: boolean;
+}
+
+/** Anúncio do que um par publicou no SFU, carregado pelo roster. */
+export interface CfSfuAnnounce {
+  sessionId: string;
+  tracks: CfSfuPublishedTrack[];
+}
+
+export interface CfSfuPublishedTrack {
+  kind: 'audio' | 'video';
+  trackName: string;
+  /** Rótulo para a UI: 'screen-video', 'mic-audio', 'system-audio'. */
+  label: string;
+}
+
+/** Consumo estimado de egress do mês, para o aviso e o bloqueio na UI. */
+export interface CfSfuUsage {
+  monthlyLimitGb: number;
+  usedGb: number;
+  /** 0..1. A UI avisa em 0,8 e bloqueia a criação em 1. */
+  fraction: number;
+  blocked: boolean;
+}
+
+/** Config pública do transporte cfsfu, servida por `GET /api/cfsfu/config`. */
+export interface CfSfuClientConfig {
+  enabled: boolean;
+  iceServers: IceServerConfig[];
+  usage: CfSfuUsage;
+}
+
+/**
+ * Métricas de qualidade lidas de `RTCPeerConnection.getStats()`.
+ *
+ * Tipadas de propósito: `getStats` devolve um mapa de formas variadas, e o
+ * lugar de lidar com isso é a borda que extrai estes campos — daqui para dentro
+ * tudo é número ou nulo, nunca `any`.
+ */
+export interface QualityMetrics {
+  codec: string | null;
+  width: number | null;
+  height: number | null;
+  framesPerSecond: number | null;
+  bitrateKbps: number | null;
+  packetsLost: number;
+  jitterMs: number | null;
+  roundTripTimeMs: number | null;
+  framesDropped: number | null;
+  framesDecoded: number | null;
+  availableIncomingBitrateKbps: number | null;
+  availableOutgoingBitrateKbps: number | null;
 }
 
 /**

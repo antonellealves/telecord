@@ -67,6 +67,21 @@ export interface IceConfig {
   turn: TurnConfig | null;
 }
 
+/**
+ * Cloudflare Realtime SFU (transporte 'cfsfu').
+ *
+ * `appId` e `appToken` NUNCA chegam ao navegador — o cliente fala com o SFU
+ * através do proxy `/api/cfsfu/*`, que é quem assina as chamadas. `null` = a
+ * terceira opção fica desligada (o cartão some da tela), o que é o padrão até
+ * alguém configurar o app no dashboard da Cloudflare.
+ */
+export interface CfSfuConfig {
+  appId: string;
+  appToken: string;
+  /** Cota mensal de egress do free tier, para o aviso e o bloqueio na UI. */
+  monthlyLimitGb: number;
+}
+
 export interface AppConfig {
   port: number;
   /** Origem da SPA. Vale como allowlist de CORS e destino dos redirects. */
@@ -88,6 +103,7 @@ export interface AppConfig {
   google: GoogleConfig | null;
   livekit: LiveKitConfig | null;
   ice: IceConfig;
+  cfsfu: CfSfuConfig | null;
 
   mailDriver: MailDriver;
   mailFrom: string;
@@ -168,6 +184,36 @@ function loadIceConfig(env: NodeJS.ProcessEnv): IceConfig {
   return {
     stunUrls: stunUrls.length > 0 ? stunUrls : DEFAULT_STUN_URLS,
     turn,
+  };
+}
+
+/**
+ * Lê a configuração do Cloudflare Realtime SFU.
+ *
+ * Ligado só quando `CF_REALTIME_ENABLED` é verdadeiro E há credencial. Ligado
+ * sem credencial derruba o boot de propósito — meia configuração viraria um 500
+ * na primeira sala, não um cartão que some. Desligado devolve `null`, e a
+ * terceira opção nem aparece. Aceita os nomes `CLOUDFLARE_REALTIME_*` como
+ * reserva dos `CF_REALTIME_*`.
+ */
+function loadCfSfuConfig(env: NodeJS.ProcessEnv): CfSfuConfig | null {
+  const enabledRaw = (env.CF_REALTIME_ENABLED?.trim() ?? '').toLowerCase();
+  const enabled = enabledRaw === 'true' || enabledRaw === '1' || enabledRaw === 'on';
+  if (!enabled) return null;
+
+  const appId = (env.CF_REALTIME_APP_ID ?? env.CLOUDFLARE_REALTIME_APP_ID)?.trim() ?? '';
+  const appToken =
+    (env.CF_REALTIME_APP_TOKEN ?? env.CLOUDFLARE_REALTIME_APP_SECRET)?.trim() ?? '';
+  if (appId === '' || appToken === '') {
+    throw new ConfigError(
+      'CF_REALTIME_ENABLED=true exige CF_REALTIME_APP_ID e CF_REALTIME_APP_TOKEN.',
+    );
+  }
+
+  return {
+    appId,
+    appToken,
+    monthlyLimitGb: integer(env, 'CF_REALTIME_MONTHLY_GB_LIMIT', 1000),
   };
 }
 
@@ -267,6 +313,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
         : { clientId: googleClientId, clientSecret: googleClientSecret },
     livekit: livekitKey === '' ? null : { apiKey: livekitKey, apiSecret: livekitSecret },
     ice: loadIceConfig(env),
+    cfsfu: loadCfSfuConfig(env),
     mailDriver: mailDriverRaw,
     mailFrom: env.MAIL_FROM?.trim() || 'Telecord <nao-responda@localhost>',
     resendApiKey: resendApiKey === '' ? undefined : resendApiKey,

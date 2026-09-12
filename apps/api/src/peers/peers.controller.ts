@@ -39,7 +39,8 @@ export class PeersController {
       throw badRequest('invalid_request', 'Informe o `peerId`.');
     }
     const displayName = readText(body.displayName, 64) ?? 'Alguém';
-    return this.peers.heartbeat(slug, peerId, displayName, claims?.sub ?? null);
+    // `cfsfu` é opaco aqui: o serviço valida a forma antes de gravar.
+    return this.peers.heartbeat(slug, peerId, displayName, claims?.sub ?? null, body.cfsfu);
   }
 
   @OptionalAuth()

@@ -5,7 +5,13 @@
  * não é idempotente e não pode ser GET — um proxy que repita a requisição
  * comeria sinal de alguém.
  */
-import type { PeerInbox, PeerRoster, PeerSignalKind, TileLayout } from '@telecord/shared';
+import type {
+  CfSfuAnnounce,
+  PeerInbox,
+  PeerRoster,
+  PeerSignalKind,
+  TileLayout,
+} from '@telecord/shared';
 import { apiJson } from './apiClient';
 
 const base = (slug: string): string => `/peers/${encodeURIComponent(slug)}`;
@@ -14,8 +20,14 @@ export async function peerHeartbeat(
   slug: string,
   peerId: string,
   displayName: string,
+  /** Anúncio do cfsfu (sessionId/trackName publicados). Ausente nos outros modos. */
+  announce?: CfSfuAnnounce | null,
 ): Promise<PeerRoster> {
-  return apiJson<PeerRoster>(`${base(slug)}/heartbeat`, 'POST', { peerId, displayName });
+  return apiJson<PeerRoster>(`${base(slug)}/heartbeat`, 'POST', {
+    peerId,
+    displayName,
+    ...(announce !== undefined && announce !== null ? { cfsfu: announce } : {}),
+  });
 }
 
 export async function peerLeave(slug: string, peerId: string): Promise<void> {

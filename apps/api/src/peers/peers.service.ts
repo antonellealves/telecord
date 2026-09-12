@@ -2,12 +2,13 @@ import { Injectable } from '@nestjs/common';
 import {
   isTilePosition,
   MAX_TILES_SAVED,
+  type CfSfuAnnounce,
   type PeerInbox,
   type PeerRoster,
   type PeerSignalKind,
   type TileLayout,
 } from '@telecord/shared';
-import type { Prisma } from '../generated/prisma';
+import { Prisma } from '../generated/prisma';
 import { badRequest } from '../common/errors';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -61,13 +62,20 @@ export class PeersService {
     peerId: string,
     displayName: string,
     userId: string | null,
+    announceRaw: unknown = null,
   ): Promise<PeerRoster> {
     const agora = new Date();
 
+    // O anúncio (sessionId/trackName do cfsfu) vem do cliente e vai para uma
+    // coluna JSON: passa pela validação de forma, e o que não for anúncio
+    // válido vira nulo em vez de sujar a coluna.
+    const announce = sanitizarAnuncio(announceRaw);
+    const meta = announce === null ? Prisma.JsonNull : (announce as unknown as Prisma.InputJsonValue);
+
     await this.prisma.peerPresence.upsert({
       where: { roomSlug_peerId: { roomSlug, peerId } },
-      create: { roomSlug, peerId, displayName: displayName.slice(0, 64), userId },
-      update: { lastSeenAt: agora, displayName: displayName.slice(0, 64) },
+      create: { roomSlug, peerId, displayName: displayName.slice(0, 64), userId, meta },
+      update: { lastSeenAt: agora, displayName: displayName.slice(0, 64), meta },
     });
 
     const vivos = await this.prisma.peerPresence.findMany({
@@ -75,7 +83,7 @@ export class PeersService {
         roomSlug,
         lastSeenAt: { gte: new Date(agora.getTime() - PRESENCE_TTL_MS) },
       },
-      select: { peerId: true, displayName: true, userId: true, joinedAt: true },
+      select: { peerId: true, displayName: true, userId: true, joinedAt: true, meta: true },
       orderBy: [{ joinedAt: 'asc' }, { peerId: 'asc' }],
       /*
        * Teto ALTO, e não limite de produto: a sala aceita quem chegar, e quem
@@ -92,6 +100,7 @@ export class PeersService {
         displayName: p.displayName,
         isAnonymous: p.userId === null,
         joinedAt: p.joinedAt.toISOString(),
+        cfsfu: sanitizarAnuncio(p.meta),
       })),
     };
   }
@@ -225,4 +234,34 @@ function sanitizar(valor: unknown): TileLayout {
 /** Fora de 0..1 é quadro fora da tela; prender é melhor que recusar. */
 function clamp(valor: number): number {
   return Math.max(0, Math.min(1, valor));
+}
+
+/**
+ * Deixa passar só o que é anúncio de cfsfu válido.
+ *
+ * Vem do cliente e vai para uma coluna JSON; o teto de tracks e a checagem por
+ * campo impedem a coluna de virar depósito. Qualquer coisa fora da forma vira
+ * `null` — que é o estado normal nos modos que não usam o SFU.
+ */
+function sanitizarAnuncio(valor: unknown): CfSfuAnnounce | null {
+  if (typeof valor !== 'object' || valor === null) return null;
+  const bruto = valor as Record<string, unknown>;
+  const sessionId = typeof bruto.sessionId === 'string' ? bruto.sessionId.slice(0, 128) : null;
+  if (sessionId === null || sessionId === '') return null;
+  if (!Array.isArray(bruto.tracks)) return null;
+
+  const tracks = bruto.tracks
+    .slice(0, 8)
+    .map((raw) => {
+      if (typeof raw !== 'object' || raw === null) return null;
+      const t = raw as Record<string, unknown>;
+      const kind = t.kind === 'audio' || t.kind === 'video' ? t.kind : null;
+      const trackName = typeof t.trackName === 'string' ? t.trackName.slice(0, 128) : null;
+      const label = typeof t.label === 'string' ? t.label.slice(0, 64) : null;
+      if (kind === null || trackName === null || trackName === '' || label === null) return null;
+      return { kind, trackName, label };
+    })
+    .filter((t): t is CfSfuAnnounce['tracks'][number] => t !== null);
+
+  return { sessionId, tracks };
 }

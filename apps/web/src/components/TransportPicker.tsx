@@ -7,6 +7,8 @@ interface Props {
   onChange: (mode: TransportMode) => void;
   /** Some com o texto longo onde não cabe (dentro da sala, por exemplo). */
   compact?: boolean;
+  /** Opções a esconder — ex.: `['cfsfu']` quando o Edge global está desligado. */
+  hidden?: TransportMode[];
 }
 
 interface Option {
@@ -43,6 +45,13 @@ const OPTIONS: Option[] = [
     pros: ['Latência menor', 'Nenhum servidor vê a mídia'],
     cons: [`Pesa acima de ${P2P_COMFORT_PEERS} pessoas`, 'Algumas redes não deixam conectar'],
   },
+  {
+    id: 'cfsfu',
+    label: 'Edge global',
+    tagline: 'Cloudflare Realtime · experimental',
+    pros: ['Baixa latência', 'Qualidade máxima', 'Rede global'],
+    cons: ['Free tier da Cloudflare', 'Consome banda de quem assiste'],
+  },
 ];
 
 /**
@@ -52,14 +61,15 @@ const OPTIONS: Option[] = [
  * sala É: quantas pessoas cabem, por onde a mídia anda e o que funciona
  * dentro dela. É uma decisão de produto, não uma preferência de dispositivo.
  */
-export function TransportPicker({ value, onChange, compact = false }: Props): JSX.Element {
+export function TransportPicker({ value, onChange, compact = false, hidden }: Props): JSX.Element {
+  const visible = OPTIONS.filter((option) => !(hidden ?? []).includes(option.id));
   return (
     <div
       className={`${styles.wrap} ${compact ? styles.compact : ''}`}
       role="radiogroup"
       aria-label="Como a transmissão viaja"
     >
-      {OPTIONS.map((option) => {
+      {visible.map((option) => {
         const selected = value === option.id;
         return (
           <button
