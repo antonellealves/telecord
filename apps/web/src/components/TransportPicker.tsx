@@ -1,106 +1,76 @@
+import { useId } from 'react';
 import type { TransportMode } from '@telecord/shared';
-import { P2P_COMFORT_PEERS } from '@telecord/shared';
+import { TRANSPORTS } from '../lib/transports';
 import styles from './TransportPicker.module.css';
 
 interface Props {
   value: TransportMode;
   onChange: (mode: TransportMode) => void;
-  /** Some com o texto longo onde não cabe (dentro da sala, por exemplo). */
+  /** Só o ícone, sem o nome ao lado (dentro da sala). */
   compact?: boolean;
   /** Opções a esconder — ex.: `['cfsfu']` quando o Cloudflare está desligado. */
   hidden?: TransportMode[];
 }
 
-interface Option {
-  id: TransportMode;
-  label: string;
-  tagline: string;
-  /** O que se ganha. */
-  pros: string[];
-  /** O que se perde — e isto NÃO é letra miúda. */
-  cons: string[];
-}
-
-/*
- * As duas opções, descritas pelo que custam e não só pelo que entregam.
- *
- * Um seletor que só elogia as duas pontas empurra a decisão para quem não tem
- * como decidir: "direto" soa melhor que "servidor" para qualquer pessoa, e
- * quem escolher P2P numa sala de dez vai ter uma experiência ruim achando que
- * o app é ruim. O limite e a dependência de rede aparecem no mesmo tamanho das
- * vantagens.
- */
-const OPTIONS: Option[] = [
-  {
-    id: 'livekit',
-    label: 'Servidor de mídia',
-    tagline: 'LiveKit · padrão',
-    pros: ['Sala cheia sem pesar', 'Funciona em qualquer rede', 'Chat, sons e gravação'],
-    cons: ['A mídia passa por um servidor'],
-  },
-  {
-    id: 'p2p',
-    label: 'Conexão direta',
-    tagline: 'WebRTC puro · experimental',
-    pros: ['Latência menor', 'Nenhum servidor vê a mídia'],
-    cons: [`Pesa acima de ${P2P_COMFORT_PEERS} pessoas`, 'Algumas redes não deixam conectar'],
-  },
-  {
-    id: 'cfsfu',
-    label: 'Cloudflare',
-    tagline: 'Cloudflare Realtime · experimental',
-    pros: ['Baixa latência', 'Qualidade máxima', 'Rede global'],
-    cons: ['Free tier da Cloudflare', 'Consome banda de quem assiste'],
-  },
-];
-
 /**
- * Escolha do paradigma de transmissão.
+ * Escolha do modo de transmissão — discreta, movida a ícones.
  *
- * Fica em evidência, e não escondido nas configurações, porque muda o que a
- * sala É: quantas pessoas cabem, por onde a mídia anda e o que funciona
- * dentro dela. É uma decisão de produto, não uma preferência de dispositivo.
+ * Antes eram cartões grandes com prós e contras sempre à vista, que tomavam
+ * meia tela. Agora é uma fileira de ícones pequenos com o nome curto; os prós e
+ * contras (que continuam pesando igual, sem esconder o custo) aparecem num
+ * tooltip ao passar o mouse ou focar — mesmo padrão do "i" do soundboard.
+ *
+ * O conteúdo vem todo do `TRANSPORTS` (registry): esta é só a apresentação, e
+ * um quinto modo entra sem tocar aqui.
  */
 export function TransportPicker({ value, onChange, compact = false, hidden }: Props): JSX.Element {
-  const visible = OPTIONS.filter((option) => !(hidden ?? []).includes(option.id));
+  const baseId = useId();
+  const visible = TRANSPORTS.filter((transport) => !(hidden ?? []).includes(transport.id));
+
   return (
     <div
       className={`${styles.wrap} ${compact ? styles.compact : ''}`}
       role="radiogroup"
       aria-label="Como a transmissão viaja"
     >
-      {visible.map((option) => {
-        const selected = value === option.id;
+      {visible.map((transport) => {
+        const selected = value === transport.id;
+        const tipId = `${baseId}-${transport.id}`;
+        const { Icon } = transport;
         return (
-          <button
-            key={option.id}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            className={`${styles.option} ${selected ? styles.optionOn : ''}`}
-            onClick={() => onChange(option.id)}
-          >
-            <span className={styles.head}>
-              <span className={styles.mark} aria-hidden="true" />
-              <span className={styles.label}>{option.label}</span>
-            </span>
-            <span className={styles.tagline}>{option.tagline}</span>
+          <div key={transport.id} className={styles.item}>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              aria-describedby={tipId}
+              className={`${styles.option} ${selected ? styles.optionOn : ''}`}
+              onClick={() => onChange(transport.id)}
+            >
+              <Icon className={styles.icon} />
+              {compact ? null : <span className={styles.label}>{transport.label}</span>}
+            </button>
 
-            {compact ? null : (
+            <span id={tipId} role="tooltip" className={styles.tip}>
+              <span className={styles.tipHead}>
+                {transport.label}
+                {transport.experimental ? <span className={styles.tag}>em construção</span> : null}
+              </span>
+              <span className={styles.tagline}>{transport.tagline}</span>
               <span className={styles.lists}>
-                {option.pros.map((item) => (
+                {transport.pros.map((item) => (
                   <span key={item} className={styles.pro}>
                     {item}
                   </span>
                 ))}
-                {option.cons.map((item) => (
+                {transport.cons.map((item) => (
                   <span key={item} className={styles.con}>
                     {item}
                   </span>
                 ))}
               </span>
-            )}
-          </button>
+            </span>
+          </div>
         );
       })}
     </div>

@@ -914,9 +914,9 @@ export interface AdminSessionTokenRow {
  * compartilhamento de tela em alta resolução com latência baixa e escala melhor
  * que a malha P2P.
  */
-export type TransportMode = 'livekit' | 'p2p' | 'cfsfu';
+export type TransportMode = 'livekit' | 'p2p' | 'cfsfu' | 'vercel-relay';
 
-export const TRANSPORT_MODES: TransportMode[] = ['livekit', 'p2p', 'cfsfu'];
+export const TRANSPORT_MODES: TransportMode[] = ['livekit', 'p2p', 'cfsfu', 'vercel-relay'];
 
 export interface PeerInfo {
   peerId: string;

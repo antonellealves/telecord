@@ -78,6 +78,26 @@ export function RoomPage(): JSX.Element {
     );
   }
 
+  if (transport === 'vercel-relay') {
+    // O pipeline WebCodecs+relay ainda está em construção. Em vez de fingir uma
+    // sala que não transmite, a tela diz a verdade e oferece a saída — sem
+    // apagar a escolha nem quebrar as outras três.
+    return (
+      <StatusScreen
+        title="Vercel Relay em construção"
+        message="Esta quarta opção usa WebCodecs e um relay na Vercel — o transporte de mídia ainda está sendo montado. Enquanto isso, escolha o Servidor, o Direto ou o Cloudflare."
+      >
+        <button
+          type="button"
+          className={`${statusStyles.button} ${statusStyles.primary}`}
+          onClick={() => navigate('/')}
+        >
+          Escolher outro modo
+        </button>
+      </StatusScreen>
+    );
+  }
+
   return <RoomSession roomId={roomId} displayName={displayName} />;
 }
 
