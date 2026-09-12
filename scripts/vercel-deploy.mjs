@@ -130,6 +130,19 @@ const AUTH_ENV = [
 ];
 
 /*
+ * Edge global (Cloudflare Realtime SFU). Opcionais como as de autenticação: sem
+ * elas a terceira opção fica desligada e o produto segue igual. `APP_TOKEN` é
+ * segredo e é gravado como `encrypted` na Vercel, como todo o resto. `APP_ID`
+ * não chega ao navegador — o cliente fala com o SFU pelo proxy /api/cfsfu/*.
+ */
+const CFSFU_ENV = [
+  'CF_REALTIME_ENABLED',
+  'CF_REALTIME_APP_ID',
+  'CF_REALTIME_APP_TOKEN',
+  'CF_REALTIME_MONTHLY_GB_LIMIT',
+];
+
+/*
  * O que NÃO chegou é tão informativo quanto o que chegou, e antes disto o
  * silêncio custou caro: faltando `DATABASE_URL` e as chaves do JWT, o serviço
  * recusava subir em produção e aqui não se via nada — o deploy seguia verde e
@@ -139,7 +152,7 @@ const AUTH_ENV = [
  * deploy, exatamente quais variáveis o ambiente não entregou.
  */
 const ausentes = [];
-for (const key of AUTH_ENV) {
+for (const key of [...AUTH_ENV, ...CFSFU_ENV]) {
   if (process.env[key]) {
     await upsertEnv(key, process.env[key]);
   } else {

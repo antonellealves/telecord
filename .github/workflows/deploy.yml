@@ -129,9 +129,11 @@ jobs:
         env:
           MASK_TOKEN: ${{ secrets.VERCEL_TOKEN || vars.VERCEL_TOKEN }}
           MASK_SECRET: ${{ secrets.LIVEKIT_API_SECRET || vars.LIVEKIT_API_SECRET }}
+          MASK_CF_TOKEN: ${{ secrets.CF_REALTIME_APP_TOKEN || vars.CF_REALTIME_APP_TOKEN }}
         run: |
           if [ -n "${MASK_TOKEN:-}" ]; then echo "::add-mask::$MASK_TOKEN"; fi
           if [ -n "${MASK_SECRET:-}" ]; then echo "::add-mask::$MASK_SECRET"; fi
+          if [ -n "${MASK_CF_TOKEN:-}" ]; then echo "::add-mask::$MASK_CF_TOKEN"; fi
 
       - uses: actions/checkout@v5
 
@@ -185,6 +187,14 @@ jobs:
           MAIL_DRIVER: ${{ secrets.MAIL_DRIVER || vars.MAIL_DRIVER }}
           MAIL_FROM: ${{ secrets.MAIL_FROM || vars.MAIL_FROM }}
           AUTH_COOKIE_SAMESITE: ${{ secrets.AUTH_COOKIE_SAMESITE || vars.AUTH_COOKIE_SAMESITE }}
+
+          # Edge global (Cloudflare Realtime SFU). Opcionais: sem elas o cartão
+          # nem aparece. O APP_TOKEN é segredo de verdade — o lugar dele é em
+          # secrets, e `vars` entra só como reserva (mascarado na etapa acima).
+          CF_REALTIME_ENABLED: ${{ secrets.CF_REALTIME_ENABLED || vars.CF_REALTIME_ENABLED }}
+          CF_REALTIME_APP_ID: ${{ secrets.CF_REALTIME_APP_ID || vars.CF_REALTIME_APP_ID }}
+          CF_REALTIME_APP_TOKEN: ${{ secrets.CF_REALTIME_APP_TOKEN || vars.CF_REALTIME_APP_TOKEN }}
+          CF_REALTIME_MONTHLY_GB_LIMIT: ${{ secrets.CF_REALTIME_MONTHLY_GB_LIMIT || vars.CF_REALTIME_MONTHLY_GB_LIMIT }}
         run: node scripts/vercel-deploy.mjs
 
       # Fecha o ciclo: sem isto, um deploy "verde" ainda pode estar sem
