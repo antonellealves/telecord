@@ -126,6 +126,15 @@ export class CfSfuTransport {
   private readonly subscribed = new Set<string>();
   private readonly trackHandlers = new Set<TrackHandler>();
   private readonly stateHandlers = new Set<StateHandler>();
+  /**
+   * Fila de negociação: só uma operação mexe no SDP da conexão por vez.
+   *
+   * Sem isto, publicar (offer do cliente) e assinar (offer do SFU) podem cair
+   * na mesma `RTCPeerConnection` ao mesmo tempo e colidir — o clássico "glare",
+   * que deixa a conexão num estado de sinalização inconsistente. Serializar é o
+   * que garante que cada oferta/resposta termine antes de a próxima começar.
+   */
+  private queue: Promise<void> = Promise.resolve();
 
   constructor(private readonly options: CfSfuTransportOptions) {
     this.api = options.api ?? defaultCfSfuApi;
@@ -162,9 +171,21 @@ export class CfSfuTransport {
 
   /**
    * Publica as tracks de um stream (tela + áudios) e devolve o anúncio para o
-   * roster. Empurra tudo numa oferta só.
+   * roster. Empurra tudo numa oferta só. Serializado com as demais negociações.
    */
-  async publish(stream: MediaStream): Promise<CfSfuPublishedTrack[]> {
+  publish(stream: MediaStream): Promise<CfSfuPublishedTrack[]> {
+    return this.runExclusive(() => this.publishInternal(stream));
+  }
+
+  /**
+   * Assina as tracks anunciadas por outro par. Serializado com as demais
+   * negociações para não colidir com um publish em andamento.
+   */
+  subscribe(announce: CfSfuAnnounce): Promise<void> {
+    return this.runExclusive(() => this.subscribeInternal(announce));
+  }
+
+  private async publishInternal(stream: MediaStream): Promise<CfSfuPublishedTrack[]> {
     const pc = this.requirePc();
     const sessionId = this.requireSession();
 
@@ -215,7 +236,7 @@ export class CfSfuTransport {
    * Assina as tracks anunciadas por outro par. Se o SFU exigir renegociação
    * imediata (o normal ao puxar), responde ao offer dele.
    */
-  async subscribe(announce: CfSfuAnnounce): Promise<void> {
+  private async subscribeInternal(announce: CfSfuAnnounce): Promise<void> {
     const pc = this.requirePc();
     const sessionId = this.requireSession();
     if (announce.sessionId === sessionId) return; // não se assina a si mesmo
@@ -322,6 +343,22 @@ export class CfSfuTransport {
       stream,
     };
     for (const handler of this.trackHandlers) handler(remoteTrack);
+  }
+
+  /** Roda `task` só depois que a operação anterior da fila terminar. */
+  private async runExclusive<T>(task: () => Promise<T>): Promise<T> {
+    const anterior = this.queue;
+    let liberar: () => void = () => undefined;
+    this.queue = new Promise<void>((resolve) => {
+      liberar = resolve;
+    });
+    // Espera a anterior — inclusive se ela falhou, para uma não travar a fila.
+    await anterior.catch(() => undefined);
+    try {
+      return await task();
+    } finally {
+      liberar();
+    }
   }
 
   private requirePc(): RTCPeerConnection {
