@@ -38,18 +38,32 @@ const LAYERS: Layer[] = [
   {
     id: 'sfu',
     eyebrow: 'Camada 1 · tempo real',
-    title: 'Dois caminhos para a mídia',
+    title: 'Três caminhos para a mídia',
     body:
-      'No modo servidor, um SFU recebe de todos e reenvia para todos — é o que aguenta sala ' +
-      'cheia. No modo direto, cada navegador fala com cada outro e nenhum servidor vê a mídia. ' +
-      'Quem escolhe é quem cria a sala, na entrada, e os dois ambientes são visualmente ' +
-      'distintos de propósito.',
-    chips: ['LiveKit Cloud', 'WebRTC puro', 'escolha por sala'],
-    survives: 'Os dois funcionam com o banco inteiro fora do ar.',
+      'No servidor de mídia, um SFU recebe de todos e reenvia para todos — é o que aguenta ' +
+      'sala cheia. Na conexão direta, cada navegador fala com cada outro e nenhum servidor vê ' +
+      'a mídia. No Cloudflare, um SFU de borda repassa sem recodificar — a tela sobe uma vez, ' +
+      'na qualidade que o navegador de quem compartilha conseguir, e chega igual a cada ' +
+      'assinante. Quem escolhe é quem cria a sala, na entrada, e os três ambientes são ' +
+      'visualmente distintos de propósito.',
+    chips: ['LiveKit Cloud', 'WebRTC puro', 'Cloudflare Realtime', 'escolha por sala'],
+    survives: 'Os três funcionam com o banco inteiro fora do ar.',
+  },
+  {
+    id: 'cloudflare',
+    eyebrow: 'Camada 2 · borda global',
+    title: 'Um SFU que não recodifica',
+    body:
+      'O App Token do Cloudflare Realtime mora só no servidor: o navegador nunca fala direto ' +
+      'com a Cloudflare, sempre por um proxy que confere a presença na sala antes de assinar a ' +
+      'chamada. Como o SFU não tem conceito de sala, é o roster existente — o mesmo heartbeat ' +
+      'da conexão direta — que carrega o anúncio de sessão e track de cada participante.',
+    chips: ['sem recodificação', 'App Token no backend', 'roster reaproveitado'],
+    survives: 'Cota de egress do free tier, avisada antes de estourar — nunca surpresa.',
   },
   {
     id: 'edge',
-    eyebrow: 'Camada 2 · duas funções magras',
+    eyebrow: 'Camada 3 · duas funções magras',
     title: 'O que precisa funcionar sempre',
     body:
       'Uma função assina o JWT de entrada na sala; a outra lista as salas ativas. Só isso. ' +
@@ -60,13 +74,13 @@ const LAYERS: Layer[] = [
   },
   {
     id: 'service',
-    eyebrow: 'Camada 3 · o que precisa de memória',
+    eyebrow: 'Camada 4 · o que precisa de memória',
     title: 'NestJS para tudo que lembra',
     body:
       'Contas, salas persistidas, canais, sons enviados, log, auditoria, painel de ' +
-      'administração — e a sinalização do modo direto, que é caixa-de-correio no banco em ' +
-      'vez de WebSocket. É o único que fala com o banco, e por isso fica separado das duas ' +
-      'camadas acima.',
+      'administração — e a sinalização da conexão direta e do Cloudflare, que é ' +
+      'caixa-de-correio no banco em vez de WebSocket. É o único que fala com o banco, e por ' +
+      'isso fica separado das camadas acima.',
     chips: ['NestJS', 'Prisma', 'TiDB (MySQL)'],
     survives: 'Se cair, o telecord vira o que era antes das contas.',
   },
@@ -79,10 +93,10 @@ interface Stat {
 }
 
 const STATS: Stat[] = [
-  { value: '~54k', label: 'linhas de TypeScript', note: 'monorepo pnpm, 4 pacotes' },
+  { value: '~58k', label: 'linhas de TypeScript', note: 'monorepo pnpm, 4 pacotes' },
   { value: '4 + 6', label: 'dependências de runtime', note: 'raiz + front, e nada mais' },
-  { value: '17', label: 'tabelas no banco', note: '54 rotas HTTP' },
-  { value: '63', label: 'testes', note: 'rodam sem banco e sem rede' },
+  { value: '18', label: 'tabelas no banco', note: '66 rotas HTTP' },
+  { value: '75', label: 'testes', note: 'rodam sem banco e sem rede' },
 ];
 
 interface Decision {
@@ -135,6 +149,22 @@ const DECISIONS: Decision[] = [
       'máquina codifica o vídeo 5 vezes. Havia um limite duro de 6; virou aviso. Quem tem ' +
       'máquina e banda para tentar com mais deve poder — o que não pode é a lentidão virar ' +
       'surpresa, e a saída fica a um clique.',
+  },
+  {
+    title: 'Terceiro transporte, zero refatoração dos outros dois',
+    body:
+      'O Cloudflare entrou como uma página a mais ao lado das que já existiam, reusando o ' +
+      'mesmo desenho de tela e o mesmo roster do modo direto — em vez de forçar os três atrás ' +
+      'de uma abstração comum que nenhum pediu. LiveKit e conexão direta continuam exatamente ' +
+      'como eram; quem nunca escolhe o terceiro nem carrega o código dele.',
+  },
+  {
+    title: 'A credencial liga o recurso — não uma flag ao lado dela',
+    body:
+      'A primeira versão exigia CF_REALTIME_ENABLED=true além das chaves — e uma flag separada ' +
+      'é exatamente o tipo de configuração que fica pela metade: a credencial chega ao ' +
+      'ambiente, a flag não, e o recurso fica desligado em silêncio. Hoje a PRESENÇA da ' +
+      'credencial é o interruptor, do mesmo jeito que já valia para o LiveKit.',
   },
 ];
 
@@ -248,14 +278,15 @@ export function ArchitecturePage(): JSX.Element {
             </Link>
             <p className={styles.tagline}>como é feito</p>
             <h1 className={styles.title}>
-              Dois jeitos de transmitir,
+              Três jeitos de transmitir,
               <br />
-              <span className={styles.titleAccent}>três coisas rodando.</span>
+              <span className={styles.titleAccent}>quatro coisas rodando.</span>
             </h1>
             <p className={styles.lead}>
               Um Discord de voz enxuto: sala com tela compartilhada, chat e soundboard, onde
-              entrar não exige conta. A mídia pode passar por um servidor ou ir direto de um
-              navegador ao outro — e quem decide é quem cria a sala.
+              entrar não exige conta. A mídia pode passar por um servidor, ir direto de um
+              navegador ao outro, ou passar por um SFU de borda que não recodifica nada — e quem
+              decide é quem cria a sala.
             </p>
           </header>
 
@@ -292,7 +323,7 @@ export function ArchitecturePage(): JSX.Element {
               */}
             <Reveal delay={120}>
               <p className={styles.punchline}>
-                As camadas 1 e 2 sobrevivem à morte da 3. Sem banco e sem contas, o telecord
+                As camadas 1, 2 e 3 sobrevivem à morte da 4. Sem banco e sem contas, o telecord
                 continua sendo uma sala de voz que funciona.
               </p>
             </Reveal>

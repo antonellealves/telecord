@@ -82,7 +82,7 @@ export class CloudflareRealtimeClient {
     if (this.config === null) {
       throw serviceUnavailable(
         'cfsfu_desligado',
-        'A opção Edge global não está configurada neste servidor.',
+        'A opção Cloudflare não está configurada neste servidor.',
       );
     }
     return this.config;

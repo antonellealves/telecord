@@ -333,7 +333,7 @@ export function writeTransport(mode: TransportMode): void {
 }
 
 // ---------------------------------------------------------------------------
-// Edge global (Cloudflare Realtime SFU)
+// Cloudflare (Cloudflare Realtime SFU)
 // ---------------------------------------------------------------------------
 
 const CFSFU_BITRATE_KEY = 'telecord.cfsfu.bitrate';
@@ -345,7 +345,7 @@ export type CfSfuBitrateId = (typeof CFSFU_BITRATES)[number];
 const CFSFU_QUALITIES = ['HD', 'FHD', 'QHD', 'UHD'] as const;
 export type CfSfuQualityId = (typeof CFSFU_QUALITIES)[number];
 
-/** Teto de bitrate do vídeo no Edge global. Escolhido na entrada, vale na sala. */
+/** Teto de bitrate do vídeo no Cloudflare. Escolhido na entrada, vale na sala. */
 export function readCfSfuBitrate(): CfSfuBitrateId {
   try {
     const raw = window.localStorage.getItem(CFSFU_BITRATE_KEY);
@@ -363,7 +363,7 @@ export function writeCfSfuBitrate(id: CfSfuBitrateId): void {
   }
 }
 
-/** Resolução alvo do compartilhamento de tela no Edge global. Padrão FHD. */
+/** Resolução alvo do compartilhamento de tela no Cloudflare. Padrão FHD. */
 export function readCfSfuQuality(): CfSfuQualityId {
   try {
     const raw = window.localStorage.getItem(CFSFU_QUALITY_KEY);

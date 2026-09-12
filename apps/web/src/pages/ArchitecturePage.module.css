@@ -138,6 +138,10 @@
   background: linear-gradient(180deg, #8091e4 0%, var(--accent-2) 100%);
 }
 
+.layer4 .layerBar {
+  background: linear-gradient(180deg, var(--accent-2) 0%, var(--warn) 100%);
+}
+
 .layerBody {
   flex: 1;
   min-width: 0;

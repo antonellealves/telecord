@@ -73,7 +73,7 @@ export function JoinPage(): JSX.Element {
   const [transport, setTransport] = useState<TransportMode>(readTransport);
 
   /*
-   * Edge global só aparece quando o servidor confirma que está ligado — o
+   * Cloudflare só aparece quando o servidor confirma que está ligado — o
    * cartão nasce escondido e entra se `enabled`. Junto vem a cota do mês, que
    * avisa perto do teto e bloqueia criar sala cfsfu ao estourar.
    */

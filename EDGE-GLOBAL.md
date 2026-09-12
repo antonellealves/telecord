@@ -1,4 +1,4 @@
-# Edge global — terceira transmissão (Cloudflare Realtime SFU)
+# Cloudflare — terceira transmissão (Realtime SFU)
 
 Terceira opção ao lado do **Servidor de mídia** (LiveKit) e da **Conexão direta**
 (WebRTC P2P), **sem alterar nenhuma das duas**. Id interno: `cfsfu`.
@@ -19,14 +19,17 @@ Todas **só no backend** (Vercel). Nenhuma tem prefixo `VITE_`; o
 
 | Variável | Obrigatória | Padrão | Papel |
 |---|---|---|---|
-| `CF_REALTIME_ENABLED` | — | `false` | Liga a terceira opção. Sem `true`, o cartão nem aparece. |
-| `CF_REALTIME_APP_ID` | se ligado | — | App ID do SFU no dashboard da Cloudflare. |
-| `CF_REALTIME_APP_TOKEN` | se ligado | — | App Token (secret). **Nunca** chega ao browser. |
+| `CF_REALTIME_APP_ID` | para ligar | — | App ID do SFU no dashboard da Cloudflare. |
+| `CF_REALTIME_APP_TOKEN` | para ligar | — | App Token (secret). **Nunca** chega ao browser. |
 | `CF_REALTIME_MONTHLY_GB_LIMIT` | — | `1000` | Cota mensal de egress do free tier, para o aviso/bloqueio na UI. |
+| `CF_REALTIME_ENABLED` | — | — | `false`/`0`/`off` desliga explicitamente mesmo com credencial presente. |
 
-Aceita `CLOUDFLARE_REALTIME_APP_ID` / `CLOUDFLARE_REALTIME_APP_SECRET` como
-reserva. Ligar sem credencial **derruba o boot** (falha explícita, não um cartão
-que some).
+A **presença** de `CF_REALTIME_APP_ID` + `CF_REALTIME_APP_TOKEN` é o interruptor
+— mesmo critério do `LIVEKIT_API_KEY`, sem uma flag separada para lembrar de
+sincronizar junto. Aceita `CLOUDFLARE_REALTIME_APP_ID` /
+`CLOUDFLARE_REALTIME_APP_SECRET` como reserva. Só metade da credencial (um
+definido, outro não) **derruba o boot** (falha explícita, não um cartão que
+some em silêncio).
 
 **Como obter:** dashboard da Cloudflare → Realtime → SFU → criar aplicação →
 copiar App ID e App Token. STUN usado: `stun:stun.cloudflare.com:3478` (grátis).
@@ -132,9 +135,9 @@ codec ao vivo. A cada 15 s o assinante reporta o egress consumido para a cota.
 
 ## 10. Como testar FHD / 30 FPS
 
-1. Configure `CF_REALTIME_ENABLED=true`, `CF_REALTIME_APP_ID`,
-   `CF_REALTIME_APP_TOKEN` no backend.
-2. Suba API + web; entre em `/`, escolha **Edge global** (o cartão só aparece
+1. Configure `CF_REALTIME_APP_ID` e `CF_REALTIME_APP_TOKEN` no backend (isso já
+   liga o recurso — não precisa de `CF_REALTIME_ENABLED`).
+2. Suba API + web; entre em `/`, escolha **Cloudflare** (o cartão só aparece
    com o servidor confirmando `enabled`). Deixe o bitrate em 12 Mbps.
 3. Abra a **mesma sala em dois navegadores** (ou duas máquinas). Em um,
    selecione **1080p** e **Compartilhar tela**.
@@ -146,7 +149,7 @@ codec ao vivo. A cada 15 s o assinante reporta o egress consumido para a cota.
 
 ## 11. Comparar Cloudflare vs LiveKit vs P2P
 
-| | Servidor de mídia (LiveKit) | Conexão direta (P2P) | Edge global (cfsfu) |
+| | Servidor de mídia (LiveKit) | Conexão direta (P2P) | Cloudflare (cfsfu) |
 |---|---|---|---|
 | Onde a mídia passa | SFU LiveKit | direto entre navegadores | SFU de borda Cloudflare |
 | Escala | alta | ~6 pessoas | alta |

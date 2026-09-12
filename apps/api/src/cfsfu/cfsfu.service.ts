@@ -145,7 +145,7 @@ export class CfsfuService {
       select: { id: true },
     });
     if (presente === null) {
-      throw forbidden('fora_da_sala', 'Entre na sala antes de usar o Edge global.');
+      throw forbidden('fora_da_sala', 'Entre na sala antes de usar o Cloudflare.');
     }
   }
 }

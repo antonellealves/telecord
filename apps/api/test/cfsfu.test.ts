@@ -1,5 +1,5 @@
 /**
- * O transporte Edge global (Cloudflare Realtime SFU), na borda que dá para
+ * O transporte Cloudflare (Cloudflare Realtime SFU), na borda que dá para
  * testar sem navegador: a leitura da configuração (ligado/desligado, cota) e o
  * cliente HTTP do SFU (criação de sessão, publicação de tracks, e a recusa de
  * respostas ruins).
@@ -27,11 +27,10 @@ function envWith(extra: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return { ...BASE_ENV, ...extra };
 }
 
-/** Config com o Edge global ligado, para construir o cliente nos testes. */
+/** Config com o Cloudflare ligado, para construir o cliente nos testes. */
 function enabledConfig(): AppConfig {
   return loadConfig(
     envWith({
-      CF_REALTIME_ENABLED: 'true',
       CF_REALTIME_APP_ID: 'app-de-teste',
       CF_REALTIME_APP_TOKEN: 'token-de-teste',
     }),
@@ -56,12 +55,12 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-describe('configuração do Edge global', () => {
-  it('desligado por padrão devolve null', () => {
+describe('configuração do Cloudflare', () => {
+  it('sem credencial devolve null', () => {
     assert.equal(loadConfig(BASE_ENV).cfsfu, null);
   });
 
-  it('ligado com credencial traz appId, token e cota padrão de 1000 GB', () => {
+  it('a PRESENÇA da credencial liga — sem flag separada para lembrar', () => {
     const config = enabledConfig();
     assert.notEqual(config.cfsfu, null);
     assert.equal(config.cfsfu?.appId, 'app-de-teste');
@@ -72,7 +71,6 @@ describe('configuração do Edge global', () => {
   it('respeita CF_REALTIME_MONTHLY_GB_LIMIT', () => {
     const config = loadConfig(
       envWith({
-        CF_REALTIME_ENABLED: 'true',
         CF_REALTIME_APP_ID: 'x',
         CF_REALTIME_APP_TOKEN: 'y',
         CF_REALTIME_MONTHLY_GB_LIMIT: '250',
@@ -81,14 +79,24 @@ describe('configuração do Edge global', () => {
     assert.equal(config.cfsfu?.monthlyLimitGb, 250);
   });
 
-  it('ligado sem credencial derruba o boot', () => {
-    assert.throws(() => loadConfig(envWith({ CF_REALTIME_ENABLED: 'true' })), /CF_REALTIME_APP_ID/);
+  it('CF_REALTIME_ENABLED=false desliga mesmo com credencial presente', () => {
+    const config = loadConfig(
+      envWith({
+        CF_REALTIME_APP_ID: 'x',
+        CF_REALTIME_APP_TOKEN: 'y',
+        CF_REALTIME_ENABLED: 'false',
+      }),
+    );
+    assert.equal(config.cfsfu, null);
+  });
+
+  it('só metade da credencial derruba o boot', () => {
+    assert.throws(() => loadConfig(envWith({ CF_REALTIME_APP_ID: 'só-o-id' })), /CF_REALTIME_APP_ID/);
   });
 
   it('aceita os nomes CLOUDFLARE_REALTIME_* como reserva', () => {
     const config = loadConfig(
       envWith({
-        CF_REALTIME_ENABLED: '1',
         CLOUDFLARE_REALTIME_APP_ID: 'via-alias',
         CLOUDFLARE_REALTIME_APP_SECRET: 'segredo-alias',
       }),

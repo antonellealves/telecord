@@ -26,7 +26,7 @@ interface Props {
 }
 
 /**
- * Sala no modo Edge global (Cloudflare Realtime SFU).
+ * Sala no modo Cloudflare (Cloudflare Realtime SFU).
  *
  * Terceiro paradigma, ao lado do LiveKit e do P2P — e sem tocar em nenhum dos
  * dois. Foco em compartilhamento de tela de qualidade máxima: o SFU é
@@ -79,11 +79,11 @@ export function CloudflareRoom({ roomId, displayName, peerId, onLeave }: Props):
             <div className={styles.identity}>
               <span className={styles.brand}>Telecord</span>
               <h1 className={styles.title}>{roomId}</h1>
-              <span className={styles.modeTag}>edge global</span>
+              <span className={styles.modeTag}>cloudflare</span>
             </div>
           </header>
           <p className={styles.warn}>
-            O Edge global não está configurado neste servidor. Volte e escolha o Servidor de mídia
+            O Cloudflare Realtime não está configurado neste servidor. Volte e escolha o Servidor de mídia
             ou a Conexão direta.
           </p>
           <div className={styles.controls}>
@@ -113,7 +113,7 @@ export function CloudflareRoom({ roomId, displayName, peerId, onLeave }: Props):
           <div className={styles.identity}>
             <span className={styles.brand}>Telecord</span>
             <h1 className={styles.title}>{roomId}</h1>
-            <span className={styles.modeTag}>edge global</span>
+            <span className={styles.modeTag}>cloudflare</span>
           </div>
           <div className={styles.headerRight}>
             <span className={styles.counter}>

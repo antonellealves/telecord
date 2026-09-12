@@ -41,7 +41,7 @@ interface Options {
 }
 
 /**
- * Conduz uma sala no modo Edge global (Cloudflare Realtime SFU).
+ * Conduz uma sala no modo Cloudflare (Cloudflare Realtime SFU).
  *
  * Junta três peças: o `CfSfuTransport` (a conexão com o SFU), o roster do
  * telecord (heartbeat que anuncia e descobre tracks — o SFU não tem descoberta)

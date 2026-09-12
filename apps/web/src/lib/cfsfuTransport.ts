@@ -1,5 +1,5 @@
 /**
- * Transporte do Cloudflare Realtime SFU — o "media plane" do modo Edge global.
+ * Transporte do Cloudflare Realtime SFU — o "media plane" do modo Cloudflare.
  *
  * Uma SESSÃO da Cloudflare é uma `RTCPeerConnection`. Este transporte mantém
  * UMA por participante: as tracks que a pessoa PUBLICA entram como `sendonly`,

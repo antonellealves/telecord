@@ -17,7 +17,7 @@ import { CfsfuService } from './cfsfu.service';
 import { isSdp } from './cloudflare-realtime.client';
 
 /**
- * Proxy do Cloudflare Realtime SFU — o "control plane" do transporte Edge global.
+ * Proxy do Cloudflare Realtime SFU — o "control plane" do transporte Cloudflare.
  *
  * O `appToken` vive só no servidor, então o navegador nunca fala com o SFU
  * direto: ele chama estas rotas, que validam a participação na sala e assinam a

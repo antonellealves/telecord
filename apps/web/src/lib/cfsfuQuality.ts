@@ -1,5 +1,5 @@
 /**
- * Qualidade do compartilhamento de tela no transporte cfsfu (Edge global).
+ * Qualidade do compartilhamento de tela no transporte cfsfu (Cloudflare).
  *
  * A razão de existir desta opção é qualidade máxima: o SFU da Cloudflare é
  * passthrough (não recodifica), então o que chega ao assinante é exatamente o

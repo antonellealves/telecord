@@ -190,23 +190,29 @@ function loadIceConfig(env: NodeJS.ProcessEnv): IceConfig {
 /**
  * Lê a configuração do Cloudflare Realtime SFU.
  *
- * Ligado só quando `CF_REALTIME_ENABLED` é verdadeiro E há credencial. Ligado
- * sem credencial derruba o boot de propósito — meia configuração viraria um 500
- * na primeira sala, não um cartão que some. Desligado devolve `null`, e a
- * terceira opção nem aparece. Aceita os nomes `CLOUDFLARE_REALTIME_*` como
- * reserva dos `CF_REALTIME_*`.
+ * Ligado quando HÁ credencial — mesmo critério do LiveKit e do TURN logo acima:
+ * a presença da chave é o interruptor, sem uma flag `_ENABLED` à parte para
+ * lembrar de sincronizar junto. Um flag separado é exatamente o tipo de
+ * configuração que fica pela metade: as credenciais chegam ao ambiente, a flag
+ * não, e o recurso fica desligado em silêncio sem nenhum log dizendo por quê.
+ *
+ * `CF_REALTIME_ENABLED=false` ainda DESLIGA explicitamente, para quem quiser
+ * manter a credencial no ambiente mas tirar a opção da tela sem apagar nada.
+ * Aceita os nomes `CLOUDFLARE_REALTIME_*` como reserva dos `CF_REALTIME_*`.
  */
 function loadCfSfuConfig(env: NodeJS.ProcessEnv): CfSfuConfig | null {
-  const enabledRaw = (env.CF_REALTIME_ENABLED?.trim() ?? '').toLowerCase();
-  const enabled = enabledRaw === 'true' || enabledRaw === '1' || enabledRaw === 'on';
-  if (!enabled) return null;
-
   const appId = (env.CF_REALTIME_APP_ID ?? env.CLOUDFLARE_REALTIME_APP_ID)?.trim() ?? '';
   const appToken =
     (env.CF_REALTIME_APP_TOKEN ?? env.CLOUDFLARE_REALTIME_APP_SECRET)?.trim() ?? '';
+
+  const disabledRaw = (env.CF_REALTIME_ENABLED?.trim() ?? '').toLowerCase();
+  const explicitlyDisabled = disabledRaw === 'false' || disabledRaw === '0' || disabledRaw === 'off';
+  if (explicitlyDisabled) return null;
+
+  if (appId === '' && appToken === '') return null;
   if (appId === '' || appToken === '') {
     throw new ConfigError(
-      'CF_REALTIME_ENABLED=true exige CF_REALTIME_APP_ID e CF_REALTIME_APP_TOKEN.',
+      'CF_REALTIME_APP_ID e CF_REALTIME_APP_TOKEN vão juntos ou nenhum dos dois.',
     );
   }
 

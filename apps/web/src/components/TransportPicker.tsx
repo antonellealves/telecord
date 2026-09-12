@@ -7,7 +7,7 @@ interface Props {
   onChange: (mode: TransportMode) => void;
   /** Some com o texto longo onde não cabe (dentro da sala, por exemplo). */
   compact?: boolean;
-  /** Opções a esconder — ex.: `['cfsfu']` quando o Edge global está desligado. */
+  /** Opções a esconder — ex.: `['cfsfu']` quando o Cloudflare está desligado. */
   hidden?: TransportMode[];
 }
 
@@ -47,7 +47,7 @@ const OPTIONS: Option[] = [
   },
   {
     id: 'cfsfu',
-    label: 'Edge global',
+    label: 'Cloudflare',
     tagline: 'Cloudflare Realtime · experimental',
     pros: ['Baixa latência', 'Qualidade máxima', 'Rede global'],
     cons: ['Free tier da Cloudflare', 'Consome banda de quem assiste'],

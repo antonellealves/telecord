@@ -908,7 +908,7 @@ export interface AdminSessionTokenRow {
 /**
  * Qual pilha de transmissão a sala está usando.
  *
- * `cfsfu` é o Cloudflare Realtime SFU — a terceira opção, "Edge global": um SFU
+ * `cfsfu` é o Cloudflare Realtime SFU — a terceira opção, "Cloudflare": um SFU
  * de borda que NÃO recodifica a mídia (passthrough), então a qualidade final é
  * a que o navegador de quem compartilha conseguir codificar. Existe para
  * compartilhamento de tela em alta resolução com latência baixa e escala melhor
@@ -980,7 +980,7 @@ export interface IceConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Cloudflare Realtime SFU (transporte 'cfsfu' — "Edge global")
+// Cloudflare Realtime SFU (transporte 'cfsfu' — "Cloudflare")
 //
 // O SFU da Cloudflare é pub/sub de Sessions e Tracks, SEM conceito de sala: o
 // roster e a descoberta de tracks são do telecord (carregados pelo heartbeat).
