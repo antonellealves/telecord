@@ -1,10 +1,10 @@
 import { useCallback, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { LiveKitRoom } from '@livekit/components-react';
-import { normalizeRoomId, validateRoomId } from '@telecord/shared';
+import { normalizeRoomId, validateRoomId, type TransportMode } from '@telecord/shared';
 import { StatusScreen } from '../components/StatusScreen';
 import { useDisplayName } from '../hooks/useDisplayName';
-import { readPeerId, readTransport } from '../lib/storage';
+import { readPeerId, readTransport, writeTransport } from '../lib/storage';
 import { P2PRoom } from './P2PRoom';
 import { CloudflareRoom } from './CloudflareRoom';
 import { useToken } from '../hooks/useToken';
@@ -19,6 +19,17 @@ export function RoomPage(): JSX.Element {
   const [displayName] = useDisplayName();
   const navigate = useNavigate();
   const [peerId] = useState(readPeerId);
+  /*
+   * O transporte vive em ESTADO, não é lido uma vez. É o que permite trocar de
+   * modo SEM sair da sala: mudar aqui remonta o componente da sala (a conexão
+   * antiga cai na limpeza, a nova sobe) com o mesmo `roomId` e a mesma URL —
+   * nenhuma navegação.
+   */
+  const [transport, setTransport] = useState<TransportMode>(readTransport);
+  const changeTransport = useCallback((mode: TransportMode) => {
+    writeTransport(mode);
+    setTransport(mode);
+  }, []);
 
   const roomId = normalizeRoomId(params.roomId ?? '');
   const configError = getConfigError();
@@ -50,12 +61,10 @@ export function RoomPage(): JSX.Element {
   }
 
   /*
-   * O paradigma escolhido na entrada decide QUAL sala abrir. São duas pilhas
-   * diferentes — uma fala com o SFU, a outra direto entre navegadores —, e a
-   * troca acontece aqui, uma vez, em vez de cada componente lá dentro ter que
-   * saber em qual modo está.
+   * O paradigma escolhido decide QUAL sala montar. A troca acontece aqui — o
+   * `changeTransport` remonta a sala no mesmo endereço, e cada componente só
+   * precisa saber pedir a troca, não em qual modo está.
    */
-  const transport = readTransport();
   if (transport === 'p2p') {
     return (
       <P2PRoom
@@ -63,6 +72,7 @@ export function RoomPage(): JSX.Element {
         displayName={displayName}
         peerId={peerId}
         onLeave={() => navigate('/')}
+        onChangeTransport={changeTransport}
       />
     );
   }
@@ -74,6 +84,7 @@ export function RoomPage(): JSX.Element {
         displayName={displayName}
         peerId={peerId}
         onLeave={() => navigate('/')}
+        onChangeTransport={changeTransport}
       />
     );
   }
@@ -98,7 +109,9 @@ export function RoomPage(): JSX.Element {
     );
   }
 
-  return <RoomSession roomId={roomId} displayName={displayName} />;
+  return (
+    <RoomSession roomId={roomId} displayName={displayName} onChangeTransport={changeTransport} />
+  );
 }
 
 type Phase = 'live' | 'left' | 'dropped' | 'failed';
@@ -106,9 +119,11 @@ type Phase = 'live' | 'left' | 'dropped' | 'failed';
 function RoomSession({
   roomId,
   displayName,
+  onChangeTransport,
 }: {
   roomId: string;
   displayName: string;
+  onChangeTransport: (mode: TransportMode) => void;
 }): JSX.Element {
   const { state, retry } = useToken(roomId, displayName);
   const [phase, setPhase] = useState<Phase>('live');
@@ -224,6 +239,7 @@ function RoomSession({
         onLeaveIntent={() => {
           leavingRef.current = true;
         }}
+        onChangeTransport={onChangeTransport}
       />
     </LiveKitRoom>
   );

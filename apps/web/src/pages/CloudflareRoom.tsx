@@ -13,9 +13,9 @@ import {
   readCfSfuBitrate,
   readCfSfuQuality,
   writeCfSfuQuality,
-  writeTransport,
   type CfSfuQualityId,
 } from '../lib/storage';
+import type { TransportMode } from '@telecord/shared';
 import styles from './P2PRoom.module.css';
 
 interface Props {
@@ -23,6 +23,7 @@ interface Props {
   displayName: string;
   peerId: string;
   onLeave: () => void;
+  onChangeTransport: (mode: TransportMode) => void;
 }
 
 /**
@@ -34,7 +35,13 @@ interface Props {
  * codificar. Reaproveita o desenho do modo direto (mesmo CSS), porque a
  * estrutura — quadros num palco, barra de controles — é a mesma.
  */
-export function CloudflareRoom({ roomId, displayName, peerId, onLeave }: Props): JSX.Element {
+export function CloudflareRoom({
+  roomId,
+  displayName,
+  peerId,
+  onLeave,
+  onChangeTransport,
+}: Props): JSX.Element {
   const [iceServers, setIceServers] = useState<RTCIceServer[]>(DEFAULT_ICE_SERVERS);
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [quality, setQuality] = useState<CfSfuQualityId>(readCfSfuQuality);
@@ -90,12 +97,9 @@ export function CloudflareRoom({ roomId, displayName, peerId, onLeave }: Props):
             <button
               type="button"
               className={`${styles.button}`}
-              onClick={() => {
-                writeTransport('livekit');
-                onLeave();
-              }}
+              onClick={() => onChangeTransport('livekit')}
             >
-              <span className={styles.text}>Voltar ao início</span>
+              <span className={styles.text}>Usar o Servidor de mídia</span>
             </button>
           </div>
         </div>
@@ -204,8 +208,7 @@ export function CloudflareRoom({ roomId, displayName, peerId, onLeave }: Props):
               compact
               onChange={(mode) => {
                 if (mode === 'cfsfu') return;
-                writeTransport(mode);
-                onLeave();
+                onChangeTransport(mode);
               }}
             />
           </div>

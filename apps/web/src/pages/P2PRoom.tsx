@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { P2P_COMFORT_PEERS, parseRoomMessage } from '@telecord/shared';
+import { P2P_COMFORT_PEERS, parseRoomMessage, type TransportMode } from '@telecord/shared';
 import { AmbientGradient } from '../components/AmbientGradient';
 import { ChatPanel } from '../components/ChatPanel';
 import { DeviceSettings } from '../components/DeviceSettings';
@@ -51,7 +50,6 @@ import {
   writeParticipantsOpen,
   writeScreenQuality,
   writeTalkMode,
-  writeTransport,
   applyTheme,
   readTheme,
   writeTheme,
@@ -65,6 +63,7 @@ interface Props {
   displayName: string;
   peerId: string;
   onLeave: () => void;
+  onChangeTransport: (mode: TransportMode) => void;
 }
 
 const ESTADO_TEXTO: Record<RemotePeer['state'], string> = {
@@ -204,8 +203,7 @@ function Tile({
  * etiqueta: os dois ambientes têm limitações diferentes (aqui cabem 6 pessoas,
  * e rede difícil não conecta), e confundi-los é o que gera a queixa errada.
  */
-export function P2PRoom({ roomId, displayName, peerId, onLeave }: Props): JSX.Element {
-  const navigate = useNavigate();
+export function P2PRoom({ roomId, displayName, peerId, onLeave, onChangeTransport }: Props): JSX.Element {
   const { toasts, push, dismiss } = useToasts();
   const { status: authStatus } = useAuth();
   const sound = useSoundVolume();
@@ -883,9 +881,10 @@ export function P2PRoom({ roomId, displayName, peerId, onLeave }: Props): JSX.El
               compact
               onChange={(mode) => {
                 if (mode === 'p2p') return;
-                writeTransport(mode);
+                // Solta a mídia local antes de trocar; o pai remonta a sala no
+                // novo modo, no mesmo endereço — sem recarregar a página.
                 for (const track of localStream?.getTracks() ?? []) track.stop();
-                navigate(0);
+                onChangeTransport(mode);
               }}
             />
           </div>

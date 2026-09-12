@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { RoomAudioRenderer, useRoomContext } from '@livekit/components-react';
 import { useNavigate } from 'react-router-dom';
+import type { TransportMode } from '@telecord/shared';
 import { AmbientGradient } from '../components/AmbientGradient';
 import { AudioPlaybackGate } from '../components/AudioPlaybackGate';
 import { CameraStrip } from '../components/CameraStrip';
@@ -16,6 +17,7 @@ import { ScreenStage } from '../components/ScreenStage';
 import { Soundboard } from '../components/Soundboard';
 import { ParticipantOverlay } from '../components/ParticipantOverlay';
 import { ToastStack } from '../components/ToastStack';
+import { TransportPicker } from '../components/TransportPicker';
 import { useAuth } from '../hooks/useAuth';
 import { useAway } from '../hooks/useAway';
 import { useCameras } from '../hooks/useCameras';
@@ -50,6 +52,7 @@ import styles from './RoomPage.module.css';
 interface RoomShellProps {
   roomId: string;
   onLeaveIntent: () => void;
+  onChangeTransport: (mode: TransportMode) => void;
 }
 
 type PanelWidthStyle = CSSProperties & {
@@ -58,7 +61,7 @@ type PanelWidthStyle = CSSProperties & {
 };
 
 /** Interior da sala. Só existe dentro do contexto do LiveKitRoom. */
-export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Element {
+export function RoomShell({ roomId, onLeaveIntent, onChangeTransport }: RoomShellProps): JSX.Element {
   const room = useRoomContext();
   const status = useRoomConnectionStatus();
   const participants = useParticipantViews();
@@ -237,6 +240,20 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
             ) : null}
           </div>
           <div className={styles.headerRight}>
+            {/*
+              * Trocar de modo aqui NÃO sai da sala: `onLeaveIntent` marca a
+              * desconexão como voluntária (senão viraria "conexão caída") e o
+              * pai remonta a sala no novo transporte, no mesmo endereço.
+              */}
+            <TransportPicker
+              value="livekit"
+              compact
+              onChange={(mode) => {
+                if (mode === 'livekit') return;
+                onLeaveIntent();
+                onChangeTransport(mode);
+              }}
+            />
             <ConnectionBanner status={status} />
             <GamificationCenter />
           </div>
