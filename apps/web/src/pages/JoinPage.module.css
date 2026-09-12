@@ -428,6 +428,11 @@
  * Navegação de rodapé. Fica no tom mais apagado da tela de propósito: quem
  * chega aqui quer criar uma sala, e estes links são para quem procura.
  */
+.progressRow {
+  display: flex;
+  justify-content: center;
+}
+
 .footerNav {
   display: flex;
   justify-content: center;

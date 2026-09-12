@@ -12,6 +12,7 @@ import {
 import { ActiveRoomsList } from '../components/ActiveRoomsList';
 import { AmbientGradient } from '../components/AmbientGradient';
 import { ChannelsList } from '../components/ChannelsList';
+import { GamificationCenter } from '../components/GamificationCenter';
 import { useActiveRooms } from '../hooks/useActiveRooms';
 import { useChannelDirectory } from '../hooks/useChannelDirectory';
 import { useRoomDirectory } from '../hooks/useRoomDirectory';
@@ -19,6 +20,7 @@ import { TransportPicker } from '../components/TransportPicker';
 import { useAuth } from '../hooks/useAuth';
 import { useDisplayName } from '../hooks/useDisplayName';
 import { useMicrophonePermission } from '../hooks/useMicrophonePermission';
+import { trackEvent } from '../lib/gamification';
 import { generateRoomId } from '../lib/media';
 import { readLastRoom, readTransport, writeLastRoom, writeTransport } from '../lib/storage';
 import styles from './JoinPage.module.css';
@@ -85,7 +87,13 @@ export function JoinPage(): JSX.Element {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    enterRoom(room.trim() === '' ? generateRoomId() : slugifyRoomId(room));
+    const blank = room.trim() === '';
+    // Nome em branco significa sala nova, criada por quem entra: é a missão do
+    // anfitrião. Entrar numa sala existente pela lista não conta.
+    if (blank) {
+      trackEvent({ type: 'room.create' });
+    }
+    enterRoom(blank ? generateRoomId() : slugifyRoomId(room));
   }
 
   return (
@@ -275,6 +283,10 @@ export function JoinPage(): JSX.Element {
             * de navegação, não controle de acesso: as rotas de administração
             * respondem 403 por conta própria para quem digitar o endereço.
             */}
+          <div className={styles.progressRow}>
+            <GamificationCenter variant="hero" />
+          </div>
+
           <nav className={styles.footerNav} aria-label="Sobre o projeto">
             <Link to="/arquitetura" className={styles.footerLink}>
               como é feito

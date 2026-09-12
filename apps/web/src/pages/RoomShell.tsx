@@ -9,6 +9,7 @@ import { ChatPanel } from '../components/ChatPanel';
 import { ConnectionBanner } from '../components/ConnectionBanner';
 import { ControlBar } from '../components/ControlBar';
 import { DeviceSettings } from '../components/DeviceSettings';
+import { GamificationCenter } from '../components/GamificationCenter';
 import { ParticipantSidebar } from '../components/ParticipantSidebar';
 import { RoomPanel } from '../components/RoomPanel';
 import { ScreenStage } from '../components/ScreenStage';
@@ -30,7 +31,9 @@ import { useSoundVolume } from '../hooks/useSoundVolume';
 import { useTalkControls } from '../hooks/useTalkControls';
 import { useForcedMove } from '../hooks/useForcedMove';
 import { useOverlay } from '../hooks/useOverlay';
+import { useRoomGamification } from '../hooks/useRoomGamification';
 import { useToasts } from '../hooks/useToasts';
+import { trackEvent, trackSoundPlayed } from '../lib/gamification';
 import type { ScreenQualityId } from '../lib/media';
 import {
   applyTheme,
@@ -142,6 +145,37 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
     onError: (message) => push('error', message),
   });
 
+  // Progresso de missões: o estado da sala vira eventos aqui, num só lugar.
+  useRoomGamification({
+    roomId,
+    transport: 'livekit',
+    isMicOn: isMicrophoneEnabled,
+    isCameraOn: cameras.isLocalOn,
+    isSharing: shares.isLocalSharing,
+    isAway,
+    isOverlayOpen: overlay.isOpen,
+    participantCount: participants.length,
+    themeId,
+  });
+
+  // Chat e soundboard não são estado, e sim ação: contam no instante do clique.
+  const sendChatTracked = useCallback(
+    (body: string) => {
+      if (body.trim() !== '') {
+        trackEvent({ type: 'chat.send' });
+      }
+      sendChat(body);
+    },
+    [sendChat],
+  );
+  const playSoundTracked = useCallback(
+    (soundId: string) => {
+      trackSoundPlayed();
+      playSound(soundId);
+    },
+    [playSound],
+  );
+
   // O tema mora no <html>, fora da árvore do React: aplicar por efeito é o
   // que mantém o atributo em dia sem cada componente ter que saber dele.
   useEffect(() => {
@@ -202,7 +236,10 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
               />
             ) : null}
           </div>
-          <ConnectionBanner status={status} />
+          <div className={styles.headerRight}>
+            <ConnectionBanner status={status} />
+            <GamificationCenter />
+          </div>
         </header>
 
         {channelNav.channel !== null ? (
@@ -251,7 +288,7 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
               </div>
               <ChatPanel
                 messages={messages}
-                onSend={sendChat}
+                onSend={sendChatTracked}
                 onClose={() => setIsChatOpen(false)}
                 peerVolume={peerVolume}
               />
@@ -304,7 +341,7 @@ export function RoomShell({ roomId, onLeaveIntent }: RoomShellProps): JSX.Elemen
               isUploading={roomSounds.isUploading}
               onUpload={(files) => void roomSounds.upload(files)}
               onDelete={(soundId) => void roomSounds.remove(soundId)}
-              onPlay={playSound}
+              onPlay={playSoundTracked}
               playing={playing}
               onStop={stopSound}
               onClose={() => setIsSoundboardOpen(false)}

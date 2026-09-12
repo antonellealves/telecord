@@ -4,6 +4,7 @@ import { P2P_COMFORT_PEERS, parseRoomMessage } from '@telecord/shared';
 import { AmbientGradient } from '../components/AmbientGradient';
 import { ChatPanel } from '../components/ChatPanel';
 import { DeviceSettings } from '../components/DeviceSettings';
+import { GamificationCenter } from '../components/GamificationCenter';
 import { Soundboard } from '../components/Soundboard';
 import { ParticipantOverlay } from '../components/ParticipantOverlay';
 import { ToastStack } from '../components/ToastStack';
@@ -24,6 +25,8 @@ import {
 } from '../components/icons';
 import { useP2PMesh, type RemotePeer } from '../hooks/useP2PMesh';
 import { useP2PVolume } from '../hooks/useP2PVolume';
+import { useRoomGamification } from '../hooks/useRoomGamification';
+import { trackEvent, trackSoundPlayed } from '../lib/gamification';
 import { useRoomSounds } from '../hooks/useRoomSounds';
 import { useTileLayout } from '../hooks/useTileLayout';
 import { useOverlay } from '../hooks/useOverlay';
@@ -316,10 +319,26 @@ export function P2PRoom({ roomId, displayName, peerId, onLeave }: Props): JSX.El
     applyTheme(themeId);
   }, [themeId]);
 
+  // Mesmo progresso de missões da sala do LiveKit, pelo outro cano. O overlay,
+  // temas, pico de gente e combos valem igual; "ausente" não existe no modo
+  // direto, então entra fixo como falso.
+  useRoomGamification({
+    roomId,
+    transport: 'p2p',
+    isMicOn: micOn,
+    isCameraOn: camOn,
+    isSharing: screenOn,
+    isAway: false,
+    isOverlayOpen: overlay.isOpen,
+    participantCount: mesh.peers.length + 1,
+    themeId,
+  });
+
   const enviarChat = useCallback(
     (body: string) => {
       const trimmed = body.trim().slice(0, 500);
       if (trimmed === '') return;
+      trackEvent({ type: 'chat.send' });
       const message = { type: 'chat' as const, id: crypto.randomUUID(), body: trimmed, sentAt: Date.now() };
       mesh.broadcast(JSON.stringify(message));
       // Aparece na hora para quem escreveu: o canal não devolve o próprio eco.
@@ -335,6 +354,7 @@ export function P2PRoom({ roomId, displayName, peerId, onLeave }: Props): JSX.El
 
   const tocarSom = useCallback(
     (soundId: string) => {
+      trackSoundPlayed();
       mesh.broadcast(JSON.stringify({ type: 'sound', soundId, sentAt: Date.now() }));
       tocar(soundId);
     },
@@ -494,6 +514,7 @@ export function P2PRoom({ roomId, displayName, peerId, onLeave }: Props): JSX.El
                 desfazer arrumação
               </button>
             ) : null}
+            <GamificationCenter />
           </div>
         </header>
 

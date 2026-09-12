@@ -21,6 +21,14 @@
   padding: 2px 4px;
 }
 
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .identity {
   /* Âncora da ficha da sala, que é posicionada em relação a este bloco. */
   position: relative;
