@@ -1049,6 +1049,36 @@ export interface CfCloseBody {
   force: boolean;
 }
 
+/**
+ * DataChannel no SFU — endpoint PRÓPRIO, diferente de `tracks/new`.
+ *
+ * Mesma forma pub/sub (publicador cria `location: 'local'`, assinante puxa com
+ * `location: 'remote'` + `sessionId` do publicador), mas é o canal por onde
+ * chat e soundboard viajam — nunca áudio/vídeo, que continuam em tracks.
+ */
+export type CfDataChannelRequest =
+  | { location: 'local'; dataChannelName: string; ordered?: boolean; maxRetransmits?: number }
+  | { location: 'remote'; sessionId: string; dataChannelName: string };
+
+export interface CfDataChannelResult {
+  dataChannelName?: string;
+  sessionId?: string;
+  id?: number;
+  errorCode?: string;
+  errorDescription?: string;
+}
+
+/** Corpo de `POST /datachannels/new`. */
+export interface CfDataChannelsBody {
+  dataChannels: CfDataChannelRequest[];
+}
+
+export interface CfDataChannelsResult {
+  dataChannels: CfDataChannelResult[];
+  errorCode?: string;
+  errorDescription?: string;
+}
+
 /** Anúncio do que um par publicou no SFU, carregado pelo roster. */
 export interface CfSfuAnnounce {
   sessionId: string;

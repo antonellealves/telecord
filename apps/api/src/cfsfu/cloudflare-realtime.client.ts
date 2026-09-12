@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type {
   CfCloseBody,
+  CfDataChannelsBody,
+  CfDataChannelsResult,
   CfRenegotiateBody,
   CfSdp,
   CfSessionResult,
@@ -75,6 +77,23 @@ export class CloudflareRealtimeClient {
       `/sessions/${encodeURIComponent(sessionId)}/tracks/close`,
       body,
       isTracksResult,
+    );
+  }
+
+  /**
+   * `POST /sessions/:id/datachannels/new` — endpoint PRÓPRIO, diferente de
+   * tracks: é por aqui que chat e soundboard publicam/assinam um DataChannel
+   * nomeado, nunca áudio/vídeo.
+   */
+  async newDataChannels(
+    sessionId: string,
+    body: CfDataChannelsBody,
+  ): Promise<CfDataChannelsResult> {
+    return this.call(
+      'POST',
+      `/sessions/${encodeURIComponent(sessionId)}/datachannels/new`,
+      body,
+      isDataChannelsResult,
     );
   }
 
@@ -178,4 +197,8 @@ function isTracksResult(value: unknown): value is CfTracksResult {
 function isSimpleResult(value: unknown): value is CfSimpleResult {
   // Sucesso vem como corpo vazio; erro já foi tratado por `errorCode` acima.
   return isRecord(value);
+}
+
+function isDataChannelsResult(value: unknown): value is CfDataChannelsResult {
+  return isRecord(value) && Array.isArray(value.dataChannels);
 }
