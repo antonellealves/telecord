@@ -303,15 +303,27 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: Production
+    env:
+      # A chave privada de SSH deveria SEMPRE viver em `secrets` — como
+      # `vars`, ela fica em texto plano e não é mascarada em log. O fallback
+      # existe só para não travar quem colou no lugar errado sem perceber;
+      # mova para Environment secrets assim que possível.
+      LIVEKIT_VM_SSH_KEY: ${{ secrets.LIVEKIT_VM_SSH_KEY || vars.LIVEKIT_VM_SSH_KEY }}
     steps:
+      - name: Mascara a chave, se veio de variable em texto plano
+        run: |
+          if [ -n "${LIVEKIT_VM_SSH_KEY:-}" ]; then
+            echo "::add-mask::$LIVEKIT_VM_SSH_KEY"
+          fi
+
       - uses: actions/checkout@v5
 
       - name: Copia os arquivos de deploy para a VM
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.LIVEKIT_VM_HOST }}
-          username: ${{ secrets.LIVEKIT_VM_USER }}
-          key: ${{ secrets.LIVEKIT_VM_SSH_KEY }}
+          host: ${{ secrets.LIVEKIT_VM_HOST || vars.LIVEKIT_VM_HOST }}
+          username: ${{ secrets.LIVEKIT_VM_USER || vars.LIVEKIT_VM_USER }}
+          key: ${{ env.LIVEKIT_VM_SSH_KEY }}
           source: 'livekit/docker-compose.prod.yml,livekit/Caddyfile,livekit/livekit.yaml'
           target: /opt/telecord-livekit
           strip_components: 1
@@ -319,9 +331,9 @@ jobs:
       - name: Sobe o serviço na VM
         uses: appleboy/ssh-action@v1.2.0
         with:
-          host: ${{ secrets.LIVEKIT_VM_HOST }}
-          username: ${{ secrets.LIVEKIT_VM_USER }}
-          key: ${{ secrets.LIVEKIT_VM_SSH_KEY }}
+          host: ${{ secrets.LIVEKIT_VM_HOST || vars.LIVEKIT_VM_HOST }}
+          username: ${{ secrets.LIVEKIT_VM_USER || vars.LIVEKIT_VM_USER }}
+          key: ${{ env.LIVEKIT_VM_SSH_KEY }}
           # O .env já mora na VM (feito manualmente uma vez, ver
           # livekit/setup-vm.sh) — nunca é escrito por este workflow, então
           # nenhuma credencial passa pelo runner do Actions.
