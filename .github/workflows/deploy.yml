@@ -352,15 +352,16 @@ jobs:
           HOST: ${{ secrets.LIVEKIT_PUBLIC_HOST || vars.LIVEKIT_PUBLIC_HOST }}
         run: |
           set -euo pipefail
-          # /rtc é a rota HTTP de handshake do LiveKit: respostas 400
-          # ("missing access_token" e afins) confirmam que o processo está de
-          # pé e o Caddy repassou a requisição — só um GET sem token não passa
-          # de handshake mesmo, e por isso a checagem aceita 400 como saudável.
-          code=$(curl -sS -o /tmp/rtc.json -w '%{http_code}' --max-time 30 "https://$HOST/rtc")
-          if [ "$code" = "400" ] || [ "$code" = "200" ]; then
+          # "/" é o health check do LiveKit: sempre responde 200 "OK" quando o
+          # processo está de pé e o Caddy repassou a requisição. `/rtc` SEM
+          # query string na verdade responde 404 nesta versão — não é rota de
+          # health check, é o próprio handshake WebSocket, que exige
+          # access_token para dar qualquer resposta diferente de 404.
+          code=$(curl -sS -o /tmp/rtc.json -w '%{http_code}' --max-time 30 "https://$HOST/")
+          if [ "$code" = "200" ]; then
             echo "ok ($code)"
           else
-            echo "::error::https://$HOST/rtc respondeu $code"
+            echo "::error::https://$HOST/ respondeu $code"
             cat /tmp/rtc.json || true
             exit 1
           fi
