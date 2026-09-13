@@ -1,0 +1,60 @@
+# Deploy do servidor LiveKit numa VM, desacoplado do resto do projeto.
+#
+# Só o LiveKit roda aqui — TiDB e a API continuam onde já estão (local ou
+# Vercel/outro host). Nada neste arquivo depende do compose de
+# desenvolvimento na raiz do repo; é o MESMO livekit.yaml que já era usado
+# localmente, só que servido atrás de TLS de verdade.
+#
+# Uso na VM (feito pelo workflow de deploy, ver .github/workflows/deploy.yml):
+#   cd /opt/telecord-livekit
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Variáveis exigidas no .env desta pasta (ver .env.example ao lado):
+#   LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_WEBHOOK_URL, LIVEKIT_NODE_IP,
+#   LIVEKIT_PUBLIC_HOST (ex.: 129-1-2-3.nip.io, sem esquema)
+
+services:
+  livekit:
+    image: livekit/livekit-server:v1.13.6
+    restart: unless-stopped
+    entrypoint: sh
+    command:
+      - -c
+      - |
+        apk add --no-cache gettext > /dev/null
+        envsubst < /etc/livekit.yaml > /tmp/livekit.yaml
+        exec /livekit-server --config /tmp/livekit.yaml
+    environment:
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?defina no .env}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?defina no .env}
+      LIVEKIT_WEBHOOK_URL: ${LIVEKIT_WEBHOOK_URL:?defina no .env}
+      LIVEKIT_NODE_IP: ${LIVEKIT_NODE_IP:?defina o IP publico da VM no .env}
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "7880:7880" # sinalização (WebSocket/HTTP) — só o Caddy fala com esta porta
+      - "7881:7881" # TCP fallback do ICE
+      - "50000-50100:50000-50100/udp" # mídia (RTC)
+
+  # TLS de verdade sem domínio próprio: nip.io resolve qualquer
+  # "<qualquer-coisa>.<ip>.nip.io" para o próprio <ip>, então o Let's Encrypt
+  # consegue validar o desafio HTTP-01 normalmente. Caddy renova sozinho.
+  caddy:
+    image: caddy:2.9-alpine
+    restart: unless-stopped
+    depends_on:
+      - livekit
+    environment:
+      LIVEKIT_PUBLIC_HOST: ${LIVEKIT_PUBLIC_HOST:?defina no .env, ex.: 129-1-2-3.nip.io}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+
+volumes:
+  caddy_data:
+  caddy_config:

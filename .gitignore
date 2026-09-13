@@ -12,6 +12,11 @@ dist/
 .env
 .env.*
 !.env.example
+!livekit/.env.example
+
+# Gerado com valores reais (chaves do LiveKit, IP da VM) ao preparar o deploy
+# — igual a um .env, nunca deve ser commitado.
+livekit/GITHUB-SECRETS.md
 
 # O seed carrega o e-mail e a SENHA da primeira conta administradora, então
 # ele é tratado como o .env: fica só na máquina de quem roda. O que se versiona

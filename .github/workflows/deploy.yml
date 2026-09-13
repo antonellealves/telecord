@@ -287,3 +287,70 @@ jobs:
           echo "$URL" >> "$GITHUB_STEP_SUMMARY"
 
           exit $fail
+
+  # Servidor LiveKit self-host, numa VM à parte (Oracle Cloud) — desacoplado
+  # do deploy da Vercel acima: um não depende do outro, e este só faz sentido
+  # rodar quando algo em livekit/ muda.
+  #
+  # A VM não é provisionada por aqui: alguém já criou a instância e rodou
+  # livekit/setup-vm.sh nela uma vez (Docker instalado, firewall aberto,
+  # /opt/telecord-livekit criado com o .env preenchido). Este job só copia os
+  # três arquivos que definem o serviço e manda subir de novo.
+  deploy-livekit:
+    name: Publica o LiveKit (VM)
+    needs: verify
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: Production
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Copia os arquivos de deploy para a VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.LIVEKIT_VM_HOST }}
+          username: ${{ secrets.LIVEKIT_VM_USER }}
+          key: ${{ secrets.LIVEKIT_VM_SSH_KEY }}
+          source: 'livekit/docker-compose.prod.yml,livekit/Caddyfile,livekit/livekit.yaml'
+          target: /opt/telecord-livekit
+          strip_components: 1
+
+      - name: Sobe o serviço na VM
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.LIVEKIT_VM_HOST }}
+          username: ${{ secrets.LIVEKIT_VM_USER }}
+          key: ${{ secrets.LIVEKIT_VM_SSH_KEY }}
+          # O .env já mora na VM (feito manualmente uma vez, ver
+          # livekit/setup-vm.sh) — nunca é escrito por este workflow, então
+          # nenhuma credencial passa pelo runner do Actions.
+          script: |
+            set -euo pipefail
+            cd /opt/telecord-livekit
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
+      - name: Verifica o deploy
+        env:
+          # O certificado TLS é emitido para LIVEKIT_PUBLIC_HOST (o domínio
+          # nip.io), não para LIVEKIT_VM_HOST (o IP usado só para SSH) — são
+          # duas variáveis diferentes de propósito, testar pelo IP bateria
+          # num certificado que não é dele.
+          HOST: ${{ secrets.LIVEKIT_PUBLIC_HOST || vars.LIVEKIT_PUBLIC_HOST }}
+        run: |
+          set -euo pipefail
+          # /rtc é a rota HTTP de handshake do LiveKit: respostas 400
+          # ("missing access_token" e afins) confirmam que o processo está de
+          # pé e o Caddy repassou a requisição — só um GET sem token não passa
+          # de handshake mesmo, e por isso a checagem aceita 400 como saudável.
+          code=$(curl -sS -o /tmp/rtc.json -w '%{http_code}' --max-time 30 "https://$HOST/rtc")
+          if [ "$code" = "400" ] || [ "$code" = "200" ]; then
+            echo "ok ($code)"
+          else
+            echo "::error::https://$HOST/rtc respondeu $code"
+            cat /tmp/rtc.json || true
+            exit 1
+          fi
+          echo "### LiveKit verificado" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://$HOST" >> "$GITHUB_STEP_SUMMARY"

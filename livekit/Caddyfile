@@ -1,0 +1,6 @@
+# Proxy TLS na frente do LiveKit. Caddy pede e renova o certificado da
+# Let's Encrypt sozinho — o único requisito é a porta 80 estar livre para o
+# desafio HTTP-01 (ver docker-compose.prod.yml).
+{$LIVEKIT_PUBLIC_HOST} {
+	reverse_proxy livekit:7880
+}

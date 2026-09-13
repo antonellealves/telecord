@@ -10,8 +10,9 @@
 #
 # Uso:
 #   1. cp .env.example .env  e preencha o que a seção do serviço de auth pede
-#   2. node scripts/gen-auth-keys.mjs   (gera o par de chaves)
-#   3. docker compose up
+#   2. node scripts/gen-auth-keys.mjs      (gera o par de chaves de sessão)
+#   3. node scripts/gen-livekit-keys.mjs   (gera a credencial do LiveKit local)
+#   4. docker compose up
 #
 # O link de confirmação de e-mail sai em `docker compose logs -f api`:
 # MAIL_DRIVER=log escreve a mensagem inteira no log em vez de enviar, o que
@@ -40,6 +41,50 @@ services:
       timeout: 3s
       retries: 30
       start_period: 10s
+
+  # Servidor LiveKit local, autenticado por par de chaves igual ao LiveKit
+  # Cloud. Desacoplado de propósito: `livekit/livekit.yaml` é o MESMO arquivo
+  # que vai para a VM no dia do deploy, e a imagem é a oficial, sem
+  # modificação — só troca o host que a aponta.
+  #
+  # SEM gravação: não há serviço `egress` neste compose e nenhuma opção de
+  # `room_composite`/recording habilitada em livekit.yaml. Ao encerrar a
+  # transmissão, o LiveKit não escreveu nenhum byte de mídia em disco — a
+  # sala é só sinalização + roteamento de mídia em trânsito.
+  livekit:
+    image: livekit/livekit-server:v1.13.6
+    # A imagem oficial (Alpine) não expande ${VAR} dentro do YAML sozinha e
+    # não traz `envsubst` (pacote gettext) pronto — instala na primeira vez
+    # que o contêiner sobe (fica em cache de camada). O livekit.yaml montado
+    # como :ro nunca é escrito, só lido; a versão com valores reais fica em
+    # /tmp, que não é volume.
+    entrypoint: sh
+    command:
+      - -c
+      - |
+        apk add --no-cache gettext > /dev/null
+        envsubst < /etc/livekit.yaml > /tmp/livekit.yaml
+        exec /livekit-server --config /tmp/livekit.yaml
+    environment:
+      # Mesmo par que a API usa para emitir (api/token.ts) e conferir
+      # (apps/api/src/livekit/webhook-auth.ts) token — trocar de provedor
+      # (Cloud → local → VM) não muda nada do lado da aplicação.
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?rode node scripts/gen-livekit-keys.mjs e preencha o .env}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?rode node scripts/gen-livekit-keys.mjs e preencha o .env}
+      # Reusa a MESMA rota que já existe para o LiveKit Cloud — ver
+      # apps/api/src/livekit/livekit.controller.ts.
+      LIVEKIT_WEBHOOK_URL: http://api:3000/api/livekit/webhook
+      # IP que o servidor anuncia nos candidatos ICE — sem isto, o navegador
+      # tenta conectar a mídia no IP interno do contêiner e a conexão nunca
+      # fecha de verdade (ver livekit/livekit.yaml). Localmente, o IP da
+      # máquina na rede (não 127.0.0.1); na VM, o IP público dela.
+      LIVEKIT_NODE_IP: ${LIVEKIT_NODE_IP:?defina o IP local da maquina no .env, tipo 192.168.0.10}
+    volumes:
+      - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "7880:7880" # sinalização (WebSocket/HTTP)
+      - "7881:7881" # TCP fallback do ICE
+      - "50000-50100:50000-50100/udp" # mídia (RTC), ver livekit.yaml
 
   api:
     build:

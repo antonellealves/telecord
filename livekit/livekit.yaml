@@ -1,0 +1,57 @@
+# Config do LiveKit server, desacoplada do docker-compose de propósito: este
+# é o MESMO arquivo que vai para a VM no dia do deploy — nada aqui muda entre
+# ambientes. O entrypoint do serviço livekit (ver docker-compose.yml) troca
+# as variáveis abaixo pelo valor do .env de cada máquina; o arquivo em si
+# nunca é editado nem carrega segredo.
+#
+# Referência: https://github.com/livekit/livekit/blob/master/config-sample.yaml
+
+port: 7880
+
+rtc:
+  # Faixa de portas UDP para a mídia (ICE/SRTP). Precisa estar liberada no
+  # firewall/security group quando este arquivo for para a VM — é o único
+  # requisito de rede além da porta de sinalização (7880).
+  port_range_start: 50000
+  port_range_end: 50100
+  # Sem isto, o LiveKit anuncia o IP INTERNO do contêiner (172.x.x.x) como
+  # candidato ICE — o navegador aceita a conexão de sinalização (WebSocket)
+  # só que a mídia nunca fecha de verdade, o ping do RTC expira e o cliente
+  # cai e sobe de novo em ciclo (o "some e volta" a cada ~13s). NODE_IP vem
+  # do .env: o IP da máquina na rede local hoje, o IP público da VM no dia do
+  # deploy — só essa variável muda entre os dois ambientes.
+  use_external_ip: false
+  node_ip: ${LIVEKIT_NODE_IP}
+  # O NAT do Docker Desktop no Windows (WSL2) perde/atrasa pacote UDP o
+  # bastante para o LiveKit achar a rede "instável" e trocar sozinho para
+  # TCP/TURN — o que aparece para quem está na sala como queda e reconexão
+  # completa, não uma troca suave (só existe a partir do LiveKit v1.9+).
+  # Em uma VM com rede de verdade, isto deixa de importar; pode manter.
+  allow_udp_unstable_fallback: false
+
+# Autenticação por par de chaves, igual ao LiveKit Cloud: a MESMA
+# LIVEKIT_API_KEY / LIVEKIT_API_SECRET que a API já usa para emitir
+# (api/token.ts) e conferir (apps/api/src/livekit/webhook-auth.ts) token —
+# trocar de provedor (Cloud → local → VM) não muda nada do lado da aplicação.
+keys:
+  ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
+
+# Reusa a MESMA rota que já existe para o LiveKit Cloud
+# (apps/api/src/livekit/livekit.controller.ts) — a verificação de assinatura
+# usa as mesmas chaves acima.
+webhook:
+  api_key: ${LIVEKIT_API_KEY}
+  urls:
+    - ${LIVEKIT_WEBHOOK_URL}
+
+# Sem Redis: modo single-node. Só passa a ser necessário se este serviço
+# escalar para mais de uma instância atrás de um load balancer — nesse dia,
+# descreva a chave redis.address (não presente aqui) aqui.
+
+# Gravação (Egress) propositalmente NÃO está configurada aqui. Sem um serviço
+# egress rodando, o LiveKit não tem como gravar nada — a sala é sinalizada,
+# a mídia trafega e nada é escrito em disco. Ao encerrar a transmissão, não
+# sobra vídeo nesta máquina nem em nenhuma outra: o protocolo em si não
+# produz esse dado sem o Egress ativado à parte.
+
+log_level: info
