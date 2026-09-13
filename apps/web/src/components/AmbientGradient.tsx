@@ -67,10 +67,10 @@ export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX
         Math.abs(deltaLift) > 0.0015 ||
         Math.abs(deltaTone) > 0.0015
       ) {
-        glow += deltaGlow * 0.085;
-        sway += deltaSway * 0.12;
-        lift += deltaLift * 0.12;
-        tone += deltaTone * 0.07;
+        glow += deltaGlow * 0.11;
+        sway += deltaSway * 0.16;
+        lift += deltaLift * 0.16;
+        tone += deltaTone * 0.09;
         apply();
         frame = requestAnimationFrame(tick);
       } else {
@@ -93,8 +93,11 @@ export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX
       const vertical = (height - event.clientY) / height;
       const distance = Math.min(1, Math.hypot(horizontal * 0.55, vertical));
 
-      targetGlow = 1 - distance * 0.7;
-      targetSway = horizontal;
+      targetGlow = 1 - distance * 0.55;
+      // Clamp em vez de deixar `horizontal` correr de -1 a 1: multiplicar por
+      // 1.15 dá mais alcance ao sway sem também esticar `--tone` (que reusa a
+      // posição vertical crua, não este valor).
+      targetSway = Math.max(-1, Math.min(1, horizontal * 1.15));
       // O eixo vertical passa a mover o campo também, e não só trocar a cor.
       targetLift = (event.clientY - height / 2) / (height / 2);
       // O que mais se percebe não é o brilho, é a COR: subir o cursor puxa o

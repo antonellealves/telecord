@@ -76,10 +76,18 @@
  * tela não custa repintura.
  */
 .tint {
+  /*
+   * A camada precisa ser MAIOR que a viewport nas quatro direções: ela se
+   * desloca até 10vw/6vh quando o cursor chega ao canto, e com `inset: 0`
+   * (exatamente do tamanho da tela) esse deslocamento arrasta a borda da
+   * camada para dentro da área visível — a "linha cortando do lado
+   * contrário" relatada. -18%/-14% de folga cobre o deslocamento máximo com
+   * margem, então a borda nunca entra em cena.
+   */
   position: absolute;
-  inset: 0;
-  transform: translate3d(calc(var(--sway) * 7vw), calc(var(--lift) * 4vh), 0)
-    scale(calc(1 + var(--glow) * 0.04));
+  inset: -14% -18%;
+  transform: translate3d(calc(var(--sway) * 10vw), calc(var(--lift) * 6vh), 0)
+    scale(calc(1 + var(--glow) * 0.06));
 }
 
 /* Cursor embaixo: campo azul. */
@@ -110,10 +118,12 @@
 /* A luz de baixo anda MAIS que o campo: o descompasso entre as duas camadas
    é o que dá sensação de profundidade em vez de imagem escorregando. */
 .sheen {
+  /* Mesma razão do .tint acima: desloca até 18vw/9vh, então precisa de
+     folga maior que isso para a borda nunca aparecer. */
   position: absolute;
-  inset: 0;
-  transform: translate3d(calc(var(--sway) * 12vw), calc(var(--lift) * 6vh), 0);
-  opacity: calc((0.35 + var(--glow) * 0.65) * var(--strength));
+  inset: -20% -24%;
+  transform: translate3d(calc(var(--sway) * 18vw), calc(var(--lift) * 9vh), 0);
+  opacity: calc((0.4 + var(--glow) * 0.72) * var(--strength));
   background: radial-gradient(
     115% 78% at 50% 132%,
     rgba(226, 242, 255, 0.26) 0%,
