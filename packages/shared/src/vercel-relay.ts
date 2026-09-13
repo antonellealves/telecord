@@ -485,7 +485,44 @@ export class RelayRegistry {
     }
   }
 
+  /** Passa em todas as salas mandando a estimativa de congestão ao streamer. */
+  tickCongestion(): void {
+    for (const room of this.rooms.values()) room.reportCongestion();
+  }
+
   get size(): number {
     return this.rooms.size;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Adaptive bitrate (política simples: GOOD sobe, DEGRADED segura, BAD desce)
+// ---------------------------------------------------------------------------
+
+export type CongestionState = 'GOOD' | 'DEGRADED' | 'BAD';
+
+/**
+ * Classifica a rede pelo pior backlog entre os viewers e pelo que o relay
+ * descartou. Descartou = alguém já não acompanha → BAD, sem meio-termo.
+ */
+export function classifyCongestion(maxBufferedBytes: number, dropped: number): CongestionState {
+  if (dropped > 0 || maxBufferedBytes > 3_000_000) return 'BAD';
+  if (maxBufferedBytes > 1_000_000) return 'DEGRADED';
+  return 'GOOD';
+}
+
+/**
+ * Próximo teto de bitrate. BAD corta 30%; DEGRADED segura; GOOD sobe 10% —
+ * devagar na subida, rápido na descida, que é o certo para não oscilar.
+ * Preso à faixa da resolução (§4).
+ */
+export function nextBitrate(
+  current: number,
+  state: CongestionState,
+  min: number,
+  max: number,
+): number {
+  if (state === 'BAD') return Math.max(min, Math.round(current * 0.7));
+  if (state === 'DEGRADED') return current;
+  return Math.min(max, Math.round(current * 1.1));
 }

@@ -10,10 +10,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  classifyCongestion,
   decodeControl,
   decodeVideoChunk,
   encodeControl,
   encodeVideoChunk,
+  nextBitrate,
   peekHeader,
   RelayRegistry,
   RelayRoom,
@@ -212,6 +214,26 @@ describe('RelayRoom', () => {
     room.close();
     assert.equal(streamer.closed, true);
     assert.equal(room.isEmpty, true);
+  });
+});
+
+describe('adaptive bitrate', () => {
+  it('classifica congestão pelo backlog e pelos descartes', () => {
+    assert.equal(classifyCongestion(0, 0), 'GOOD');
+    assert.equal(classifyCongestion(1_500_000, 0), 'DEGRADED');
+    assert.equal(classifyCongestion(500_000, 3), 'BAD'); // descartou → BAD
+    assert.equal(classifyCongestion(4_000_000, 0), 'BAD');
+  });
+
+  it('sobe devagar, segura, e corta rápido — dentro da faixa', () => {
+    const min = 2_000_000;
+    const max = 12_000_000;
+    assert.equal(nextBitrate(4_000_000, 'GOOD', min, max), 4_400_000);
+    assert.equal(nextBitrate(4_000_000, 'DEGRADED', min, max), 4_000_000);
+    assert.equal(nextBitrate(4_000_000, 'BAD', min, max), 2_800_000);
+    // não passa do teto nem do piso
+    assert.equal(nextBitrate(11_500_000, 'GOOD', min, max), max);
+    assert.equal(nextBitrate(2_100_000, 'BAD', min, max), min);
   });
 });
 

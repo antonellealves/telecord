@@ -9,7 +9,7 @@
 // O protocolo do Vercel Relay mora à parte porque é grande e tem cara própria
 // (binário + controle), mas é contrato compartilhado igual ao resto — o web
 // codifica, a função de relay lê o cabeçalho.
-export * from './vercel-relay';
+export * from './vercel-relay.js';
 
 // ---------------------------------------------------------------------------
 // Limites e formatos (SPEC §2.1)
