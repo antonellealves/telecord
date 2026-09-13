@@ -155,6 +155,12 @@ jobs:
           LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY || vars.LIVEKIT_API_KEY }}
           LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET || vars.LIVEKIT_API_SECRET }}
           VITE_LIVEKIT_URL: ${{ secrets.VITE_LIVEKIT_URL || vars.VITE_LIVEKIT_URL }}
+          # Server-side, HTTP(S) — não confundir com VITE_LIVEKIT_URL (pública,
+          # ws(s)://, usada pelo navegador). api/rooms.ts usa esta para o
+          # RoomServiceClient listar salas ativas; sem ela, cai no fallback
+          # hardcoded do LiveKit Cloud antigo (packages/shared/src/index.ts) e
+          # "SALAS ATIVAS" sempre aparece vazia depois de trocar de servidor.
+          LIVEKIT_URL: ${{ secrets.LIVEKIT_URL || vars.LIVEKIT_URL }}
 
           # Autenticação. Todas OPCIONAIS: sem elas o app publicado não tem
           # contas, que é o estado anterior a este recurso.
