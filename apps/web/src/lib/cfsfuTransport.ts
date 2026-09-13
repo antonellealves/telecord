@@ -120,6 +120,7 @@ export class CfSfuTransport {
   private readonly makeConnection: (config: RTCConfiguration) => RTCPeerConnection;
   private pc: RTCPeerConnection | null = null;
   private sessionId: string | null = null;
+  private connecting: Promise<void> | null = null;
   private readonly published = new Map<string, RTCRtpSender>();
   /** `mid` → o par remoto que aquela linha carrega, para casar no `ontrack`. */
   private readonly midToRemote = new Map<string, { sessionId: string; trackName: string }>();
@@ -156,8 +157,25 @@ export class CfSfuTransport {
   }
 
   /** Cria a sessão na Cloudflare e a `RTCPeerConnection` local. */
-  async connect(): Promise<void> {
-    if (this.pc !== null) return;
+  connect(): Promise<void> {
+    if (this.connecting !== null) return this.connecting;
+    this.connecting = this.connectInternal();
+    return this.connecting;
+  }
+
+  /**
+   * Resolve quando a sessão está pronta para publicar/assinar. `publish`
+   * chamado antes disso (usuário clica em compartilhar assim que a sala abre)
+   * precisa esperar aqui em vez de estourar `requirePc`/`requireSession` — o
+   * erro saía silencioso porque `startScreen` engole exceções do seletor de
+   * tela cancelado, e essa mesma captura escondia a corrida de conexão.
+   */
+  async waitUntilConnected(): Promise<void> {
+    if (this.connecting === null) throw new Error('CfSfuTransport: conecte antes de usar.');
+    await this.connecting;
+  }
+
+  private async connectInternal(): Promise<void> {
     const pc = this.makeConnection({ iceServers: this.options.iceServers, bundlePolicy: 'max-bundle' });
     pc.addEventListener('connectionstatechange', () => {
       for (const handler of this.stateHandlers) handler(pc.connectionState);

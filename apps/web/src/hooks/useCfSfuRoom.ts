@@ -180,17 +180,31 @@ export function useCfSfuRoom({ roomId, peerId, displayName, iceServers, bitrate 
   const startScreen = useCallback(async (quality: ScreenShareQualityId) => {
     const transport = transportRef.current;
     if (transport === null) return;
+    let stream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia(screenShareConstraints(quality));
+      stream = await navigator.mediaDevices.getDisplayMedia(screenShareConstraints(quality));
+    } catch {
+      // Cancelar o seletor do navegador não é erro.
+      return;
+    }
+    try {
       const video = stream.getVideoTracks()[0];
       video?.addEventListener('ended', () => stopScreenInternal());
       localScreenRef.current = stream;
       setLocalScreen(stream);
+      // A sessão pode ainda estar sendo criada (chamada HTTP à Cloudflare) se
+      // a pessoa clicar em compartilhar assim que a sala abre — publicar
+      // antes disso estourava em silêncio, escondido pelo catch acima.
+      await transport.waitUntilConnected();
       const published = await transport.publish(stream);
       announceRef.current = [...announceRef.current, ...published];
       setIsSharing(true);
+      setError(null);
     } catch {
-      // Cancelar o seletor do navegador não é erro.
+      setError('Não foi possível publicar a tela no Cloudflare Realtime.');
+      for (const track of stream.getTracks()) track.stop();
+      localScreenRef.current = null;
+      setLocalScreen(null);
     }
   }, []);
 
@@ -221,11 +235,14 @@ export function useCfSfuRoom({ roomId, peerId, displayName, iceServers, bitrate 
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, sampleRate: 48_000 },
       });
       micStreamRef.current = stream;
+      await transport.waitUntilConnected();
       const published = await transport.publish(stream);
       announceRef.current = [...announceRef.current, ...published];
       setMicOn(true);
     } catch {
       setError('Não foi possível abrir o microfone.');
+      for (const track of micStreamRef.current?.getTracks() ?? []) track.stop();
+      micStreamRef.current = null;
     }
   }, [micOn]);
 
