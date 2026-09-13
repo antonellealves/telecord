@@ -361,7 +361,7 @@ export const MISSIONS: Mission[] = [
 // ---------------------------------------------------------------------------
 
 export type GameEvent =
-  | { type: 'room.join'; roomId: string; transport: 'livekit' | 'p2p' }
+  | { type: 'room.join'; roomId: string; transport: 'livekit' | 'p2p' | 'cfsfu' | 'vercel-relay' }
   | { type: 'room.create' }
   | { type: 'mic.on' }
   | { type: 'camera.on' }

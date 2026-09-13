@@ -3,7 +3,7 @@ import { trackEvent } from '../lib/gamification';
 
 interface RoomGamificationInput {
   roomId: string;
-  transport: 'livekit' | 'p2p';
+  transport: 'livekit' | 'p2p' | 'cfsfu' | 'vercel-relay';
   isMicOn: boolean;
   isCameraOn: boolean;
   isSharing: boolean;

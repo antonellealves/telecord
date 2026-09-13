@@ -18,20 +18,26 @@ interface DeviceSettingsProps {
    * reabriria pelo clique no botão, e o painel pareceria travado aberto.
    */
   containerRef: RefObject<HTMLElement | null>;
-  talkMode: TalkMode;
-  onChangeTalkMode: (mode: TalkMode) => void;
   onClose: () => void;
   notify: (kind: ToastKind, message: string) => void;
-  screenQualityId: ScreenQualityId;
-  onChangeScreenQuality: (id: ScreenQualityId) => void;
-  /** Muda o texto de ajuda: trocar agora republica em vez de esperar. */
-  isSharingScreen: boolean;
   themeId: ThemeId;
   onChangeTheme: (id: ThemeId) => void;
+  /*
+   * O que segue é OPCIONAL: cada transporte oferece o que sabe fazer. Assim o
+   * mesmo painel serve às quatro salas — o que muda é só o tipo de stream, não
+   * as configurações. Ausente, a seção correspondente some (não vira controle
+   * quebrado).
+   */
+  talkMode?: TalkMode;
+  onChangeTalkMode?: (mode: TalkMode) => void;
+  screenQualityId?: ScreenQualityId;
+  onChangeScreenQuality?: (id: ScreenQualityId) => void;
+  /** Muda o texto de ajuda: trocar agora republica em vez de esperar. */
+  isSharingScreen?: boolean;
   /** O navegador tem a janela flutuante? Sem isso o controle explica. */
-  isOverlaySupported: boolean;
-  isOverlayOpen: boolean;
-  onToggleOverlay: () => void;
+  isOverlaySupported?: boolean;
+  isOverlayOpen?: boolean;
+  onToggleOverlay?: () => void;
 }
 
 /*

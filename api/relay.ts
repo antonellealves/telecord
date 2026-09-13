@@ -33,7 +33,14 @@ const MAX_MESSAGE_BYTES = 8_000_000;
 const CONGESTION_TICK_MS = 2_000;
 
 const registry = new RelayRegistry();
-const server = http.createServer();
+// Um handler de request responde na hora a quem NÃO é upgrade (bot, health
+// check, curl): sem ele, um GET comum fica pendurado até o teto de duração —
+// 30 s de function queimados por requisição perdida.
+const server = http.createServer((_request, response) => {
+  response.statusCode = 426; // Upgrade Required
+  response.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  response.end('Vercel Relay: só WebSocket.');
+});
 const wss = new WebSocketServer({ server, maxPayload: MAX_MESSAGE_BYTES });
 
 // Estimativa de congestão para o streamer, periodicamente — base do adaptive
