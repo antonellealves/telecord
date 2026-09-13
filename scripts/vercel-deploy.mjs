@@ -11,6 +11,8 @@
  *   LIVEKIT_API_KEY       obrigatório
  *   LIVEKIT_API_SECRET    obrigatório
  *   VITE_LIVEKIT_URL      opcional (o código tem default versionado)
+ *   LIVEKIT_URL           opcional — server-side, HTTP(S). Sem ela, api/rooms.ts
+ *                         cai no fallback hardcoded do LiveKit Cloud antigo.
  *   GITHUB_SHA            commit a publicar; sem ele, usa o branch de produção
  *   GITHUB_OUTPUT         opcional; recebe url= e inspector=
  *
@@ -93,6 +95,11 @@ await upsertEnv('LIVEKIT_API_KEY', required('LIVEKIT_API_KEY'));
 await upsertEnv('LIVEKIT_API_SECRET', required('LIVEKIT_API_SECRET'));
 if (process.env.VITE_LIVEKIT_URL) {
   await upsertEnv('VITE_LIVEKIT_URL', process.env.VITE_LIVEKIT_URL);
+}
+// Server-side, HTTP(S) — api/rooms.ts usa para o RoomServiceClient listar
+// salas ativas. Sem ela, cai no fallback hardcoded do antigo LiveKit Cloud.
+if (process.env.LIVEKIT_URL) {
+  await upsertEnv('LIVEKIT_URL', process.env.LIVEKIT_URL);
 }
 
 /*
