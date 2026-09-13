@@ -31,6 +31,9 @@ export class LiveKitService {
 
   async handle(event: LiveKitWebhookEvent): Promise<void> {
     switch (event.event) {
+      case 'room_started':
+        await this.onRoomStarted(event);
+        return;
       case 'participant_joined':
         await this.onJoin(event);
         return;
@@ -48,11 +51,37 @@ export class LiveKitService {
     }
   }
 
+  /**
+   * Sala criada no SFU: registra no catálogo se ainda não existir.
+   *
+   * É o que faz a aba "Salas" do painel refletir a realidade do LiveKit —
+   * sem isto, só ganhava linha a sala que alguém registrasse manualmente
+   * pelo formulário de criação (`RoomsService.create`), e a maioria das
+   * salas (a `sala-xxxxx` aleatória de quem só entrou pela home) nunca
+   * aparecia lá, mesmo com gente conversando de verdade.
+   */
+  private async onRoomStarted(event: LiveKitWebhookEvent): Promise<void> {
+    if (event.roomName === null) return;
+    const startedAt = new Date(event.createdAt);
+    await this.rooms.touchOrCreate(event.roomName, startedAt);
+    await this.log.record({
+      level: 'INFO',
+      scope: 'livekit',
+      event: 'room.started',
+      message: `sala ${event.roomName} iniciada no LiveKit`,
+      roomSlug: event.roomName,
+    });
+  }
+
   private async onJoin(event: LiveKitWebhookEvent): Promise<void> {
     if (event.roomName === null || event.participantIdentity === null) return;
 
     const joinedAt = new Date(event.createdAt);
-    const roomId = await this.rooms.touch(event.roomName, joinedAt);
+    // `touchOrCreate`, não `touch`: cobre o caso de `room_started` ter se
+    // perdido (webhook não é garantia de entrega única nem ordenada) —
+    // participante de verdade dentro da sala é sinal suficiente para ela
+    // existir no catálogo, ainda que o evento de criação nunca tenha chegado.
+    const roomId = await this.rooms.touchOrCreate(event.roomName, joinedAt);
 
     /*
      * `identity` é o id do usuário para quem entrou com conta, e um UUID

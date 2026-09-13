@@ -397,6 +397,34 @@ export class RoomsService {
     return room.id;
   }
 
+  /**
+   * Como `touch`, mas registra a sala no catálogo se ela ainda não existir —
+   * chamado pelo webhook do LiveKit, nunca por uma pessoa.
+   *
+   * A sala nasce sem dono e `PUBLIC`: ninguém no LiveKit "pediu" para ela ser
+   * registrada, só aconteceu de existir (`sala-xxxxx` aleatória da home, por
+   * exemplo). Sem dono, qualquer membro que a assumir mais tarde vira dono
+   * pelo próprio fluxo de `create()` — é o que já existia para "adotar" salas.
+   *
+   * Existe para a aba "Salas" do painel refletir a realidade do LiveKit, e
+   * não só o catálogo de quem passou pelo formulário de criação.
+   */
+  async touchOrCreate(slug: string, at: Date): Promise<string> {
+    const normalized = normalizeRoomId(slug);
+    // `slug` aceita até 64 caracteres (ROOM_ID_MAX_LENGTH), mas `name` é
+    // VarChar(48) — sem truncar, um slug longo faria o insert estourar a
+    // coluna e o evento inteiro seria perdido (o catch fica em livekit.service,
+    // não aqui).
+    const name = normalized.slice(0, 48);
+    const room = await this.prisma.room.upsert({
+      where: { slug: normalized },
+      create: { slug: normalized, name, lastActiveAt: at },
+      update: { lastActiveAt: at },
+      select: { id: true },
+    });
+    return room.id;
+  }
+
   // -------------------------------------------------------------------------
   // Internos
   // -------------------------------------------------------------------------
