@@ -18,6 +18,8 @@ export type OpenHandler = (open: boolean) => void;
 
 export interface ScreenStreamTransport {
   connect(): void;
+  /** Resolve quando o socket abre pela primeira vez — publicar antes disso se perde. */
+  waitUntilOpen(): Promise<void>;
   publishChunk(frame: VideoChunkFrame): void;
   sendControl(message: StreamControlMessage): void;
   requestKeyframe(): void;
@@ -55,6 +57,8 @@ export class VercelWebSocketTransport implements ScreenStreamTransport {
   private readonly chunkHandlers = new Set<ChunkHandler>();
   private readonly controlHandlers = new Set<ControlHandler>();
   private readonly openHandlers = new Set<OpenHandler>();
+  private openPromise: Promise<void> | null = null;
+  private resolveOpen: (() => void) | null = null;
 
   constructor(private readonly options: Options) {}
 
@@ -64,7 +68,20 @@ export class VercelWebSocketTransport implements ScreenStreamTransport {
 
   connect(): void {
     this.alive = true;
+    this.openPromise = new Promise((resolve) => {
+      this.resolveOpen = resolve;
+    });
     this.open();
+  }
+
+  /**
+   * Resolve na primeira vez que o socket abrir. Quem publica (streamer, mic)
+   * precisa esperar isto ANTES do primeiro `sendControl`/`publishChunk` —
+   * mandar antes do `open` é descartado em silêncio pelo `readyState` guard,
+   * e o `init` perdido é o que deixa o viewer sem vídeo nenhum.
+   */
+  waitUntilOpen(): Promise<void> {
+    return this.openPromise ?? Promise.resolve();
   }
 
   private open(): void {
@@ -81,6 +98,8 @@ export class VercelWebSocketTransport implements ScreenStreamTransport {
 
     ws.addEventListener('open', () => {
       this.backoff = 1_000;
+      this.resolveOpen?.();
+      this.resolveOpen = null;
       for (const handler of this.openHandlers) handler(true);
       this.heartbeat = window.setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) ws.send(encodeControl({ t: 'ping' }));
@@ -93,7 +112,12 @@ export class VercelWebSocketTransport implements ScreenStreamTransport {
       window.clearInterval(this.heartbeat);
       for (const handler of this.openHandlers) handler(false);
       if (!this.alive) return;
-      // Reconecta com backoff — a queda por duração máxima é esperada.
+      // Reconecta com backoff — a queda por duração máxima é esperada. Nova
+      // promessa: quem já esperou a primeira abertura não precisa esperar de
+      // novo, mas o próximo reconnect tem a sua própria.
+      this.openPromise = new Promise((resolve) => {
+        this.resolveOpen = resolve;
+      });
       window.setTimeout(() => this.open(), this.backoff);
       this.backoff = Math.min(this.backoff * 2, MAX_BACKOFF_MS);
     });

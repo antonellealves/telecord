@@ -201,6 +201,7 @@ export function useVercelRelayRoom({ roomId, peerId, displayName }: Options): Ve
     const encoder = new MicEncoder();
     micEncoderRef.current = encoder;
     try {
+      await transport.waitUntilOpen();
       await encoder.start(micStreamRef.current, peerId, transport, (message) => setError(message));
     } catch {
       setMicOn(false);
@@ -226,8 +227,11 @@ export function useVercelRelayRoom({ roomId, peerId, displayName }: Options): Ve
         bitrateRef.current = band.initial;
 
         // Vira streamer: troca o transporte de papel — o socket do microfone
-        // (se ligado) precisa republicar no novo, então reabre também.
+        // (se ligado) precisa republicar no novo, então reabre também. Espera
+        // o socket abrir de verdade: mandar o `init` antes disso é descartado
+        // em silêncio, e o viewer nunca configura o decoder.
         const transport = openTransport('streamer');
+        await transport.waitUntilOpen();
         setRole('streamer');
         await rebindMic(transport);
 
@@ -283,6 +287,7 @@ export function useVercelRelayRoom({ roomId, peerId, displayName }: Options): Ve
       micStreamRef.current = stream;
       const encoder = new MicEncoder();
       micEncoderRef.current = encoder;
+      await transport.waitUntilOpen();
       await encoder.start(stream, peerId, transport, (message) => setError(message));
       setMicOn(true);
     } catch (caught) {
