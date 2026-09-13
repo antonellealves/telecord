@@ -9,11 +9,45 @@
 #   ssh opc@<ip-da-vm> "chmod +x setup-vm.sh && ./setup-vm.sh"
 set -euo pipefail
 
-echo "==> Instalando Docker (repositório oficial)"
-sudo dnf install -y dnf-utils
-sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
-sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+# VM.Standard.E2.1.Micro tem só ~498MB de RAM REAL utilizável (não 1GB —
+# a shape reporta 1GB mas o kernel só enxerga ~500MB). `dnf` sozinho já
+# empurra isso ao limite ao resolver dependências; sem swap de sobra, o
+# processo trava em I/O (thrashing) por dezenas de minutos em vez de morrer
+# rápido. O swap entra ANTES de qualquer dnf/yum, não depois — é o que faz
+# a diferença entre a instalação terminar em minutos ou nunca terminar.
+if ! swapon --show | grep -q swapfile2 && [ ! -f /swapfile2 ]; then
+  echo "==> Criando 3GB de swap adicional (a VM já vem com ~500MB de swap padrão da Oracle, mas não basta)"
+  sudo fallocate -l 3G /swapfile2
+  sudo chmod 600 /swapfile2
+  sudo mkswap /swapfile2
+  sudo swapon /swapfile2
+  echo '/swapfile2 none swap sw 0 0' | sudo tee -a /etc/fstab
+fi
+free -h
+
+echo "==> Instalando Docker"
+# NÃO use "dnf install dnf-utils" nem o repo .../linux/rhel/... — os dois já
+# travaram por 30+ minutos numa instalação real nesta mesma shape, sem
+# terminar. yum-utils (equivalente ao dnf-utils em Oracle Linux) geralmente
+# já vem pré-instalado na imagem, e o repositório CENTOS (não rhel) do
+# Docker é o testado e compatível com Oracle Linux 9. As flags abaixo
+# evitam gastar memória com metadados/docs desnecessários.
+sudo yum install -y yum-utils --setopt=install_weak_deps=False --setopt=tsflags=nodocs \
+  --disablerepo=ol9_ksplice --disablerepo=ol9_oci_included
+sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+sudo yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin \
+  --setopt=install_weak_deps=False --setopt=tsflags=nodocs \
+  --disablerepo=ol9_ksplice --disablerepo=ol9_oci_included
+
+# CRÍTICO nesta VM: por padrão o Docker cria um processo `docker-proxy`
+# PARA CADA PORTA publicada. A faixa de mídia (50000-50100/udp) sozinha são
+# 101 portas — 101 processos, mais os de 7880/7881, o suficiente para
+# consumir toda a RAM+swap e travar a VM por completo (foi exatamente o que
+# aconteceu no primeiro deploy real). Com `userland-proxy: false`, o próprio
+# kernel roteia via iptables/nft, sem processo nenhum por porta.
+echo '{"userland-proxy": false}' | sudo tee /etc/docker/daemon.json
 sudo systemctl enable --now docker
+sudo systemctl restart docker
 sudo usermod -aG docker "$USER"
 
 echo "==> Abrindo portas no firewall local (firewalld)"
@@ -34,20 +68,6 @@ echo "==> Criando diretório de deploy"
 sudo mkdir -p /opt/telecord-livekit
 sudo chown "$USER":"$USER" /opt/telecord-livekit
 
-# VM.Standard.E2.1.Micro tem só 1GB de RAM. Docker + LiveKit + Caddy cabem,
-# mas sem folga nenhuma — o OOM killer derruba o processo errado na primeira
-# sala com mais de um ou dois participantes sem isto. 2GB de swap em disco é
-# mais lento que RAM de verdade, mas evita o processo morrer; a Oracle Free
-# Tier já dá bastante espaço de bloco de sobra para isso.
-if [ ! -f /swapfile ]; then
-  echo "==> Criando 2GB de swap (RAM da VM é só 1GB)"
-  sudo fallocate -l 2G /swapfile
-  sudo chmod 600 /swapfile
-  sudo mkswap /swapfile
-  sudo swapon /swapfile
-  echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-fi
-
 cat <<'EOF'
 
 Falta ainda, à mão, antes do primeiro deploy:
@@ -66,7 +86,7 @@ Falta ainda, à mão, antes do primeiro deploy:
    `docker` recém-adicionado valer nesta sessão.
 
 4. Configure os secrets do GitHub Actions (ver .github/workflows/deploy.yml):
-   LIVEKIT_VM_HOST, LIVEKIT_VM_USER, LIVEKIT_VM_SSH_KEY.
+   LIVEKIT_VM_HOST, LIVEKIT_VM_USER, LIVEKIT_VM_SSH_KEY, LIVEKIT_PUBLIC_HOST.
 
 Depois disso, todo push em main que tocar em livekit/ faz o deploy sozinho.
 EOF

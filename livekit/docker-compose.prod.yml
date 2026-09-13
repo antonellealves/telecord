@@ -45,7 +45,7 @@ services:
     depends_on:
       - livekit
     environment:
-      LIVEKIT_PUBLIC_HOST: ${LIVEKIT_PUBLIC_HOST:?defina no .env, ex.: 129-1-2-3.nip.io}
+      LIVEKIT_PUBLIC_HOST: ${LIVEKIT_PUBLIC_HOST:?defina no .env, tipo 129-1-2-3.nip.io}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
