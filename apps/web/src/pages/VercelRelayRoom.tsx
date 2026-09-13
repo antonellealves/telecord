@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { TransportMode } from '@telecord/shared';
 import { AmbientGradient } from '../components/AmbientGradient';
-import { ChartIcon, LeaveIcon, ScreenIcon } from '../components/icons';
+import { DeviceSettings } from '../components/DeviceSettings';
+import { GamificationCenter } from '../components/GamificationCenter';
+import { ChartIcon, LeaveIcon, ScreenIcon, SlidersIcon } from '../components/icons';
+import { ToastStack } from '../components/ToastStack';
 import { TransportPicker } from '../components/TransportPicker';
+import { useRoomChrome } from '../hooks/useRoomChrome';
 import { useVercelRelayRoom } from '../hooks/useVercelRelayRoom';
 import { UNSUPPORTED_MESSAGE } from '../lib/vercelRelay/capabilities';
 import {
@@ -35,6 +39,14 @@ export function VercelRelayRoom({
   onChangeTransport,
 }: Props): JSX.Element {
   const room = useVercelRelayRoom({ roomId, peerId, displayName });
+  const chrome = useRoomChrome({
+    transport: 'vercel-relay',
+    roomId,
+    isMicOn: false,
+    isCameraOn: false,
+    isSharing: room.isSharing,
+    participantCount: room.roster.length,
+  });
   const [quality, setQuality] = useState<CfSfuQualityId>(readCfSfuQuality);
   const [debug, setDebug] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -89,6 +101,7 @@ export function VercelRelayRoom({
             <span className={styles.counter}>{room.connected ? 'conectado' : 'conectando'}</span>
             <span className={styles.counter}>{room.roster.length} na sala</span>
             {room.isSharing ? <span className={styles.counter}>{room.viewers} assistindo</span> : null}
+            <GamificationCenter />
           </div>
         </header>
 
@@ -139,7 +152,17 @@ export function VercelRelayRoom({
           </div>
         ) : null}
 
-        <div className={styles.controls}>
+        <div className={styles.controls} ref={chrome.controlsRef}>
+          {chrome.isSettingsOpen ? (
+            <DeviceSettings
+              containerRef={chrome.controlsRef}
+              onClose={() => chrome.setIsSettingsOpen(false)}
+              notify={chrome.push}
+              themeId={chrome.themeId}
+              onChangeTheme={chrome.changeTheme}
+            />
+          ) : null}
+
           <select
             className={styles.button}
             value={quality}
@@ -182,6 +205,17 @@ export function VercelRelayRoom({
             <span className={styles.text}>Debug</span>
           </button>
 
+          <button
+            type="button"
+            className={`${styles.button} ${chrome.isSettingsOpen ? styles.toggled : ''}`}
+            onClick={() => chrome.setIsSettingsOpen((open) => !open)}
+            aria-expanded={chrome.isSettingsOpen}
+            aria-haspopup="dialog"
+          >
+            <SlidersIcon />
+            <span className={styles.text}>Configurações</span>
+          </button>
+
           <button type="button" className={`${styles.button} ${styles.danger}`} onClick={onLeave}>
             <LeaveIcon />
             <span className={styles.text}>Sair</span>
@@ -204,6 +238,8 @@ export function VercelRelayRoom({
             />
           </div>
         </footer>
+
+        <ToastStack toasts={chrome.toasts} onDismiss={chrome.dismiss} />
       </div>
     </>
   );

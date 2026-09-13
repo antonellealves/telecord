@@ -173,6 +173,7 @@ export function DeviceSettings({
 
       {section === 'audio' ? (
       <>
+      {talkMode !== undefined && onChangeTalkMode !== undefined ? (
       <div className={styles.field}>
         <span className={styles.label}>
           <MicIcon className={styles.icon} />
@@ -204,6 +205,7 @@ export function DeviceSettings({
             : 'Segure a barra de espaço, ou o botão da barra, para transmitir.'}
         </span>
       </div>
+      ) : null}
 
       <div className={styles.field}>
         <label className={styles.switchRow}>
@@ -352,6 +354,7 @@ export function DeviceSettings({
         </span>
       </label>
 
+      {screenQualityId !== undefined && onChangeScreenQuality !== undefined ? (
       <label className={styles.field}>
         <span className={styles.label}>
           <ScreenIcon className={styles.icon} />
@@ -377,11 +380,12 @@ export function DeviceSettings({
             * transmissão no ar, trocar republica na hora e o quadro pisca;
             * sem transmissão, a escolha fica guardada para a próxima.
             */}
-          {isSharingScreen
+          {isSharingScreen === true
             ? 'Trocar agora republica a tela — o quadro pisca uma vez para quem assiste.'
             : 'Vale a partir do próximo compartilhamento.'}
         </span>
       </label>
+      ) : null}
       </>
       ) : null}
 
@@ -416,14 +420,15 @@ export function DeviceSettings({
         <span className={styles.hint}>{TEMAS.find((t) => t.id === themeId)?.hint}</span>
       </div>
 
+      {onToggleOverlay !== undefined ? (
       <div className={styles.field}>
         <label className={styles.switchRow}>
           <input
             type="checkbox"
             className={styles.checkbox}
-            checked={isOverlayOpen}
+            checked={isOverlayOpen ?? false}
             onChange={onToggleOverlay}
-            disabled={!isOverlaySupported}
+            disabled={isOverlaySupported !== true}
           />
           <span className={styles.switchTrack} aria-hidden="true">
             <span className={styles.switchThumb} />
@@ -431,11 +436,12 @@ export function DeviceSettings({
           <span className={styles.switchLabel}>Overlay de participantes</span>
         </label>
         <span className={styles.hint}>
-          {isOverlaySupported
+          {isOverlaySupported === true
             ? 'Abre uma janela flutuante com quem está na sala e quem está falando. Ela fica acima de qualquer aplicativo, inclusive jogo em tela cheia.'
             : 'Este navegador não tem a janela flutuante de documento. Funciona no Chrome, Edge e Opera de computador, versão 116 ou mais nova.'}
         </span>
       </div>
+      ) : null}
       </>
       ) : null}
     </div>

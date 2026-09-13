@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { AmbientGradient } from '../components/AmbientGradient';
-import { LeaveIcon, MicIcon, MicOffIcon, ScreenIcon } from '../components/icons';
+import { DeviceSettings } from '../components/DeviceSettings';
+import { GamificationCenter } from '../components/GamificationCenter';
+import { LeaveIcon, MicIcon, MicOffIcon, ScreenIcon, SlidersIcon } from '../components/icons';
+import { ToastStack } from '../components/ToastStack';
 import { TransportPicker } from '../components/TransportPicker';
 import { useCfSfuRoom, type CfSfuRemote } from '../hooks/useCfSfuRoom';
+import { useRoomChrome } from '../hooks/useRoomChrome';
 import { fetchCfSfuConfig } from '../lib/cfsfu';
 import { DEFAULT_ICE_SERVERS } from '../lib/ice';
 import {
@@ -72,6 +76,16 @@ export function CloudflareRoom({
     bitrate: readCfSfuBitrate(),
   });
 
+  // Config, avisos e gamificação — iguais aos das outras salas.
+  const chrome = useRoomChrome({
+    transport: 'cfsfu',
+    roomId,
+    isMicOn: room.micOn,
+    isCameraOn: false,
+    isSharing: room.isSharing,
+    participantCount: room.remotes.length + 1,
+  });
+
   const changeQuality = (id: CfSfuQualityId): void => {
     setQuality(id);
     writeCfSfuQuality(id);
@@ -130,6 +144,7 @@ export function CloudflareRoom({
                 {m.codec !== null ? ` · ${m.codec.replace('video/', '')}` : ''}
               </span>
             ) : null}
+            <GamificationCenter />
           </div>
         </header>
 
@@ -155,7 +170,17 @@ export function CloudflareRoom({
           </div>
         </div>
 
-        <div className={styles.controls}>
+        <div className={styles.controls} ref={chrome.controlsRef}>
+          {chrome.isSettingsOpen ? (
+            <DeviceSettings
+              containerRef={chrome.controlsRef}
+              onClose={() => chrome.setIsSettingsOpen(false)}
+              notify={chrome.push}
+              themeId={chrome.themeId}
+              onChangeTheme={chrome.changeTheme}
+            />
+          ) : null}
+
           <select
             className={styles.button}
             value={quality}
@@ -191,6 +216,17 @@ export function CloudflareRoom({
             <span className={styles.text}>{room.micOn ? 'Microfone ligado' : 'Falar'}</span>
           </button>
 
+          <button
+            type="button"
+            className={`${styles.button} ${chrome.isSettingsOpen ? styles.toggled : ''}`}
+            onClick={() => chrome.setIsSettingsOpen((open) => !open)}
+            aria-expanded={chrome.isSettingsOpen}
+            aria-haspopup="dialog"
+          >
+            <SlidersIcon />
+            <span className={styles.text}>Configurações</span>
+          </button>
+
           <button type="button" className={`${styles.button} ${styles.danger}`} onClick={onLeave}>
             <LeaveIcon />
             <span className={styles.text}>Sair</span>
@@ -213,6 +249,8 @@ export function CloudflareRoom({
             />
           </div>
         </footer>
+
+        <ToastStack toasts={chrome.toasts} onDismiss={chrome.dismiss} />
       </div>
     </>
   );
