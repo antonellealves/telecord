@@ -558,3 +558,49 @@
 .tileMax {
   z-index: 4;
 }
+
+/* ===========================================================================
+   TEMA TAMBÉM MUDA LAYOUT
+   ===========================================================================
+   Vale para as três salas que compartilham este CSS (P2P, Cloudflare, Vercel
+   Relay) — o tema reorganiza a disposição, não só a cor, sem duplicar JSX.
+   =========================================================================== */
+
+/* Claro: cabeçalho centralizado, controles como barra fixada embaixo. */
+[data-theme='claro'] .header {
+  justify-content: center;
+  text-align: center;
+}
+
+[data-theme='claro'] .identity {
+  justify-content: center;
+}
+
+[data-theme='claro'] .controls {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  margin: 0 -14px;
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+  background: var(--bg-raised);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -12px 28px -20px rgba(16, 24, 40, 0.35);
+}
+
+/* LiveKit: lista de pessoas mais larga, cabeçalho mais leve. */
+[data-theme='livekit'] .people {
+  width: 300px;
+}
+
+[data-theme='livekit'] .brand {
+  display: none;
+}
+
+/* Direta: identidade já é a padrão desta sala — cabeçalho denso à esquerda. */
+[data-theme='direta'] .header {
+  justify-content: flex-start;
+}
+
+[data-theme='direta'] .headerRight {
+  margin-left: auto;
+}

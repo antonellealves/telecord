@@ -237,3 +237,60 @@
   flex-direction: column;
   gap: 8px;
 }
+
+/* ===========================================================================
+   TEMA TAMBÉM MUDA LAYOUT
+   ===========================================================================
+   Não é só cor: cada tema reorganiza onde os elementos ficam. O padrão
+   (`escuro`, sem atributo) é o layout acima; os demais sobrescrevem só a
+   disposição, sem duplicar a estrutura JSX.
+   =========================================================================== */
+
+/*
+ * Claro: cabeçalho centralizado, controles fixados como barra inferior —
+ * linguagem de "painel de app", que combina com a paleta clara e sólida.
+ */
+[data-theme='claro'] .header {
+  justify-content: center;
+  text-align: center;
+}
+
+[data-theme='claro'] .identity {
+  align-items: center;
+}
+
+[data-theme='claro'] .controls {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  margin: 0 -16px -16px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  background: var(--bg-raised);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -12px 28px -20px rgba(16, 24, 40, 0.35);
+}
+
+/*
+ * LiveKit (irmão do escuro, mais saturado): prioriza quem está na sala —
+ * a lista de participantes ganha mais largura, o cabeçalho perde peso.
+ */
+[data-theme='livekit'] .main {
+  --sidebar-width: 320px;
+}
+
+[data-theme='livekit'] .brand {
+  display: none;
+}
+
+/*
+ * Conexão direta (âmbar): cabeçalho compacto alinhado à esquerda, controles
+ * também à esquerda — ritmo mais denso, de "console", coerente com a
+ * identidade que a sala P2P já tem.
+ */
+[data-theme='direta'] .header {
+  justify-content: flex-start;
+}
+
+[data-theme='direta'] .headerRight {
+  margin-left: auto;
+}
