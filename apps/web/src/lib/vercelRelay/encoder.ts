@@ -171,6 +171,7 @@ export class ScreenEncoder {
     const data = new Uint8Array(chunk.byteLength);
     chunk.copyTo(data);
     const frame: VideoChunkFrame = {
+      kind: 'video',
       sequenceNumber: this.sequence,
       timestamp: chunk.timestamp,
       keyframe: chunk.type === 'key',

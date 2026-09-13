@@ -23,6 +23,7 @@ import { WebSocketServer, type RawData, type WebSocket } from 'ws';
 import {
   decodeControl,
   encodeControl,
+  peekHeader,
   RelayRegistry,
   validateRoomId,
   type RelaySink,
@@ -87,15 +88,22 @@ wss.on('connection', (ws: WebSocket, request: http.IncomingMessage) => {
 
   ws.on('message', (data: RawData, isBinary: boolean) => {
     if (isBinary) {
-      // Viewer NUNCA publica vídeo (§17).
-      if (role !== 'streamer') return;
-      room.onVideoChunk(toArrayBuffer(data));
+      const buffer = toArrayBuffer(data);
+      const header = peekHeader(buffer);
+      if (header === null) return;
+      // Viewer NUNCA publica vídeo (§17) — mas qualquer peer pode falar.
+      if (header.kind === 'video' && role !== 'streamer') return;
+      room.onVideoChunk(buffer, peerId);
       return;
     }
     const message = decodeControl(data.toString());
     if (message === null) return;
     if (message.t === 'ping') {
       sink.send(encodeControl({ t: 'pong' }));
+      return;
+    }
+    if (message.t === 'audio-init' || message.t === 'audio-end') {
+      room.onPeerControl(message);
       return;
     }
     if (role === 'streamer') {

@@ -11,8 +11,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   classifyCongestion,
+  decodeAudioPayload,
   decodeControl,
   decodeVideoChunk,
+  encodeAudioPayload,
   encodeControl,
   encodeVideoChunk,
   nextBitrate,
@@ -27,17 +29,26 @@ import {
 describe('protocolo binário de vídeo', () => {
   it('ida e volta preserva sequência, timestamp, keyframe e payload', () => {
     const data = new Uint8Array([10, 20, 30, 40, 250]);
-    const buffer = encodeVideoChunk({ sequenceNumber: 42, timestamp: 1_000_000, keyframe: true, data });
+    const buffer = encodeVideoChunk({ kind: 'video', sequenceNumber: 42, timestamp: 1_000_000, keyframe: true, data });
     const back = decodeVideoChunk(buffer);
     assert.notEqual(back, null);
+    assert.equal(back?.kind, 'video');
     assert.equal(back?.sequenceNumber, 42);
     assert.equal(back?.timestamp, 1_000_000);
     assert.equal(back?.keyframe, true);
     assert.deepEqual(Array.from(back?.data ?? []), Array.from(data));
   });
 
+  it('kind áudio vai e volta pelo mesmo cabeçalho', () => {
+    const buffer = encodeVideoChunk({ kind: 'audio', sequenceNumber: 3, timestamp: 9, keyframe: true, data: new Uint8Array([7]) });
+    const back = decodeVideoChunk(buffer);
+    assert.equal(back?.kind, 'audio');
+    const header = peekHeader(buffer);
+    assert.equal(header?.kind, 'audio');
+  });
+
   it('peekHeader lê o cabeçalho sem tocar no payload', () => {
-    const buffer = encodeVideoChunk({ sequenceNumber: 7, timestamp: 5, keyframe: false, data: new Uint8Array([1]) });
+    const buffer = encodeVideoChunk({ kind: 'video', sequenceNumber: 7, timestamp: 5, keyframe: false, data: new Uint8Array([1]) });
     const header = peekHeader(buffer);
     assert.equal(header?.sequenceNumber, 7);
     assert.equal(header?.keyframe, false);
@@ -52,10 +63,26 @@ describe('protocolo binário de vídeo', () => {
   });
 });
 
+describe('payload de áudio (senderId embutido)', () => {
+  it('ida e volta preserva o remetente e os bytes do Opus', () => {
+    const opus = new Uint8Array([1, 2, 3, 4]);
+    const packed = encodeAudioPayload('peer-123', opus);
+    const back = decodeAudioPayload(packed);
+    assert.equal(back?.senderId, 'peer-123');
+    assert.deepEqual(Array.from(back?.opus ?? []), Array.from(opus));
+  });
+
+  it('recusa payload curto demais para o id declarado', () => {
+    assert.equal(decodeAudioPayload(new Uint8Array([5, 1, 2])), null);
+  });
+});
+
 describe('protocolo de controle (JSON)', () => {
   it('ida e volta de cada tipo de mensagem', () => {
     const messages: StreamControlMessage[] = [
       { t: 'init', codec: 'vp09.00.10.08', width: 1920, height: 1080, fps: 30, bitrate: 4_000_000 },
+      { t: 'audio-init', codec: 'opus', sampleRate: 48_000, numberOfChannels: 1, bitrate: 32_000 },
+      { t: 'audio-end' },
       { t: 'keyframe-request' },
       { t: 'viewers', count: 3 },
       { t: 'end' },
@@ -136,10 +163,19 @@ class FakeSink implements RelaySink {
 }
 
 function keyframe(seq: number): ArrayBuffer {
-  return encodeVideoChunk({ sequenceNumber: seq, timestamp: seq, keyframe: true, data: new Uint8Array([1]) });
+  return encodeVideoChunk({ kind: 'video', sequenceNumber: seq, timestamp: seq, keyframe: true, data: new Uint8Array([1]) });
 }
 function delta(seq: number): ArrayBuffer {
-  return encodeVideoChunk({ sequenceNumber: seq, timestamp: seq, keyframe: false, data: new Uint8Array([2]) });
+  return encodeVideoChunk({ kind: 'video', sequenceNumber: seq, timestamp: seq, keyframe: false, data: new Uint8Array([2]) });
+}
+function audioChunk(senderId: string, seq: number): ArrayBuffer {
+  return encodeVideoChunk({
+    kind: 'audio',
+    sequenceNumber: seq,
+    timestamp: seq,
+    keyframe: true,
+    data: encodeAudioPayload(senderId, new Uint8Array([9])),
+  });
 }
 
 describe('RelayRoom', () => {
@@ -152,7 +188,7 @@ describe('RelayRoom', () => {
     room.addViewer('v1', v1);
     room.addViewer('v2', v2);
 
-    room.onVideoChunk(keyframe(1));
+    room.onVideoChunk(keyframe(1), 's');
     assert.equal(v1.binaryCount(), 1);
     assert.equal(v2.binaryCount(), 1);
   });
@@ -179,24 +215,24 @@ describe('RelayRoom', () => {
     room.addViewer('lento', lento);
 
     // keyframe inicial: os dois recebem e saem do estado "precisa keyframe"
-    room.onVideoChunk(keyframe(1));
+    room.onVideoChunk(keyframe(1), 's');
     const rapidoBase = rapido.binaryCount();
     const lentoBase = lento.binaryCount();
 
     // o lento entope; o rápido não
     lento.bufferedAmount = 5_000_000; // acima do limite mole
-    room.onVideoChunk(delta(2));
+    room.onVideoChunk(delta(2), 's');
 
     assert.equal(rapido.binaryCount(), rapidoBase + 1, 'o rápido recebe o delta');
     assert.equal(lento.binaryCount(), lentoBase, 'o lento não recebe o delta');
 
     // enquanto entupido, o lento fica esperando keyframe: nem o próximo delta vai
-    room.onVideoChunk(delta(3));
+    room.onVideoChunk(delta(3), 's');
     assert.equal(lento.binaryCount(), lentoBase);
 
     // um keyframe (com o backlog ainda alto, mas abaixo do limite duro) reancora
     lento.bufferedAmount = 3_000_000;
-    room.onVideoChunk(keyframe(4));
+    room.onVideoChunk(keyframe(4), 's');
     assert.equal(lento.binaryCount(), lentoBase + 1, 'o keyframe passa e recupera o lento');
   });
 
@@ -214,6 +250,64 @@ describe('RelayRoom', () => {
     room.close();
     assert.equal(streamer.closed, true);
     assert.equal(room.isEmpty, true);
+  });
+});
+
+describe('RelayRoom: áudio (muitos-para-muitos)', () => {
+  it('um viewer falando chega ao streamer e a outros viewers, nunca a si mesmo', () => {
+    const room = new RelayRoom('sala');
+    const streamer = new FakeSink();
+    const falante = new FakeSink();
+    const outro = new FakeSink();
+    room.setStreamer('s', streamer);
+    room.addViewer('falante', falante);
+    room.addViewer('outro', outro);
+
+    room.onVideoChunk(audioChunk('falante', 1), 'falante');
+
+    assert.equal(streamer.binaryCount(), 1, 'streamer recebe o áudio');
+    assert.equal(outro.binaryCount(), 1, 'outro viewer recebe o áudio');
+    assert.equal(falante.binaryCount(), 0, 'quem fala não recebe a própria voz de volta');
+  });
+
+  it('o streamer também pode falar, e o áudio chega aos viewers', () => {
+    const room = new RelayRoom('sala');
+    const streamer = new FakeSink();
+    const viewer = new FakeSink();
+    room.setStreamer('s', streamer);
+    room.addViewer('v', viewer);
+
+    room.onVideoChunk(audioChunk('s', 1), 's');
+
+    assert.equal(viewer.binaryCount(), 1);
+    assert.equal(streamer.binaryCount(), 0);
+  });
+
+  it('áudio não é afetado pelo backpressure de vídeo (sem keyframe, sem gate)', () => {
+    const room = new RelayRoom('sala');
+    const streamer = new FakeSink();
+    const viewer = new FakeSink();
+    room.setStreamer('s', streamer);
+    room.addViewer('v', viewer);
+    // viewer nunca recebeu keyframe de vídeo (needsKeyframe=true) — áudio não olha pra isso.
+    room.onVideoChunk(audioChunk('s', 1), 's');
+    assert.equal(viewer.binaryCount(), 1);
+  });
+
+  it('audio-init/audio-end de qualquer peer chegam a todo mundo, inclusive ao streamer', () => {
+    const room = new RelayRoom('sala');
+    const streamer = new FakeSink();
+    const viewer = new FakeSink();
+    room.setStreamer('s', streamer);
+    room.addViewer('v', viewer);
+
+    room.onPeerControl({ t: 'audio-init', codec: 'opus', sampleRate: 48_000, numberOfChannels: 1, bitrate: 32_000 });
+    assert.ok(streamer.controls().some((m) => m.t === 'audio-init'));
+    assert.ok(viewer.controls().some((m) => m.t === 'audio-init'));
+
+    room.onPeerControl({ t: 'audio-end' });
+    assert.ok(streamer.controls().some((m) => m.t === 'audio-end'));
+    assert.ok(viewer.controls().some((m) => m.t === 'audio-end'));
   });
 });
 

@@ -7,6 +7,8 @@ import {
   isRelaySupported,
 } from '../lib/vercelRelay/capabilities';
 import { screenShareConstraints, screenShareQuality, type ScreenShareQualityId } from '../lib/cfsfuQuality';
+import { MicDecoderRegistry } from '../lib/vercelRelay/audioDecoder';
+import { MicEncoder } from '../lib/vercelRelay/audioEncoder';
 import { ScreenDecoder, type DecoderStats } from '../lib/vercelRelay/decoder';
 import { ScreenEncoder, type EncoderStats } from '../lib/vercelRelay/encoder';
 import { VercelWebSocketTransport } from '../lib/vercelRelay/transport';
@@ -42,6 +44,9 @@ export interface VercelRelayRoom {
   localStream: MediaStream | null;
   startShare: (quality: ScreenShareQualityId) => Promise<void>;
   stopShare: () => void;
+  /** Microfone: independente do papel de vídeo — qualquer um fala a qualquer hora. */
+  micOn: boolean;
+  toggleMic: () => Promise<void>;
 }
 
 interface Options {
@@ -70,6 +75,7 @@ export function useVercelRelayRoom({ roomId, peerId, displayName }: Options): Ve
   const [encoderStats, setEncoderStats] = useState<EncoderStats | null>(null);
   const [decoderStats, setDecoderStats] = useState<DecoderStats | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [micOn, setMicOn] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const transportRef = useRef<VercelWebSocketTransport | null>(null);
@@ -78,6 +84,9 @@ export function useVercelRelayRoom({ roomId, peerId, displayName }: Options): Ve
   const shareStreamRef = useRef<MediaStream | null>(null);
   const bandRef = useRef({ min: 2_000_000, max: 12_000_000, initial: 4_000_000 });
   const bitrateRef = useRef(4_000_000);
+  const micEncoderRef = useRef<MicEncoder | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const audioRegistryRef = useRef(new MicDecoderRegistry());
 
   // Presença: mesmo heartbeat dos outros modos, só para nomes e contagem.
   useEffect(() => {
@@ -140,7 +149,13 @@ export function useVercelRelayRoom({ roomId, peerId, displayName }: Options): Ve
         }
       });
 
-      transport.onChunk((frame) => decoderRef.current?.push(frame));
+      transport.onChunk((frame) => {
+        if (frame.kind === 'audio') {
+          audioRegistryRef.current.push(frame);
+          return;
+        }
+        decoderRef.current?.push(frame);
+      });
       transport.connect();
       return transport;
     },
@@ -156,6 +171,11 @@ export function useVercelRelayRoom({ roomId, peerId, displayName }: Options): Ve
       encoderRef.current = null;
       decoderRef.current?.close();
       decoderRef.current = null;
+      micEncoderRef.current?.stop();
+      micEncoderRef.current = null;
+      for (const track of micStreamRef.current?.getTracks() ?? []) track.stop();
+      micStreamRef.current = null;
+      audioRegistryRef.current.closeAll();
       for (const track of shareStreamRef.current?.getTracks() ?? []) track.stop();
       shareStreamRef.current = null;
       transportRef.current?.disconnect();
@@ -172,6 +192,21 @@ export function useVercelRelayRoom({ roomId, peerId, displayName }: Options): Ve
     }, METRICS_MS);
     return () => window.clearInterval(id);
   }, [supported]);
+
+  /** Troca de papel troca de socket — se o microfone estava ligado, republica nele. */
+  const rebindMic = useCallback(async (transport: VercelWebSocketTransport) => {
+    if (micEncoderRef.current === null || micStreamRef.current === null) return;
+    micEncoderRef.current.stop();
+    micEncoderRef.current = null;
+    const encoder = new MicEncoder();
+    micEncoderRef.current = encoder;
+    try {
+      await encoder.start(micStreamRef.current, peerId, transport, (message) => setError(message));
+    } catch {
+      setMicOn(false);
+      micEncoderRef.current = null;
+    }
+  }, [peerId]);
 
   const startShare = useCallback(
     async (quality: ScreenShareQualityId) => {
@@ -190,9 +225,11 @@ export function useVercelRelayRoom({ roomId, peerId, displayName }: Options): Ve
         bandRef.current = band;
         bitrateRef.current = band.initial;
 
-        // Vira streamer: troca o transporte de papel.
+        // Vira streamer: troca o transporte de papel — o socket do microfone
+        // (se ligado) precisa republicar no novo, então reabre também.
         const transport = openTransport('streamer');
         setRole('streamer');
+        await rebindMic(transport);
 
         const encoder = new ScreenEncoder();
         encoderRef.current = encoder;
@@ -211,7 +248,7 @@ export function useVercelRelayRoom({ roomId, peerId, displayName }: Options): Ve
         stopShareInternal();
       }
     },
-    [openTransport],
+    [openTransport, rebindMic],
   );
 
   const stopShareInternal = useCallback(() => {
@@ -224,10 +261,39 @@ export function useVercelRelayRoom({ roomId, peerId, displayName }: Options): Ve
     setViewers(0);
     // Volta a ser viewer para ver se alguém mais compartilha.
     setRole('viewer');
-    openTransport('viewer');
-  }, [openTransport]);
+    const transport = openTransport('viewer');
+    void rebindMic(transport);
+  }, [openTransport, rebindMic]);
 
   const stopShare = useCallback(() => stopShareInternal(), [stopShareInternal]);
+
+  const toggleMic = useCallback(async () => {
+    if (micEncoderRef.current !== null) {
+      micEncoderRef.current.stop(transportRef.current ?? undefined);
+      micEncoderRef.current = null;
+      for (const track of micStreamRef.current?.getTracks() ?? []) track.stop();
+      micStreamRef.current = null;
+      setMicOn(false);
+      return;
+    }
+    const transport = transportRef.current;
+    if (transport === null) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micStreamRef.current = stream;
+      const encoder = new MicEncoder();
+      micEncoderRef.current = encoder;
+      await encoder.start(stream, peerId, transport, (message) => setError(message));
+      setMicOn(true);
+    } catch (caught) {
+      if (caught instanceof Error && caught.name !== 'NotAllowedError') {
+        setError(caught.message);
+      }
+      for (const track of micStreamRef.current?.getTracks() ?? []) track.stop();
+      micStreamRef.current = null;
+      micEncoderRef.current = null;
+    }
+  }, [peerId]);
 
   return {
     supported,
@@ -244,5 +310,7 @@ export function useVercelRelayRoom({ roomId, peerId, displayName }: Options): Ve
     localStream,
     startShare,
     stopShare,
+    micOn,
+    toggleMic,
   };
 }

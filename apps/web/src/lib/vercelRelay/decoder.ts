@@ -71,6 +71,7 @@ export class ScreenDecoder {
 
   /** Um chunk chegou: decide (via sequência) se decodifica, descarta ou pede keyframe. */
   push(frame: VideoChunkFrame): void {
+    if (frame.kind !== 'video') return;
     const decision = this.tracker.receive(frame.sequenceNumber, frame.keyframe);
     if (decision.requestKeyframe) this.onRequestKeyframe();
     if (!decision.decode) {

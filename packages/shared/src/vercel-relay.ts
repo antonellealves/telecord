@@ -29,18 +29,113 @@ export const PROTOCOL_VERSION = 1;
 export const HEADER_BYTES = 16;
 
 const FLAG_KEYFRAME = 0b0000_0001;
+/** Bit 1 dos flags: 1 = áudio, 0 = vídeo. Mesmo cabeçalho, dois fluxos. */
+const FLAG_AUDIO = 0b0000_0010;
+
+/** De qual mídia é o chunk — o cabeçalho carrega isso num bit, não um campo novo. */
+export type ChunkKind = 'video' | 'audio';
 
 /**
- * Um quadro de vídeo em forma neutra — sem depender de `EncodedVideoChunk`, que
- * é DOM. É o que torna este arquivo puro e testável em Node: a conversão de/para
- * `EncodedVideoChunk` mora no encoder e no decoder, não aqui.
+ * Um chunk (vídeo OU áudio) em forma neutra — sem depender de
+ * `EncodedVideoChunk`/`EncodedAudioChunk`, que são DOM. É o que torna este
+ * arquivo puro e testável em Node: a conversão de/para os tipos do WebCodecs
+ * mora no encoder e no decoder, não aqui.
  */
 export interface VideoChunkFrame {
+  kind: ChunkKind;
   sequenceNumber: number;
-  /** Microssegundos, como o `timestamp` do `EncodedVideoChunk`. */
+  /** Microssegundos, como o `timestamp` do `EncodedVideoChunk`/`EncodedAudioChunk`. */
   timestamp: number;
   keyframe: boolean;
   data: Uint8Array;
+}
+
+/**
+ * Voz é muitos-para-muitos: o viewer recebendo áudio precisa saber DE QUEM é
+ * cada chunk para tocar/mutar por pessoa. O cabeçalho de 16 bytes não tem
+ * campo para isso (é fixo, pensado só para vídeo, que é de um streamer só) —
+ * então o payload de áudio carrega um sub-cabeçalho próprio: 1 byte com o
+ * tamanho do id + os bytes UTF-8 do id, antes do Opus. O relay nunca olha
+ * para dentro do payload (só o cabeçalho de 16 bytes), então isto não o
+ * afeta — só quem fala empacota, só quem escuta desempacota.
+ */
+export function encodeAudioPayload(senderId: string, opus: Uint8Array): Uint8Array {
+  const idBytes = utf8Encode(senderId);
+  const out = new Uint8Array(1 + idBytes.byteLength + opus.byteLength);
+  out[0] = idBytes.byteLength;
+  out.set(idBytes, 1);
+  out.set(opus, 1 + idBytes.byteLength);
+  return out;
+}
+
+export interface AudioPayload {
+  senderId: string;
+  opus: Uint8Array;
+}
+
+export function decodeAudioPayload(data: Uint8Array): AudioPayload | null {
+  if (data.byteLength < 1) return null;
+  const idLength = data[0]!;
+  if (data.byteLength < 1 + idLength) return null;
+  const senderId = utf8Decode(data.subarray(1, 1 + idLength));
+  return { senderId, opus: data.subarray(1 + idLength) };
+}
+
+/*
+ * `TextEncoder`/`TextDecoder` são globais DOM/Node, mas fora da lib `ES2022`
+ * usada aqui (o pacote é puro, sem `lib.dom`). Ids de peer são curtos e
+ * ASCII/UTF-8 simples — codificar byte a byte evita depender de um global.
+ */
+function utf8Encode(text: string): Uint8Array {
+  const bytes: number[] = [];
+  for (let i = 0; i < text.length; i += 1) {
+    const code = text.codePointAt(i)!;
+    if (code > 0xffff) i += 1; // par substituto consumido
+    if (code < 0x80) {
+      bytes.push(code);
+    } else if (code < 0x800) {
+      bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
+    } else if (code < 0x10000) {
+      bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
+    } else {
+      bytes.push(
+        0xf0 | (code >> 18),
+        0x80 | ((code >> 12) & 0x3f),
+        0x80 | ((code >> 6) & 0x3f),
+        0x80 | (code & 0x3f),
+      );
+    }
+  }
+  return new Uint8Array(bytes);
+}
+
+function utf8Decode(bytes: Uint8Array): string {
+  let out = '';
+  let i = 0;
+  while (i < bytes.length) {
+    const b0 = bytes[i]!;
+    if (b0 < 0x80) {
+      out += String.fromCodePoint(b0);
+      i += 1;
+    } else if ((b0 & 0xe0) === 0xc0) {
+      out += String.fromCodePoint(((b0 & 0x1f) << 6) | (bytes[i + 1]! & 0x3f));
+      i += 2;
+    } else if ((b0 & 0xf0) === 0xe0) {
+      out += String.fromCodePoint(
+        ((b0 & 0x0f) << 12) | ((bytes[i + 1]! & 0x3f) << 6) | (bytes[i + 2]! & 0x3f),
+      );
+      i += 3;
+    } else {
+      out += String.fromCodePoint(
+        ((b0 & 0x07) << 18) |
+          ((bytes[i + 1]! & 0x3f) << 12) |
+          ((bytes[i + 2]! & 0x3f) << 6) |
+          (bytes[i + 3]! & 0x3f),
+      );
+      i += 4;
+    }
+  }
+  return out;
 }
 
 /** Serializa um quadro para um `ArrayBuffer` pronto para `ws.send`. */
@@ -48,7 +143,10 @@ export function encodeVideoChunk(frame: VideoChunkFrame): ArrayBuffer {
   const buffer = new ArrayBuffer(HEADER_BYTES + frame.data.byteLength);
   const view = new DataView(buffer);
   view.setUint8(0, PROTOCOL_VERSION);
-  view.setUint8(1, frame.keyframe ? FLAG_KEYFRAME : 0);
+  view.setUint8(
+    1,
+    (frame.keyframe ? FLAG_KEYFRAME : 0) | (frame.kind === 'audio' ? FLAG_AUDIO : 0),
+  );
   view.setUint16(2, 0, true);
   view.setUint32(4, frame.sequenceNumber >>> 0, true);
   view.setFloat64(8, frame.timestamp, true);
@@ -66,6 +164,7 @@ export function decodeVideoChunk(buffer: ArrayBuffer): VideoChunkFrame | null {
   if (view.getUint8(0) !== PROTOCOL_VERSION) return null;
   const flags = view.getUint8(1);
   return {
+    kind: (flags & FLAG_AUDIO) !== 0 ? 'audio' : 'video',
     keyframe: (flags & FLAG_KEYFRAME) !== 0,
     sequenceNumber: view.getUint32(4, true),
     timestamp: view.getFloat64(8, true),
@@ -77,6 +176,7 @@ export function decodeVideoChunk(buffer: ArrayBuffer): VideoChunkFrame | null {
 /** Só o cabeçalho, sem copiar o payload — o relay decide sem tocar nos bytes. */
 export interface ChunkHeader {
   version: number;
+  kind: ChunkKind;
   keyframe: boolean;
   sequenceNumber: number;
   timestamp: number;
@@ -87,9 +187,11 @@ export function peekHeader(buffer: ArrayBuffer): ChunkHeader | null {
   const view = new DataView(buffer);
   const version = view.getUint8(0);
   if (version !== PROTOCOL_VERSION) return null;
+  const flags = view.getUint8(1);
   return {
     version,
-    keyframe: (view.getUint8(1) & FLAG_KEYFRAME) !== 0,
+    kind: (flags & FLAG_AUDIO) !== 0 ? 'audio' : 'video',
+    keyframe: (flags & FLAG_KEYFRAME) !== 0,
     sequenceNumber: view.getUint32(4, true),
     timestamp: view.getFloat64(8, true),
   };
@@ -112,6 +214,19 @@ export interface StreamInit {
   bitrate: number;
   /** `description` do `VideoDecoderConfig` (H264/AVC precisa; VP9 não), base64. */
   description?: string;
+}
+
+/** Configuração que o viewer precisa para montar o `AudioDecoder` (Opus). */
+export interface StreamAudioInit {
+  t: 'audio-init';
+  codec: string;
+  sampleRate: number;
+  numberOfChannels: number;
+  bitrate: number;
+}
+
+export interface StreamAudioEnd {
+  t: 'audio-end';
 }
 
 export interface StreamKeyframeRequest {
@@ -149,6 +264,8 @@ export interface StreamCongestion {
 
 export type StreamControlMessage =
   | StreamInit
+  | StreamAudioInit
+  | StreamAudioEnd
   | StreamKeyframeRequest
   | StreamViewers
   | StreamEnd
@@ -177,6 +294,10 @@ export function decodeControl(raw: string): StreamControlMessage | null {
   switch (value.t) {
     case 'init':
       return isInit(parsed) ? parsed : null;
+    case 'audio-init':
+      return isAudioInit(parsed) ? parsed : null;
+    case 'audio-end':
+      return { t: 'audio-end' };
     case 'keyframe-request': {
       // Só inclui `viewerId` quando veio — um `viewerId: undefined` a mais
       // quebraria uma comparação estrita de igualdade sem significar nada.
@@ -216,6 +337,11 @@ function isInit(value: unknown): value is StreamInit {
     num(v.fps) &&
     num(v.bitrate)
   );
+}
+
+function isAudioInit(value: unknown): value is StreamAudioInit {
+  const v = value as Partial<StreamAudioInit>;
+  return typeof v.codec === 'string' && num(v.sampleRate) && num(v.numberOfChannels) && num(v.bitrate);
 }
 
 function isViewers(value: unknown): value is StreamViewers {
@@ -321,7 +447,14 @@ export class RelayRoom {
 
   private streamer: { id: string; sink: RelaySink } | null = null;
   private readonly viewers = new Map<string, Viewer>();
+  /**
+   * Todo mundo conectado (streamer + viewers), para o áudio — voz é
+   * muitos-para-muitos, independente de quem é o streamer de vídeo no
+   * momento. Vídeo continua exclusivo (um streamer); áudio não.
+   */
+  private readonly peers = new Map<string, RelaySink>();
   private lastInit: StreamInit | null = null;
+  private lastAudioInit: StreamAudioInit | null = null;
   private keyframeRequested = false;
   private droppedSinceReport = 0;
 
@@ -336,11 +469,12 @@ export class RelayRoom {
     return this.streamer !== null;
   }
   get isEmpty(): boolean {
-    return this.streamer === null && this.viewers.size === 0;
+    return this.peers.size === 0;
   }
 
   setStreamer(id: string, sink: RelaySink): void {
     this.streamer = { id, sink };
+    this.peers.set(id, sink);
     this.keyframeRequested = false;
     for (const viewer of this.viewers.values()) viewer.needsKeyframe = true;
     this.announceViewers();
@@ -349,24 +483,40 @@ export class RelayRoom {
   removeStreamer(id: string): void {
     if (this.streamer?.id !== id) return;
     this.streamer = null;
+    this.peers.delete(id);
     this.lastInit = null;
     this.broadcastControl({ t: 'end' });
   }
 
   addViewer(id: string, sink: RelaySink): void {
     this.viewers.set(id, { id, sink, needsKeyframe: true, droppedSinceKeyframe: 0 });
+    this.peers.set(id, sink);
     if (this.lastInit !== null) sink.send(encodeControl(this.lastInit));
+    if (this.lastAudioInit !== null) sink.send(encodeControl(this.lastAudioInit));
     this.requestKeyframe();
     this.announceViewers();
   }
 
   removeViewer(id: string): void {
+    this.peers.delete(id);
     if (this.viewers.delete(id)) this.announceViewers();
   }
 
-  onVideoChunk(buffer: ArrayBuffer): void {
+  /** `senderId` fica de fora do áudio — ninguém precisa ouvir a própria voz de volta. */
+  onVideoChunk(buffer: ArrayBuffer, senderId: string): void {
     const header = peekHeader(buffer);
     if (header === null) return;
+    if (header.kind === 'audio') {
+      // Opus: cada quadro decodifica sozinho — sem keyframe, sem backlog especial;
+      // só evita empilhar atrás de um par catastroficamente lento. Muitos-para-
+      // muitos: qualquer peer conectado recebe, menos quem mandou.
+      for (const [id, sink] of this.peers) {
+        if (id === senderId) continue;
+        if (sink.bufferedAmount > HARD_LIMIT_BYTES) continue;
+        sink.send(buffer);
+      }
+      return;
+    }
     this.lastSequenceNumber = header.sequenceNumber;
     if (header.keyframe) this.keyframeRequested = false;
     for (const viewer of this.viewers.values()) {
@@ -383,6 +533,24 @@ export class RelayRoom {
     if (message.t === 'end') {
       this.broadcastControl(message);
       this.lastInit = null;
+    }
+  }
+
+  /**
+   * Controle de áudio: QUALQUER peer conectado pode falar (voz não é
+   * exclusiva como o vídeo). `lastAudioInit` aqui é só o último anunciado —
+   * simplificação aceitável: como cada `audio-init` carrega os parâmetros do
+   * Opus e todo peer usa o mesmo (SPEC não pede times de áudio simultâneos
+   * com codecs diferentes), um viewer que entra recebe a config mais recente.
+   */
+  onPeerControl(message: StreamControlMessage): void {
+    if (message.t === 'audio-init') {
+      this.lastAudioInit = message;
+      this.broadcastControl(message);
+      return;
+    }
+    if (message.t === 'audio-end') {
+      this.broadcastControl(message);
     }
   }
 
@@ -410,11 +578,12 @@ export class RelayRoom {
   }
 
   close(): void {
-    this.streamer?.sink.close();
-    for (const viewer of this.viewers.values()) viewer.sink.close();
+    for (const sink of this.peers.values()) sink.close();
+    this.peers.clear();
     this.viewers.clear();
     this.streamer = null;
     this.lastInit = null;
+    this.lastAudioInit = null;
   }
 
   private sendChunkToViewer(viewer: Viewer, buffer: ArrayBuffer, keyframe: boolean): void {
@@ -444,7 +613,12 @@ export class RelayRoom {
 
   private broadcastControl(message: StreamControlMessage): void {
     const raw = encodeControl(message);
-    for (const viewer of this.viewers.values()) viewer.sink.send(raw);
+    // init/end de vídeo só interessam a quem assiste; audio-init/audio-end
+    // interessam a todo peer (o streamer de vídeo também pode ouvir voz).
+    const targets = message.t === 'audio-init' || message.t === 'audio-end'
+      ? this.peers.values()
+      : Array.from(this.viewers.values()).map((viewer) => viewer.sink);
+    for (const sink of targets) sink.send(raw);
   }
 
   private announceViewers(): void {

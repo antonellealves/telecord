@@ -3,7 +3,7 @@ import type { TransportMode } from '@telecord/shared';
 import { AmbientGradient } from '../components/AmbientGradient';
 import { DeviceSettings } from '../components/DeviceSettings';
 import { GamificationCenter } from '../components/GamificationCenter';
-import { ChartIcon, LeaveIcon, ScreenIcon, SlidersIcon } from '../components/icons';
+import { ChartIcon, LeaveIcon, MicIcon, MicOffIcon, ScreenIcon, SlidersIcon } from '../components/icons';
 import { ToastStack } from '../components/ToastStack';
 import { TransportPicker } from '../components/TransportPicker';
 import { useRoomChrome } from '../hooks/useRoomChrome';
@@ -42,7 +42,7 @@ export function VercelRelayRoom({
   const chrome = useRoomChrome({
     transport: 'vercel-relay',
     roomId,
-    isMicOn: false,
+    isMicOn: room.micOn,
     isCameraOn: false,
     isSharing: room.isSharing,
     participantCount: room.roster.length,
@@ -193,6 +193,15 @@ export function VercelRelayRoom({
             <span className={styles.text}>
               {room.isSharing ? 'Parar de compartilhar' : 'Compartilhar tela'}
             </span>
+          </button>
+
+          <button
+            type="button"
+            className={`${styles.button} ${room.micOn ? styles.active : ''}`}
+            onClick={() => void room.toggleMic()}
+          >
+            {room.micOn ? <MicIcon /> : <MicOffIcon />}
+            <span className={styles.text}>{room.micOn ? 'Microfone ligado' : 'Falar'}</span>
           </button>
 
           <button
