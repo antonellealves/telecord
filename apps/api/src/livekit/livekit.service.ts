@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ActivityService } from '../activity/activity.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RoomsService } from '../rooms/rooms.service';
 import { LogService } from '../logging/log.service';
@@ -27,6 +28,7 @@ export class LiveKitService {
     private readonly prisma: PrismaService,
     private readonly rooms: RoomsService,
     private readonly log: LogService,
+    private readonly activity: ActivityService,
   ) {}
 
   async handle(event: LiveKitWebhookEvent): Promise<void> {
@@ -109,9 +111,18 @@ export class LiveKitService {
       });
     } catch {
       // Colisão de `joinEventId`: entrega repetida do mesmo evento. É o
-      // caminho normal quando o LiveKit não recebe o 200 a tempo.
+      // caminho normal quando o LiveKit não recebe o 200 a tempo — e por
+      // isso o registro de atividade abaixo também não roda: a entrada já
+      // foi contada na primeira entrega.
       return;
     }
+
+    await this.activity.recordServerEvent({
+      roomSlug: event.roomName,
+      identity: event.participantIdentity,
+      displayName: event.participantName ?? event.participantIdentity,
+      event: 'room.join',
+    });
   }
 
   private async onLeave(event: LiveKitWebhookEvent): Promise<void> {
@@ -134,6 +145,13 @@ export class LiveKitService {
         leftAt,
         durationSeconds: durationBetween(open.joinedAt, leftAt),
       },
+    });
+
+    await this.activity.recordServerEvent({
+      roomSlug: event.roomName,
+      identity: event.participantIdentity,
+      displayName: event.participantName ?? event.participantIdentity,
+      event: 'room.leave',
     });
   }
 

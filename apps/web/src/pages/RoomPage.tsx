@@ -229,6 +229,7 @@ function RoomSession({
     >
       <RoomShell
         roomId={roomId}
+        participantToken={state.data.token}
         onLeaveIntent={() => {
           leavingRef.current = true;
         }}

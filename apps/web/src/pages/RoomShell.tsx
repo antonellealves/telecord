@@ -18,6 +18,7 @@ import { Soundboard } from '../components/Soundboard';
 import { ParticipantOverlay } from '../components/ParticipantOverlay';
 import { ToastStack } from '../components/ToastStack';
 import { TransportPicker } from '../components/TransportPicker';
+import { useActivityReporter } from '../hooks/useActivityReporter';
 import { useAuth } from '../hooks/useAuth';
 import { useAway } from '../hooks/useAway';
 import { useCameras } from '../hooks/useCameras';
@@ -52,6 +53,8 @@ import styles from './RoomPage.module.css';
 
 interface RoomShellProps {
   roomId: string;
+  /** O mesmo JWT usado para conectar no LiveKit — reenviado como credencial de `useActivityReporter`. */
+  participantToken: string;
   onLeaveIntent: () => void;
   onChangeTransport: (mode: TransportMode) => void;
 }
@@ -62,8 +65,14 @@ type PanelWidthStyle = CSSProperties & {
 };
 
 /** Interior da sala. Só existe dentro do contexto do LiveKitRoom. */
-export function RoomShell({ roomId, onLeaveIntent, onChangeTransport }: RoomShellProps): JSX.Element {
+export function RoomShell({
+  roomId,
+  participantToken,
+  onLeaveIntent,
+  onChangeTransport,
+}: RoomShellProps): JSX.Element {
   const room = useRoomContext();
+  const activity = useActivityReporter(participantToken);
   const status = useRoomConnectionStatus();
   const participants = useParticipantViews();
   const peerVolume = usePeerVolume();
@@ -152,6 +161,36 @@ export function RoomShell({ roomId, onLeaveIntent, onChangeTransport }: RoomShel
   const isMicrophoneEnabled = local?.isMicrophoneEnabled ?? false;
   const isAway = local?.isAway ?? false;
 
+  /*
+   * Reporta pela MUDANÇA de estado, não pelo clique do botão — `useTalkControls`
+   * tem vários caminhos que ligam/desligam o microfone (toggle, aperte-para-
+   * falar, ausência automática), e instrumentar cada callback um a um seria
+   * fácil de esquecer um. Observar o estado real do participante local cobre
+   * todos os caminhos de uma vez.
+   */
+  const wasMicrophoneEnabledRef = useRef(isMicrophoneEnabled);
+  useEffect(() => {
+    const was = wasMicrophoneEnabledRef.current;
+    wasMicrophoneEnabledRef.current = isMicrophoneEnabled;
+    if (was === isMicrophoneEnabled) return;
+    activity.report({
+      event: isMicrophoneEnabled ? 'mic.unmute' : 'mic.mute',
+      occurredAt: Date.now(),
+    });
+  }, [isMicrophoneEnabled, activity]);
+
+  /* Mesmo raciocínio do microfone acima: observa o estado, não o clique. */
+  const wasSharingRef = useRef(shares.isLocalSharing);
+  useEffect(() => {
+    const was = wasSharingRef.current;
+    wasSharingRef.current = shares.isLocalSharing;
+    if (was === shares.isLocalSharing) return;
+    activity.report({
+      event: shares.isLocalSharing ? 'screen.start' : 'screen.stop',
+      occurredAt: Date.now(),
+    });
+  }, [shares.isLocalSharing, activity]);
+
   const away = useAway({
     isMicrophoneEnabled,
     isCameraOn: cameras.isLocalOn,
@@ -176,12 +215,14 @@ export function RoomShell({ roomId, onLeaveIntent, onChangeTransport }: RoomShel
   // Chat e soundboard não são estado, e sim ação: contam no instante do clique.
   const sendChatTracked = useCallback(
     (body: string) => {
-      if (body.trim() !== '') {
+      const trimmed = body.trim();
+      if (trimmed !== '') {
         trackEvent({ type: 'chat.send' });
+        activity.report({ event: 'chat', body: trimmed, occurredAt: Date.now() });
       }
       sendChat(body);
     },
-    [sendChat],
+    [sendChat, activity],
   );
   const playSoundTracked = useCallback(
     (soundId: string) => {

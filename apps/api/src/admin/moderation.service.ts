@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { RoomServiceClient } from 'livekit-server-sdk';
 import { LIVEKIT_HOST, type LiveParticipant, type LiveRoom } from '@telecord/shared';
+import { ActivityService } from '../activity/activity.service';
 import { CONFIG, type AppConfig } from '../common/config';
 import { badRequest, serviceUnavailable } from '../common/errors';
 import { LogService } from '../logging/log.service';
@@ -39,6 +40,7 @@ export class ModerationService {
   constructor(
     @Inject(CONFIG) private readonly config: AppConfig,
     private readonly log: LogService,
+    private readonly activity: ActivityService,
   ) {}
 
   /**
@@ -134,6 +136,16 @@ export class ModerationService {
       after: { muted },
       client,
     });
+    // Efeito do lado de quem SOFREU a ação — `log.audit` acima já registrou o
+    // ATO de quem moderou. As duas linhas contam a mesma história de lados
+    // diferentes, e a de atividade existe mesmo para quem não tem conta.
+    await this.activity.recordServerEvent({
+      roomSlug: slug,
+      identity,
+      displayName: target.name || identity,
+      event: 'moderation.muted',
+      context: { muted, por: actor.displayName },
+    });
   }
 
   /**
@@ -177,6 +189,13 @@ export class ModerationService {
       after: { sala: destino },
       client,
     });
+    await this.activity.recordServerEvent({
+      roomSlug: slug,
+      identity,
+      displayName: target.name || identity,
+      event: 'moderation.moved',
+      context: { destino, por: actor.displayName },
+    });
   }
 
   async removeParticipant(
@@ -203,6 +222,13 @@ export class ModerationService {
       before: { sala: slug, presente: true },
       after: { presente: false },
       client,
+    });
+    await this.activity.recordServerEvent({
+      roomSlug: slug,
+      identity,
+      displayName: target.name || identity,
+      event: 'moderation.removed',
+      context: { por: actor.displayName },
     });
   }
 }

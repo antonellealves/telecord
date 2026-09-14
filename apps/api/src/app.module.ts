@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AdminModule } from './admin/admin.module';
+import { ActivityModule } from './activity/activity.module';
 import { AuthGuard } from './auth/auth.guard';
 import { AuthModule } from './auth/auth.module';
 import { CfsfuModule } from './cfsfu/cfsfu.module';
@@ -36,6 +37,7 @@ import { UsersModule } from './users/users.module';
     RoomsModule,
     ChannelsModule,
     SoundsModule,
+    ActivityModule,
     LiveKitModule,
     IceModule,
     CfsfuModule,

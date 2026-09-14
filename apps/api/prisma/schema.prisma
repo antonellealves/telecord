@@ -523,6 +523,53 @@ model AuditLog {
   @@index([action, createdAt])
 }
 
+/// Atividade dentro de uma sala: chat, entrar/sair, mutar, compartilhar
+/// tela, moderação sofrida. Registrada para QUALQUER participante,
+/// cadastrado ou anônimo — é o que diferencia este modelo de `AuditLog`
+/// (que registra só ATOS de quem tem conta, como criar sala ou moderar).
+///
+/// `identity` é o crachá que o LiveKit dá a cada participante — estável
+/// para quem tem conta (`User.id`), um UUID novo a cada entrada para quem
+/// não tem. `userId` é preenchido só quando dá para casar os dois, do mesmo
+/// jeito que `MediaSession` já faz.
+///
+/// Cada linha é assinada com o MESMO par de chaves do LiveKit
+/// (`LIVEKIT_API_KEY`/`SECRET`): a rota que grava aqui (`POST
+/// /activity/events`) exige o token de participante que o cliente já
+/// carrega para entrar na sala — sem ele, verificado, não dá para provar
+/// "eu sou a identity X", e qualquer um poderia forjar uma fala em nome de
+/// outra pessoa.
+model RoomActivityLog {
+  id       String @id @default(cuid())
+  roomSlug String @db.VarChar(64)
+  identity String @db.VarChar(64)
+  userId   String? @db.VarChar(32)
+  /// Nome exibido no momento do evento — congelado, como `AuditLog.actorLabel`.
+  displayName String @db.VarChar(64)
+
+  /// "chat" · "room.join" · "room.leave" · "mic.mute" · "mic.unmute" ·
+  /// "screen.start" · "screen.stop" · "moderation.muted" ·
+  /// "moderation.moved" · "moderation.removed"
+  event String @db.VarChar(32)
+  /// Corpo da mensagem, só para `event = "chat"`. Nulo em todo o resto —
+  /// gravar aqui em vez de num campo `context` solto é o que permite um
+  /// índice dedicado no dia em que a busca de texto precisar dele.
+  body  String? @db.VarChar(400)
+  /// Dados extras específicos do evento (ex.: sala de destino de um
+  /// "moderation.moved"). Nunca credencial — mesmo filtro de redação que
+  /// `SystemLog.context` já usa.
+  context Json?
+
+  ip        String? @db.VarChar(45)
+  userAgent String? @db.VarChar(255)
+  createdAt DateTime @default(now())
+
+  @@index([roomSlug, createdAt])
+  @@index([identity, createdAt])
+  @@index([userId])
+  @@index([createdAt, id])
+}
+
 // ===========================================================================
 // Sinalização do modo P2P
 //

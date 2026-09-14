@@ -322,6 +322,62 @@ export function parseRoomMessage(raw: unknown): RoomMessage | null {
 }
 
 // ---------------------------------------------------------------------------
+// Atividade de sala (POST /activity/events) — SPEC de auditoria ampliada
+// ---------------------------------------------------------------------------
+
+/**
+ * Nomes de evento que `POST /activity/events` aceita. Fechado de propósito:
+ * um nome livre viraria uma tabela com uma coluna `event` cheia de grafia
+ * inconsistente ("mic_mute" vs "mic.muted") em pouco tempo.
+ *
+ * `room.join`/`room.leave` NÃO estão aqui: já são gravados a partir do
+ * webhook do LiveKit (`LiveKitService.onJoin`/`onLeave`, evento
+ * `participant_joined`/`participant_left`), que é o SERVIDOR confirmando a
+ * entrada — fonte mais confiável que o próprio cliente reportar a si mesmo,
+ * e que já teria de existir de qualquer forma (é o mesmo raciocínio de
+ * `MediaSession` medir sessão pelo SFU, não pelo navegador).
+ */
+export const ROOM_ACTIVITY_EVENTS = [
+  'chat',
+  'mic.mute',
+  'mic.unmute',
+  'screen.start',
+  'screen.stop',
+] as const;
+
+export type RoomActivityEventName = (typeof ROOM_ACTIVITY_EVENTS)[number];
+
+/** Uma linha da fila de eventos que o cliente manda para `POST /activity/events`. */
+export interface RoomActivityEventInput {
+  event: RoomActivityEventName;
+  /** Só para `event: 'chat'` — mesmo limite de `MAX_CHAT_LENGTH`. */
+  body?: string;
+  /** Epoch em milissegundos, de quando o evento aconteceu no cliente. */
+  occurredAt: number;
+}
+
+/** Até tantos eventos por requisição — o cliente agrega em vez de mandar um a um. */
+export const ROOM_ACTIVITY_BATCH_LIMIT = 20;
+
+export function validateRoomActivityEvent(raw: unknown): string | null {
+  if (typeof raw !== 'object' || raw === null) return 'Evento inválido.';
+  const value = raw as { event?: unknown; body?: unknown; occurredAt?: unknown };
+  if (typeof value.event !== 'string' || !ROOM_ACTIVITY_EVENTS.includes(value.event as RoomActivityEventName)) {
+    return 'Nome de evento desconhecido.';
+  }
+  if (value.event === 'chat') {
+    if (typeof value.body !== 'string' || value.body.trim().length === 0) {
+      return 'Mensagem de chat vazia.';
+    }
+    if (value.body.length > MAX_CHAT_LENGTH) return 'Mensagem de chat grande demais.';
+  }
+  if (typeof value.occurredAt !== 'number' || !Number.isFinite(value.occurredAt)) {
+    return 'Campo "occurredAt" ausente ou inválido.';
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Host do LiveKit
 // ---------------------------------------------------------------------------
 
