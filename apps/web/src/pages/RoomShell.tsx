@@ -27,6 +27,7 @@ import { usePeerVolume } from '../hooks/usePeerVolume';
 import { useResizablePanel } from '../hooks/useResizablePanel';
 import { useRoomConnectionStatus } from '../hooks/useRoomConnection';
 import { useRoomMessages } from '../hooks/useRoomMessages';
+import { useRoomModeration } from '../hooks/useRoomModeration';
 import { useRoomSounds } from '../hooks/useRoomSounds';
 import { useScreenShares } from '../hooks/useScreenShares';
 import { useSoundVolume } from '../hooks/useSoundVolume';
@@ -86,7 +87,18 @@ export function RoomShell({ roomId, onLeaveIntent, onChangeTransport }: RoomShel
   const cameras = useCameras(push);
   const talk = useTalkControls((message) => push('error', message));
   const sound = useSoundVolume();
-  const { status: authStatus } = useAuth();
+  const { status: authStatus, user } = useAuth();
+  /*
+   * O hook é chamado sempre (regra dos hooks) — só o RESULTADO é escondido
+   * de quem não é ADMIN, repassando `undefined` para `ParticipantSidebar`,
+   * que é o que faz os botões de moderação nem aparecerem. O servidor é
+   * quem realmente decide (as rotas `/admin/live/...` respondem 403 para
+   * qualquer outra role); reusa a MESMA API que o painel externo já usa
+   * (ver AdminLive.tsx) — agir sem sair da chamada é a única novidade, não
+   * uma segunda porta de entrada.
+   */
+  const roomModeration = useRoomModeration(roomId, (message) => push('error', message));
+  const moderation = user?.role === 'ADMIN' ? roomModeration : undefined;
   /*
    * O painel de sons junta o catálogo do build com os que a turma enviou para
    * ESTA sala, e é ele quem resolve o id que chega pelo canal de dados — daí a
@@ -278,6 +290,7 @@ export function RoomShell({ roomId, onLeaveIntent, onChangeTransport }: RoomShel
                 isAwayBusy={away.isBusy}
                 onToggleAway={away.toggle}
                 peerVolume={peerVolume}
+                moderation={moderation}
                 onClose={() => {
                   setIsParticipantsOpen(false);
                   writeParticipantsOpen(false);

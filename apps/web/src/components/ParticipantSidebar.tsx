@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { ParticipantView } from '@telecord/shared';
 import type { PeerVolumeState } from '../hooks/usePeerVolume';
+import type { RoomModeration } from '../hooks/useRoomModeration';
 import { MicIcon, MicOffIcon, MoonIcon, SlidersIcon } from './icons';
 import { PeerVolumeControl } from './PeerVolumeControl';
 import styles from './ParticipantSidebar.module.css';
@@ -16,6 +17,12 @@ interface ParticipantSidebarProps {
   peerVolume: PeerVolumeState;
   /** Esconde a lista. Mesmo gesto do chat. */
   onClose: () => void;
+  /**
+   * Presente só para quem tem a role ADMIN (ver `RoomShell`). A ausência
+   * (`undefined`) é o que esconde os botões de mutar/mover/remover — não um
+   * booleano à parte, para não existir um estado "moderador mas sem ações".
+   */
+  moderation?: RoomModeration;
 }
 
 function initials(name: string): string {
@@ -28,11 +35,15 @@ interface RowProps {
   peerVolume: PeerVolumeState;
   isExpanded: boolean;
   onToggleExpanded: () => void;
+  moderation?: RoomModeration;
 }
 
-function Row({ participant, peerVolume, isExpanded, onToggleExpanded }: RowProps): JSX.Element {
+function Row({ participant, peerVolume, isExpanded, onToggleExpanded, moderation }: RowProps): JSX.Element {
   const volumeEntry = peerVolume.get(participant.identity);
   const isAdjusted = volumeEntry.volume !== 1 || volumeEntry.muted;
+  const [isMoving, setIsMoving] = useState(false);
+  const [destino, setDestino] = useState('');
+  const isBusy = moderation?.busy === participant.identity;
 
   return (
     <li
@@ -97,6 +108,69 @@ function Row({ participant, peerVolume, isExpanded, onToggleExpanded }: RowProps
           />
         </div>
       ) : null}
+      {/*
+        * Nunca sobre si mesmo: mutar/mover/remover a própria identidade não
+        * faz sentido e `moderation.mute` chamaria a API à toa.
+        */}
+      {moderation !== undefined && !participant.isLocal ? (
+        <div className={styles.moderationRow}>
+          <button
+            type="button"
+            className={styles.moderationButton}
+            disabled={isBusy}
+            title={
+              participant.isMicrophoneEnabled
+                ? 'Silenciar agora. A pessoa pode religar.'
+                : 'Devolver o microfone'
+            }
+            onClick={() => void moderation.mute(participant.identity, participant.isMicrophoneEnabled)}
+          >
+            {participant.isMicrophoneEnabled ? 'Mutar' : 'Desmutar'}
+          </button>
+          <button
+            type="button"
+            className={styles.moderationButton}
+            disabled={isBusy}
+            onClick={() => {
+              setIsMoving((value) => !value);
+              setDestino('');
+            }}
+          >
+            Mover
+          </button>
+          <button
+            type="button"
+            className={`${styles.moderationButton} ${styles.moderationDanger}`}
+            disabled={isBusy}
+            title="Desconecta. Não impede a volta — entrar não exige conta."
+            onClick={() => void moderation.remove(participant.identity)}
+          >
+            Remover
+          </button>
+          {isMoving ? (
+            <span className={styles.moderationMoveForm}>
+              <input
+                className={styles.moderationInput}
+                value={destino}
+                onChange={(event) => setDestino(event.target.value)}
+                placeholder="sala de destino"
+                aria-label={`Mover ${participant.displayName} para a sala`}
+              />
+              <button
+                type="button"
+                className={styles.moderationButton}
+                disabled={isBusy || destino.trim() === ''}
+                onClick={() => {
+                  void moderation.move(participant.identity, destino.trim());
+                  setIsMoving(false);
+                }}
+              >
+                Confirmar
+              </button>
+            </span>
+          ) : null}
+        </div>
+      ) : null}
     </li>
   );
 }
@@ -120,6 +194,7 @@ export function ParticipantSidebar({
   onToggleAway,
   peerVolume,
   onClose,
+  moderation,
 }: ParticipantSidebarProps): JSX.Element {
   const present = participants.filter((participant) => !participant.isAway);
   const away = participants.filter((participant) => participant.isAway);
@@ -154,6 +229,7 @@ export function ParticipantSidebar({
             peerVolume={peerVolume}
             isExpanded={expandedIdentity === participant.identity}
             onToggleExpanded={() => toggleExpanded(participant.identity)}
+            moderation={moderation}
           />
         ))}
       </ul>
@@ -189,6 +265,7 @@ export function ParticipantSidebar({
                 peerVolume={peerVolume}
                 isExpanded={expandedIdentity === participant.identity}
                 onToggleExpanded={() => toggleExpanded(participant.identity)}
+                moderation={moderation}
               />
             ))}
           </ul>

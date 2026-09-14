@@ -108,6 +108,61 @@
   padding-left: 40px;
 }
 
+/*
+ * Ações de moderação — só existem para quem tem a role ADMIN (ver
+ * `ParticipantSidebarProps.moderation`). Mesmo recuo da linha de volume, por
+ * consistência visual: as duas são "segunda linha" da mesma pessoa.
+ */
+.moderationRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-left: 40px;
+}
+
+.moderationButton {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.4;
+  transition: border-color 0.14s ease, color 0.14s ease, background 0.14s ease;
+}
+
+.moderationButton:hover:not(:disabled) {
+  border-color: rgba(var(--accent-rgb), 0.5);
+  color: var(--accent);
+}
+
+.moderationButton:disabled {
+  opacity: 0.5;
+}
+
+.moderationDanger:hover:not(:disabled) {
+  border-color: rgba(var(--danger-rgb), 0.55);
+  color: rgba(var(--danger-rgb), 0.9);
+}
+
+.moderationMoveForm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.moderationInput {
+  width: 140px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+}
+
 .volumeToggle {
   flex: none;
   display: grid;
