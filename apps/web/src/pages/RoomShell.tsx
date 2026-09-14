@@ -303,9 +303,18 @@ export function RoomShell({ roomId, onLeaveIntent, onChangeTransport }: RoomShel
             </>
           ) : null}
           <div className={styles.stageArea}>
-            <CameraStrip entries={cameras.entries} expanded={shares.entries.length === 0} />
+            <CameraStrip
+              entries={cameras.entries}
+              expanded={shares.entries.length === 0}
+              roomId={roomId}
+              viewerIdentity={room.localParticipant.identity}
+            />
             {shares.entries.length > 0 || cameras.entries.length === 0 ? (
-              <ScreenStage entries={shares.entries} />
+              <ScreenStage
+                entries={shares.entries}
+                roomId={roomId}
+                viewerIdentity={room.localParticipant.identity}
+              />
             ) : null}
           </div>
           {isChatOpen ? (

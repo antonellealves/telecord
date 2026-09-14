@@ -1,16 +1,35 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RemoteTrackPublication } from 'livekit-client';
+import type { TilePosition } from '@telecord/shared';
 import type { ScreenShareEntry } from '../hooks/useScreenShares';
+import type { TileLayoutState } from '../hooks/useTileLayout';
+import { useTileLayout } from '../hooks/useTileLayout';
 import { useZoomPan } from '../hooks/useZoomPan';
 import { ExpandIcon, EyeIcon, EyeOffIcon, ShrinkIcon } from './icons';
 import styles from './ScreenStage.module.css';
 
 interface ScreenStageProps {
   entries: ScreenShareEntry[];
+  roomId: string;
+  /**
+   * Identidade de quem está OLHANDO — a arrumação do palco é de quem
+   * organiza, não de quem é organizado (ver `useTileLayout`). É a mesma
+   * chave que o modo P2P usa (lá, `readPeerId()`; aqui, a identity estável
+   * do LiveKit).
+   */
+  viewerIdentity: string;
 }
 
-/** normal · tela cheia de verdade · maximizado dentro da página. */
-type TileMode = 'normal' | 'fullscreen' | 'maximized';
+/**
+ * normal · tela cheia de verdade · maximizado dentro da página.
+ *
+ * "Maximizado" aqui é só o FALLBACK de tela cheia (iOS e afins não
+ * implementam `requestFullscreen` em `<div>`) — não é mais o mesmo estado
+ * que `useTileLayout.maximized` (arrastar/redimensionar, o mesmo mecanismo
+ * do modo P2P). Os dois "maximizar" agora são coisas diferentes: um é tela
+ * cheia de reserva, o outro é "ocupar o palco sem sair da página".
+ */
+type TileMode = 'normal' | 'fullscreen';
 
 /**
  * Um quadro de tela compartilhada, com zoom e tela cheia.
@@ -20,12 +39,22 @@ type TileMode = 'normal' | 'fullscreen' | 'maximized';
  * quem assiste ouviria dobrado e quem compartilha ouviria o próprio áudio
  * voltando.
  */
-function ScreenTile({ entry }: { entry: ScreenShareEntry }): JSX.Element {
+interface ScreenTileProps {
+  entry: ScreenShareEntry;
+  layout: TileLayoutState;
+  peerKey: string;
+}
+
+function ScreenTile({ entry, layout, peerKey }: ScreenTileProps): JSX.Element {
   const tileRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [mode, setMode] = useState<TileMode>('normal');
   const zoom = useZoomPan();
   const track = entry.publication.track ?? null;
+
+  const isMaximized = layout.maximized === peerKey;
+  const position: TilePosition | undefined = layout.tiles[peerKey];
+  const isDragging = layout.dragging === peerKey;
 
   /*
    * Parar de assistir DESASSINA a track, em vez de só esconder o vídeo.
@@ -78,33 +107,17 @@ function ScreenTile({ entry }: { entry: ScreenShareEntry }): JSX.Element {
 
   useEffect(() => {
     const handleChange = (): void => {
-      setMode((current) => {
-        if (document.fullscreenElement === tileRef.current) return 'fullscreen';
-        // Sair da tela cheia volta ao normal; não mexe em "maximizado", que é
-        // um estado da página e não do navegador.
-        return current === 'fullscreen' ? 'normal' : current;
-      });
+      setMode(document.fullscreenElement === tileRef.current ? 'fullscreen' : 'normal');
     };
     document.addEventListener('fullscreenchange', handleChange);
     return () => document.removeEventListener('fullscreenchange', handleChange);
   }, []);
 
-  useEffect(() => {
-    if (mode !== 'maximized') {
-      return;
-    }
-    const handleKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setMode('normal');
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [mode]);
-
   /**
-   * Tenta a tela cheia de verdade e cai para "maximizado" quando ela não
-   * existe ou é recusada — iOS não implementa requestFullscreen em div, e
-   * alguns contextos embutidos bloqueiam a API. Antes, a recusa era engolida
-   * e o botão parecia morto.
+   * Tenta a tela cheia de verdade e cai para o "maximizar" do layout
+   * compartilhado quando ela não existe ou é recusada — iOS não implementa
+   * requestFullscreen em div, e alguns contextos embutidos bloqueiam a API.
+   * Antes, a recusa era engolida e o botão parecia morto.
    */
   const toggleExpand = useCallback(() => {
     const tile = tileRef.current;
@@ -112,38 +125,63 @@ function ScreenTile({ entry }: { entry: ScreenShareEntry }): JSX.Element {
       return;
     }
     if (mode === 'fullscreen') {
-      void document.exitFullscreen().catch(() => setMode('normal'));
+      void document.exitFullscreen().catch(() => undefined);
       return;
     }
-    if (mode === 'maximized') {
-      setMode('normal');
+    if (isMaximized) {
+      layout.toggleMaximized(peerKey);
       return;
     }
     if (typeof tile.requestFullscreen === 'function') {
-      void tile.requestFullscreen().catch(() => setMode('maximized'));
+      void tile.requestFullscreen().catch(() => layout.toggleMaximized(peerKey));
       return;
     }
-    setMode('maximized');
-  }, [mode]);
+    layout.toggleMaximized(peerKey);
+  }, [mode, isMaximized, layout, peerKey]);
 
-  const isExpanded = mode !== 'normal';
+  const isExpanded = mode === 'fullscreen' || isMaximized;
+
+  /*
+   * Posição salva vira `position: absolute` em porcentagem — mesmo esquema
+   * do modo P2P (`useTileLayout`). Sem posição, o quadro fica no fluxo da
+   * grade automática; quem nunca arrastou nunca percebe a diferença.
+   */
+  const tileStyle =
+    position === undefined
+      ? undefined
+      : {
+          position: 'absolute' as const,
+          left: `${position.x * 100}%`,
+          top: `${position.y * 100}%`,
+          width: `${position.w * 100}%`,
+          height: `${position.h * 100}%`,
+        };
 
   return (
     <div
       className={[
         styles.tile,
         mode === 'fullscreen' ? styles.tileFullscreen : '',
-        mode === 'maximized' ? styles.tileMaximized : '',
+        isMaximized ? styles.tileMaximized : '',
+        isDragging ? styles.tileDragging : '',
       ]
         .filter(Boolean)
         .join(' ')}
+      style={isMaximized ? undefined : tileStyle}
       ref={tileRef}
+      onPointerDown={(event) => {
+        // Arrastar não pode roubar clique de botão nem o pan do zoom
+        // (`useZoomPan` só arrasta quando `scale > 1`; abaixo disso o
+        // ponteiro sobra livre para mover o quadro).
+        if (zoom.scale > 1 || isMaximized) return;
+        layout.beginDrag(peerKey, event);
+      }}
     >
       <div
         className={styles.viewport}
         ref={zoom.viewportRef}
         onDoubleClick={toggleExpand}
-        title="Role para ampliar · arraste para mover · duplo clique para tela cheia"
+        title="Role para ampliar · arraste o quadro para mover · duplo clique para tela cheia"
       >
         <div className={styles.surface} ref={zoom.contentRef}>
           <video ref={videoRef} className={styles.video} autoPlay playsInline muted />
@@ -172,6 +210,24 @@ function ScreenTile({ entry }: { entry: ScreenShareEntry }): JSX.Element {
         <span className={styles.live} aria-hidden="true" />
         {entry.owner.isLocal ? 'você' : entry.owner.displayName}
       </span>
+
+      {/*
+        * Só existe quando o quadro JÁ tem posição própria e não está
+        * maximizado: no modo grade quem manda no tamanho é o CSS, e um punho
+        * ali prometeria um arrasto que o layout desfaria no próximo quadro.
+        */}
+      {position !== undefined && !isMaximized ? (
+        <span
+          className={styles.resizeHandle}
+          onPointerDown={(event) => {
+            event.stopPropagation();
+            layout.beginResize(peerKey, event);
+          }}
+          role="separator"
+          aria-label="Redimensionar"
+          title="Arraste para redimensionar"
+        />
+      ) : null}
 
       <div className={styles.toolbar}>
         <button
@@ -241,8 +297,25 @@ function ScreenTile({ entry }: { entry: ScreenShareEntry }): JSX.Element {
   );
 }
 
+/**
+ * Chave de layout: `identity` de quem compartilha, não `trackSid`. O
+ * trackSid muda a cada nova publicação (parar e compartilhar de novo gera
+ * um SID novo) — se fosse a chave, a posição arrumada se perderia a cada
+ * novo compartilhamento da mesma pessoa.
+ */
+const peerKeyOf = (entry: ScreenShareEntry): string => entry.owner.identity;
+
 /** Palco: uma grade com todas as telas compartilhadas, ou o estado vazio. */
-export function ScreenStage({ entries }: ScreenStageProps): JSX.Element {
+export function ScreenStage({ entries, roomId, viewerIdentity }: ScreenStageProps): JSX.Element {
+  /*
+   * `fetchLayout`/`saveLayout` gravam o dicionário INTEIRO de tiles por
+   * (sala, peerId) — se ScreenStage e CameraStrip usassem a mesma
+   * `viewerIdentity` crua, cada `useTileLayout` reescreveria por cima do
+   * dicionário do outro (last-write-wins), perdendo a arrumação de um dos
+   * dois palcos. O sufixo separa os dois espaços de armazenamento.
+   */
+  const layout = useTileLayout(roomId, `${viewerIdentity}:screen`);
+
   if (entries.length === 0) {
     return (
       <section className={styles.stage} aria-label="Telas compartilhadas">
@@ -265,7 +338,12 @@ export function ScreenStage({ entries }: ScreenStageProps): JSX.Element {
       aria-label="Telas compartilhadas"
     >
       {entries.map((entry) => (
-        <ScreenTile key={entry.owner.trackSid} entry={entry} />
+        <ScreenTile
+          key={entry.owner.trackSid}
+          entry={entry}
+          layout={layout}
+          peerKey={peerKeyOf(entry)}
+        />
       ))}
     </section>
   );

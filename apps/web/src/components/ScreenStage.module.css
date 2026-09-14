@@ -60,6 +60,15 @@
   border-radius: 0;
 }
 
+/* Quadro sendo arrastado: destaque visual e por cima dos outros, mesmo
+   tratamento do modo P2P (ver P2PRoom.module.css .tileDragging). */
+.tileDragging {
+  cursor: grabbing;
+  z-index: 5;
+  box-shadow: 0 18px 46px -14px rgba(0, 0, 0, 0.85);
+  border-color: var(--accent);
+}
+
 /*
  * Recurso de reserva para quando a API de tela cheia não existe ou é recusada
  * (iOS não implementa requestFullscreen em div). Ocupa a janela inteira por
@@ -318,4 +327,31 @@
 
 .pausedButton:hover {
   background: rgba(var(--accent-rgb), 0.24);
+}
+
+/*
+ * Punho de redimensionar, canto inferior direito — mesmo mecanismo e visual
+ * do modo P2P (ver P2PRoom.module.css .tileResize): um canto só resolve
+ * qualquer tamanho sem competir com o gesto de arrastar o quadro inteiro.
+ */
+.resizeHandle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  height: 20px;
+  z-index: 3;
+  cursor: nwse-resize;
+  opacity: 0;
+  touch-action: none;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 3px,
+    rgba(var(--accent-rgb), 0.75) 3px 4px
+  );
+  transition: opacity 0.16s ease;
+}
+
+.tile:hover .resizeHandle {
+  opacity: 1;
 }

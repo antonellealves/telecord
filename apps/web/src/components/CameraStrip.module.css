@@ -6,6 +6,10 @@
  * mosaico e ocupa o palco.
  */
 .strip {
+  /* Âncora para os tiles com posição própria (`position: absolute`) — sem
+     isto, um tile arrastado se posicionaria relativo a algo maior na
+     página, em vez do próprio palco de câmeras. */
+  position: relative;
   flex: none;
   display: flex;
   gap: 8px;
@@ -43,6 +47,18 @@
   transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
+/*
+ * Com posição própria (arrastado/redimensionado), o tile sai do fluxo da
+ * faixa — `aspect-ratio` e `height: 100%` fixos deixariam de fazer sentido
+ * (o tamanho agora vem da fração salva, em `style` inline). Sem isto, o
+ * navegador ainda tentaria manter 16:9 por cima do width/height explícito.
+ */
+.tileCustom {
+  aspect-ratio: auto;
+  height: auto;
+  min-width: 0;
+}
+
 .expanded .tile {
   height: auto;
   width: min(300px, 100%);
@@ -55,6 +71,35 @@
 .speaking {
   border-color: rgba(var(--accent-rgb), 0.75);
   box-shadow: 0 0 22px -8px rgba(var(--accent-rgb), 0.9);
+}
+
+.tileDragging {
+  cursor: grabbing;
+  z-index: 5;
+  box-shadow: 0 18px 46px -14px rgba(0, 0, 0, 0.85);
+  border-color: var(--accent);
+}
+
+.resizeHandle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  z-index: 3;
+  cursor: nwse-resize;
+  opacity: 0;
+  touch-action: none;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 3px,
+    rgba(var(--accent-rgb), 0.75) 3px 4px
+  );
+  transition: opacity 0.16s ease;
+}
+
+.tile:hover .resizeHandle {
+  opacity: 1;
 }
 
 .video {
