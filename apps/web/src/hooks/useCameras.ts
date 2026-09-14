@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRoomContext } from '@livekit/components-react';
-import { type Participant, type Room, RoomEvent, Track, type TrackPublication } from 'livekit-client';
+import { type Participant, type Room, RoomEvent, Track } from 'livekit-client';
+import type { AttachablePublication } from '../lib/attachableTrack';
 import { describeCameraError } from '../lib/errors';
 import { cameraCaptureOptions, cameraPublishOptions } from '../lib/media';
 import type { ToastKind } from './useToasts';
@@ -11,7 +12,15 @@ export interface CameraEntry {
   isLocal: boolean;
   isSpeaking: boolean;
   trackSid: string;
-  publication: TrackPublication;
+  /*
+   * Tipado pela interface ENXUTA (`AttachablePublication`), não pelo
+   * `TrackPublication` completo do livekit-client — é o que permite
+   * `CameraStrip` (o consumidor deste campo) funcionar também com o
+   * transporte mediasoup, sem importar nada do SDK do LiveKit. A publicação
+   * de verdade continua sendo um `TrackPublication`; aqui ela só é vista por
+   * um tipo mais estreito.
+   */
+  publication: AttachablePublication;
 }
 
 export interface Cameras {

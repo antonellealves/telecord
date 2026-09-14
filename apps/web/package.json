@@ -13,6 +13,7 @@
     "@livekit/components-react": "^2.9.0",
     "@telecord/shared": "workspace:*",
     "livekit-client": "^2.9.0",
+    "mediasoup-client": "^3.9.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0"

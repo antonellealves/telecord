@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react';
+import type { TransportMode } from '@telecord/shared';
 import { trackEvent } from '../lib/gamification';
 
 interface RoomGamificationInput {
   roomId: string;
-  transport: 'livekit' | 'p2p' | 'cfsfu' | 'vercel-relay';
+  transport: TransportMode;
   isMicOn: boolean;
   isCameraOn: boolean;
   isSharing: boolean;

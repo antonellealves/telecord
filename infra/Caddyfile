@@ -1,0 +1,10 @@
+# Proxy TLS único da VM, roteando por hostname — ver docker-compose.proxy.yml
+# para o porquê de ter deixado de ser um Caddy por serviço.
+
+{$LIVEKIT_PUBLIC_HOST} {
+	reverse_proxy livekit:7880
+}
+
+{$MEDIASOUP_PUBLIC_HOST} {
+	reverse_proxy mediasoup-sfu:3100
+}

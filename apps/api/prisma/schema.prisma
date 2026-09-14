@@ -648,6 +648,41 @@ model PeerSignal {
 }
 
 /**
+ * Chat e soundboard do transporte `mediasoup`, por polling.
+ *
+ * O LiveKit tem canal de dados nativo (`publishData`/`DataReceived`), e o
+ * mediasoup também tem (DataProducer/DataConsumer via SCTP) — mas habilitar
+ * isso no servidor mediasoup-sfu é trabalho à parte, adiado por ora. Esta
+ * tabela é o equivalente por HTTP: mensagem BROADCAST (não par-a-par como
+ * `PeerSignal`), lida pelo mesmo ritmo do heartbeat de presença.
+ *
+ * Efêmera como o resto do modo direto/mediasoup: sem histórico depois que a
+ * sala esvazia (ver TTL na migração), e nada persiste no `RoomActivityLog`
+ * de auditoria — igual ao chat do LiveKit, que também não é auditado ali.
+ */
+model RoomBroadcastMessage {
+  id       String @id @default(cuid())
+  roomSlug String @db.VarChar(64)
+  fromPeer String @db.VarChar(64)
+  /// Nome exibido no momento do envio — congelado, mesmo padrão de
+  /// `RoomActivityLog.displayName`: quem troca de nome depois não reescreve
+  /// mensagem já mandada.
+  displayName String @db.VarChar(64)
+  /// JSON de `RoomMessage` (chat/sound/sound-stop) — o mesmo contrato que já
+  /// viaja pelo canal de dados do LiveKit, só que aqui serializado numa
+  /// coluna em vez de um payload binário de WebRTC.
+  body String @db.Text
+
+  createdAt DateTime @default(now())
+  /// Limpeza automática; ver o TTL declarado na migração.
+  expiresAt DateTime
+
+  /// A leitura é sempre "o que chegou depois do meu cursor, nesta sala".
+  @@index([roomSlug, createdAt])
+  @@index([expiresAt])
+}
+
+/**
  * Onde cada quadro fica na tela do modo direto.
  *
  * A posição é de QUEM OLHA, não de quem é olhado: cada pessoa arruma a própria

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRoomContext } from '@livekit/components-react';
-import { type Participant, type Room, RoomEvent, Track, type TrackPublication } from 'livekit-client';
+import { type Participant, type Room, RoomEvent, Track } from 'livekit-client';
 import type { ScreenShareOwner } from '@telecord/shared';
+import type { AttachablePublication } from '../lib/attachableTrack';
 import { describeScreenShareError, isScreenShareSupported } from '../lib/errors';
 import {
   DEFAULT_SCREEN_QUALITY,
@@ -13,7 +14,8 @@ import type { ToastKind } from './useToasts';
 
 export interface ScreenShareEntry {
   owner: ScreenShareOwner;
-  publication: TrackPublication;
+  /** Ver o mesmo comentário em `CameraEntry.publication` (useCameras.ts). */
+  publication: AttachablePublication;
 }
 
 export interface ScreenShares {

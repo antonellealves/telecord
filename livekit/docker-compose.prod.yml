@@ -10,8 +10,16 @@
 #   docker compose -f docker-compose.prod.yml up -d
 #
 # Variáveis exigidas no .env desta pasta (ver .env.example ao lado):
-#   LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_WEBHOOK_URL, LIVEKIT_NODE_IP,
-#   LIVEKIT_PUBLIC_HOST (ex.: 129-1-2-3.nip.io, sem esquema)
+#   LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_WEBHOOK_URL, LIVEKIT_NODE_IP
+#
+# TLS não é feito aqui: desde que o transporte `mediasoup` entrou na mesma VM
+# (ver mediasoup/docker-compose.prod.yml), as portas 80/443 passaram a ser
+# compartilhadas entre os dois processos, e um Caddy por serviço não cabe —
+# dois containers não religam a mesma porta do host. O proxy TLS agora é
+# ÚNICO para a VM inteira: ver infra/docker-compose.proxy.yml e
+# infra/Caddyfile, que rotea por hostname para este container e para o do
+# mediasoup. Suba a infra ANTES deste compose (ver infra/README ou o
+# workflow de deploy).
 
 services:
   livekit:
@@ -32,29 +40,14 @@ services:
     volumes:
       - ./livekit.yaml:/etc/livekit.yaml:ro
     ports:
-      - "7880:7880" # sinalização (WebSocket/HTTP) — só o Caddy fala com esta porta
       - "7881:7881" # TCP fallback do ICE
-      - "50000-50100:50000-50100/udp" # mídia (RTC)
+      - "40000-40100:40000-40100/udp" # mídia (RTC)
+    networks:
+      - telecord-proxy
 
-  # TLS de verdade sem domínio próprio: nip.io resolve qualquer
-  # "<qualquer-coisa>.<ip>.nip.io" para o próprio <ip>, então o Let's Encrypt
-  # consegue validar o desafio HTTP-01 normalmente. Caddy renova sozinho.
-  caddy:
-    image: caddy:2.9-alpine
-    restart: unless-stopped
-    depends_on:
-      - livekit
-    environment:
-      LIVEKIT_PUBLIC_HOST: ${LIVEKIT_PUBLIC_HOST:?defina no .env, tipo 129-1-2-3.nip.io}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-
-volumes:
-  caddy_data:
-  caddy_config:
+# Rede EXTERNA, criada uma vez pela infra compartilhada (ver
+# infra/docker-compose.proxy.yml) — é por ela que o Caddy único da VM alcança
+# `livekit:7880` pelo nome do serviço, sem publicar a porta ao host.
+networks:
+  telecord-proxy:
+    external: true

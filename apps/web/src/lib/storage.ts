@@ -318,7 +318,9 @@ const TRANSPORT_KEY = 'telecord.transport';
 export function readTransport(): TransportMode {
   try {
     const raw = window.localStorage.getItem(TRANSPORT_KEY);
-    return raw === 'p2p' || raw === 'cfsfu' || raw === 'vercel-relay' ? raw : 'livekit';
+    return raw === 'p2p' || raw === 'cfsfu' || raw === 'vercel-relay' || raw === 'mediasoup'
+      ? raw
+      : 'livekit';
   } catch {
     return 'livekit';
   }

@@ -13,6 +13,7 @@ import { IceModule } from './ice/ice.module';
 import { LiveKitModule } from './livekit/livekit.module';
 import { LoggingModule } from './logging/logging.module';
 import { MailModule } from './mail/mail.module';
+import { MediasoupModule } from './mediasoup/mediasoup.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PeersModule } from './peers/peers.module';
 import { RoomsModule } from './rooms/rooms.module';
@@ -41,6 +42,7 @@ import { UsersModule } from './users/users.module';
     LiveKitModule,
     IceModule,
     CfsfuModule,
+    MediasoupModule,
     AdminModule,
   ],
   providers: [

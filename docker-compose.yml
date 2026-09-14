@@ -84,7 +84,24 @@ services:
     ports:
       - "7880:7880" # sinalização (WebSocket/HTTP)
       - "7881:7881" # TCP fallback do ICE
-      - "50000-50100:50000-50100/udp" # mídia (RTC), ver livekit.yaml
+      - "40000-40100:40000-40100/udp" # mídia (RTC), ver livekit.yaml
+
+  # Processo mediasoup-sfu local — quinto transporte, opcional (SPEC do
+  # transporte 'mediasoup'). Faixa de portas PRÓPRIA, fora da 40000-40100/udp
+  # que o LiveKit já reserva acima: as duas nunca podem se sobrepor na mesma
+  # máquina.
+  mediasoup-sfu:
+    build:
+      context: .
+      dockerfile: apps/mediasoup-sfu/Dockerfile
+    environment:
+      MEDIASOUP_INTERNAL_SECRET: ${MEDIASOUP_INTERNAL_SECRET:-dev-secret-trocar-em-producao}
+      MEDIASOUP_ANNOUNCED_IP: ${MEDIASOUP_ANNOUNCED_IP:?defina o IP local da maquina no .env, tipo 192.168.0.10}
+      PORT: "3100"
+      MEDIASOUP_RTC_MIN_PORT: "40101"
+      MEDIASOUP_RTC_MAX_PORT: "40200"
+    ports:
+      - "40101-40200:40101-40200/udp"
 
   api:
     build:
@@ -117,6 +134,12 @@ services:
       # painel diz que não há dado de conversa. É o modo de desenvolvimento.
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      # Quinto transporte, opcional: sem estas duas o proxy /api/mediasoup/*
+      # responde 503 e a opção mostra a tela de "não configurado" — mesmo
+      # critério do LiveKit acima. Aponta para o serviço `mediasoup-sfu`
+      # deste compose pelo nome, na rede interna do Docker.
+      MEDIASOUP_INTERNAL_URL: ${MEDIASOUP_INTERNAL_URL:-http://mediasoup-sfu:3100}
+      MEDIASOUP_INTERNAL_SECRET: ${MEDIASOUP_INTERNAL_SECRET:-}
     ports:
       - "3000:3000"
     volumes:

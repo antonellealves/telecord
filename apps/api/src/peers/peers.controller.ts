@@ -39,8 +39,16 @@ export class PeersController {
       throw badRequest('invalid_request', 'Informe o `peerId`.');
     }
     const displayName = readText(body.displayName, 64) ?? 'Alguém';
-    // `cfsfu` é opaco aqui: o serviço valida a forma antes de gravar.
-    return this.peers.heartbeat(slug, peerId, displayName, claims?.sub ?? null, body.cfsfu);
+    // `cfsfu`/`mediasoup` são opacos aqui: o serviço valida a forma antes de
+    // gravar, e nunca os dois num mesmo par — a sala está num modo por vez.
+    return this.peers.heartbeat(
+      slug,
+      peerId,
+      displayName,
+      claims?.sub ?? null,
+      body.cfsfu,
+      body.mediasoup,
+    );
   }
 
   @OptionalAuth()

@@ -12,8 +12,14 @@ rtc:
   # Faixa de portas UDP para a mídia (ICE/SRTP). Precisa estar liberada no
   # firewall/security group quando este arquivo for para a VM — é o único
   # requisito de rede além da porta de sinalização (7880).
-  port_range_start: 50000
-  port_range_end: 50100
+  #
+  # 40000-40100, e não 50000-50100: a faixa antiga colidia na prática com
+  # portas que apps comuns (Teams observado, mas Zoom/Discord têm o mesmo
+  # hábito) abrem no host para a própria mídia — o sintoma era o
+  # `docker compose up` falhar com "port is not available" sempre que um
+  # desses apps já estivesse rodando. 40000+ tem bem menos concorrência.
+  port_range_start: 40000
+  port_range_end: 40100
   # Sem isto, o LiveKit anuncia o IP INTERNO do contêiner (172.x.x.x) como
   # candidato ICE — o navegador aceita a conexão de sinalização (WebSocket)
   # só que a mídia nunca fecha de verdade, o ping do RTC expira e o cliente

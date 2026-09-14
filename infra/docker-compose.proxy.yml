@@ -1,0 +1,47 @@
+# Proxy TLS ÚNICO da VM — compartilhado entre o LiveKit e o mediasoup-sfu.
+#
+# Antes de o transporte `mediasoup` existir, cada serviço trazia seu próprio
+# Caddy (ver histórico de livekit/docker-compose.prod.yml). Isso parava de
+# funcionar no momento em que um segundo processo passou a precisar das
+# mesmas portas 80/443 do host — dois containers não religam a mesma porta.
+# Este compose existe só para isso: UM Caddy, na VM inteira, roteando por
+# hostname para cada serviço através da rede externa `telecord-proxy`.
+#
+# Ordem de subida na VM (feito pelo workflow de deploy, ver
+# .github/workflows/deploy.yml):
+#   1. docker compose -f infra/docker-compose.proxy.yml up -d   (cria a rede
+#      "telecord-proxy" e sobe o Caddy — mas ele só resolve os hosts DEPOIS
+#      que os serviços abaixo estiverem de pé)
+#   2. docker compose -f livekit/docker-compose.prod.yml up -d
+#   3. docker compose -f mediasoup/docker-compose.prod.yml up -d
+#
+# Variáveis exigidas no .env desta pasta (ver .env.example ao lado):
+#   LIVEKIT_PUBLIC_HOST, MEDIASOUP_PUBLIC_HOST (dois hosts nip.io distintos,
+#   ambos resolvendo para o MESMO IP da VM — nip.io não se importa com o nome
+#   antes do IP, só com o IP dentro dele).
+
+services:
+  caddy:
+    image: caddy:2.9-alpine
+    restart: unless-stopped
+    environment:
+      LIVEKIT_PUBLIC_HOST: ${LIVEKIT_PUBLIC_HOST:?defina no .env, tipo 129-1-2-3.nip.io}
+      MEDIASOUP_PUBLIC_HOST: ${MEDIASOUP_PUBLIC_HOST:?defina no .env, tipo ms-129-1-2-3.nip.io}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    networks:
+      - telecord-proxy
+
+networks:
+  telecord-proxy:
+    name: telecord-proxy
+
+volumes:
+  caddy_data:
+  caddy_config:

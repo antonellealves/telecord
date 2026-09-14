@@ -14,6 +14,7 @@
  * espírito do resto do produto (SPEC §3 — o localStorage guarda preferência, não
  * identidade). Storage bloqueado degrada para memória da aba, nunca derruba.
  */
+import type { TransportMode } from '@telecord/shared';
 
 export type Rarity = 'comum' | 'raro' | 'epico' | 'lendario';
 
@@ -361,7 +362,7 @@ export const MISSIONS: Mission[] = [
 // ---------------------------------------------------------------------------
 
 export type GameEvent =
-  | { type: 'room.join'; roomId: string; transport: 'livekit' | 'p2p' | 'cfsfu' | 'vercel-relay' }
+  | { type: 'room.join'; roomId: string; transport: TransportMode }
   | { type: 'room.create' }
   | { type: 'mic.on' }
   | { type: 'camera.on' }

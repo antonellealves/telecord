@@ -1,6 +1,6 @@
 import type { TransportMode } from '@telecord/shared';
 import { P2P_COMFORT_PEERS } from '@telecord/shared';
-import { CloudIcon, MeshIcon, RelayIcon, ServerIcon } from '../components/icons';
+import { CloudIcon, LayersIcon, MeshIcon, RelayIcon, ServerIcon } from '../components/icons';
 
 interface IconProps {
   className?: string;
@@ -63,6 +63,15 @@ export const TRANSPORTS: TransportInfo[] = [
     experimental: true,
     pros: ['Zero infraestrutura', 'HD via WebCodecs', 'Tudo na Vercel'],
     cons: ['Relay best-effort de instância única', 'Em construção'],
+  },
+  {
+    id: 'mediasoup',
+    label: 'mediasoup',
+    tagline: 'SFU próprio na VM · experimental',
+    Icon: LayersIcon,
+    experimental: true,
+    pros: ['Servidor próprio, sem terceiro', 'Mesma VM do LiveKit', 'Controle total do roteamento'],
+    cons: ['Depende de processo à parte na VM', 'Em construção'],
   },
 ];
 

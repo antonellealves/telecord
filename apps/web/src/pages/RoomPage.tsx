@@ -8,6 +8,7 @@ import { readPeerId, readTransport, writeTransport } from '../lib/storage';
 import { P2PRoom } from './P2PRoom';
 import { CloudflareRoom } from './CloudflareRoom';
 import { VercelRelayRoom } from './VercelRelayRoom';
+import { MediasoupRoomShell } from './mediasoup/MediasoupRoomShell';
 import { useToken } from '../hooks/useToken';
 import { LIVEKIT_URL, getConfigError } from '../lib/config';
 import { roomOptions } from '../lib/media';
@@ -97,6 +98,18 @@ export function RoomPage(): JSX.Element {
         displayName={displayName}
         peerId={peerId}
         onLeave={() => navigate('/')}
+        onChangeTransport={changeTransport}
+      />
+    );
+  }
+
+  if (transport === 'mediasoup') {
+    return (
+      <MediasoupRoomShell
+        roomId={roomId}
+        displayName={displayName}
+        peerId={peerId}
+        onLeaveIntent={() => navigate('/')}
         onChangeTransport={changeTransport}
       />
     );

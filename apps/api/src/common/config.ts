@@ -82,6 +82,20 @@ export interface CfSfuConfig {
   monthlyLimitGb: number;
 }
 
+/**
+ * Processo mediasoup-sfu próprio, na VM Oracle (transporte 'mediasoup').
+ *
+ * `internalUrl` nunca é exposta ao navegador: o proxy `/api/mediasoup/*` é
+ * quem fala com o processo, autenticado por `internalSecret` (segredo
+ * compartilhado, tráfego servidor-servidor — não a borda pública que exige
+ * JWT). `null` = a quinta opção some da tela, mesmo critério de "a presença
+ * da credencial é o interruptor" do LiveKit e do Cloudflare acima.
+ */
+export interface MediasoupConfig {
+  internalUrl: string;
+  internalSecret: string;
+}
+
 export interface AppConfig {
   port: number;
   /** Origem da SPA. Vale como allowlist de CORS e destino dos redirects. */
@@ -104,6 +118,7 @@ export interface AppConfig {
   livekit: LiveKitConfig | null;
   ice: IceConfig;
   cfsfu: CfSfuConfig | null;
+  mediasoup: MediasoupConfig | null;
 
   mailDriver: MailDriver;
   mailFrom: string;
@@ -224,6 +239,28 @@ function loadCfSfuConfig(env: NodeJS.ProcessEnv): CfSfuConfig | null {
 }
 
 /**
+ * Lê a configuração do processo mediasoup-sfu.
+ *
+ * Mesmo critério do LiveKit/Cloudflare: a presença de `MEDIASOUP_INTERNAL_URL`
+ * liga a quinta opção. As duas variáveis vão sempre juntas — uma URL sem
+ * segredo (ou vice-versa) chamaria o processo sem conseguir se autenticar, e o
+ * sintoma seria 401 em toda tentativa de entrar em sala nesse modo.
+ */
+function loadMediasoupConfig(env: NodeJS.ProcessEnv): MediasoupConfig | null {
+  const internalUrl = trimTrailingSlash(env.MEDIASOUP_INTERNAL_URL?.trim() ?? '');
+  const internalSecret = env.MEDIASOUP_INTERNAL_SECRET?.trim() ?? '';
+
+  if (internalUrl === '' && internalSecret === '') return null;
+  if (internalUrl === '' || internalSecret === '') {
+    throw new ConfigError(
+      'MEDIASOUP_INTERNAL_URL e MEDIASOUP_INTERNAL_SECRET vão juntos ou nenhum dos dois.',
+    );
+  }
+
+  return { internalUrl, internalSecret };
+}
+
+/**
  * Desfaz o `
 ` literal do PEM.
  *
@@ -320,6 +357,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     livekit: livekitKey === '' ? null : { apiKey: livekitKey, apiSecret: livekitSecret },
     ice: loadIceConfig(env),
     cfsfu: loadCfSfuConfig(env),
+    mediasoup: loadMediasoupConfig(env),
     mailDriver: mailDriverRaw,
     mailFrom: env.MAIL_FROM?.trim() || 'Telecord <nao-responda@localhost>',
     resendApiKey: resendApiKey === '' ? undefined : resendApiKey,

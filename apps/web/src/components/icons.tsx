@@ -388,3 +388,16 @@ export function RelayIcon(props: IconProps): JSX.Element {
     </Icon>
   );
 }
+
+/** Camadas empilhadas: o modo mediasoup (SFU self-hosted próprio, ao lado do LiveKit). */
+export function LayersIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g>
+        <path d="M12 3 21 8l-9 5-9-5 9-5Z" />
+        <path d="M3 12l9 5 9-5" />
+        <path d="M3 16l9 5 9-5" />
+      </g>
+    </Icon>
+  );
+}

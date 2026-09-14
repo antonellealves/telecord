@@ -7,6 +7,7 @@
  */
 import type {
   CfSfuAnnounce,
+  MediasoupAnnounce,
   PeerInbox,
   PeerRoster,
   PeerSignalKind,
@@ -21,12 +22,17 @@ export async function peerHeartbeat(
   peerId: string,
   displayName: string,
   /** Anúncio do cfsfu (sessionId/trackName publicados). Ausente nos outros modos. */
-  announce?: CfSfuAnnounce | null,
+  cfsfuAnnounce?: CfSfuAnnounce | null,
+  /** Anúncio do mediasoup (producerId publicados). Ausente nos outros modos. */
+  mediasoupAnnounce?: MediasoupAnnounce | null,
 ): Promise<PeerRoster> {
   return apiJson<PeerRoster>(`${base(slug)}/heartbeat`, 'POST', {
     peerId,
     displayName,
-    ...(announce !== undefined && announce !== null ? { cfsfu: announce } : {}),
+    ...(cfsfuAnnounce !== undefined && cfsfuAnnounce !== null ? { cfsfu: cfsfuAnnounce } : {}),
+    ...(mediasoupAnnounce !== undefined && mediasoupAnnounce !== null
+      ? { mediasoup: mediasoupAnnounce }
+      : {}),
   });
 }
 

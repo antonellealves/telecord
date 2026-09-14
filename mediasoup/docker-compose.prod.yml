@@ -1,0 +1,51 @@
+# Deploy do processo mediasoup-sfu numa VM, desacoplado do resto do projeto —
+# mesmo espírito de livekit/docker-compose.prod.yml.
+#
+# Roda NA MESMA VM Oracle que já hospeda o LiveKit (ver livekit/setup-vm.sh),
+# mas como serviço à parte: um processo NOSSO (build a partir de
+# mediasoup/Dockerfile), não uma imagem de terceiro. `apps/api` (na Vercel) é
+# quem fala com ele, através do proxy /api/mediasoup/* — este processo nunca é
+# exposto ao navegador do participante, só à `apps/api`.
+#
+# Uso na VM (feito pelo workflow de deploy, ver .github/workflows/deploy.yml):
+#   cd /opt/telecord-mediasoup-src/mediasoup   # repo inteiro, não só esta pasta —
+#                                               # o Dockerfile builda com contexto ../
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+#
+# Variáveis exigidas no .env desta pasta (ver .env.example ao lado):
+#   MEDIASOUP_INTERNAL_SECRET, MEDIASOUP_ANNOUNCED_IP
+#
+# TLS não é feito aqui, pelo mesmo motivo do livekit/docker-compose.prod.yml:
+# as portas 80/443 da VM são de UM Caddy só, compartilhado com o LiveKit (ver
+# infra/docker-compose.proxy.yml). Suba a infra ANTES deste compose.
+#
+# ATENÇÃO A RECURSOS: a VM.Standard.E2.1.Micro tem só ~500MB de RAM real (ver
+# livekit/setup-vm.sh) e já roda LiveKit+Caddy nela. Some este serviço só
+# depois de medir o consumo do LiveKit sozinho — rodar os dois com salas
+# ativas ao mesmo tempo pode não caber nesta shape.
+
+services:
+  mediasoup-sfu:
+    build:
+      context: ../
+      dockerfile: apps/mediasoup-sfu/Dockerfile
+    restart: unless-stopped
+    environment:
+      MEDIASOUP_INTERNAL_SECRET: ${MEDIASOUP_INTERNAL_SECRET:?defina no .env}
+      MEDIASOUP_ANNOUNCED_IP: ${MEDIASOUP_ANNOUNCED_IP:?defina o IP publico da VM no .env}
+      PORT: 3100
+      # Faixa PRÓPRIA — fora da 40000-40100/udp que o livekit.yaml já reserva
+      # nesta mesma VM. As duas faixas nunca podem se sobrepor.
+      MEDIASOUP_RTC_MIN_PORT: 40101
+      MEDIASOUP_RTC_MAX_PORT: 40200
+    ports:
+      # A faixa de mídia (RTP/ICE) é UDP direto — TLS não se aplica a ela, só
+      # ao control-plane HTTP (porta 3100), que fica só na rede interna
+      # `telecord-proxy` e é alcançado pelo Caddy único da VM.
+      - "40101-40200:40101-40200/udp"
+    networks:
+      - telecord-proxy
+
+networks:
+  telecord-proxy:
+    external: true

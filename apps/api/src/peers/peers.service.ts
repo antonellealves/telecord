@@ -3,6 +3,7 @@ import {
   isTilePosition,
   MAX_TILES_SAVED,
   type CfSfuAnnounce,
+  type MediasoupAnnounce,
   type PeerInbox,
   type PeerRoster,
   type PeerSignalKind,
@@ -62,15 +63,25 @@ export class PeersService {
     peerId: string,
     displayName: string,
     userId: string | null,
-    announceRaw: unknown = null,
+    cfsfuAnnounceRaw: unknown = null,
+    mediasoupAnnounceRaw: unknown = null,
   ): Promise<PeerRoster> {
     const agora = new Date();
 
-    // O anúncio (sessionId/trackName do cfsfu) vem do cliente e vai para uma
-    // coluna JSON: passa pela validação de forma, e o que não for anúncio
-    // válido vira nulo em vez de sujar a coluna.
-    const announce = sanitizarAnuncio(announceRaw);
-    const meta = announce === null ? Prisma.JsonNull : (announce as unknown as Prisma.InputJsonValue);
+    /*
+     * O anúncio (cfsfu OU mediasoup) vem do cliente e vai para uma única
+     * coluna JSON opaca: passa pela validação de forma, e o que não for
+     * anúncio válido vira nulo em vez de sujar a coluna. Uma sala está num
+     * modo por vez, então só um dos dois chega não-nulo por chamada — mas
+     * gravar os dois campos juntos (cada um nulo quando ausente) evita que um
+     * par que troque de modo no meio da sessão deixe o anúncio antigo preso.
+     */
+    const cfsfu = sanitizarAnuncioCf(cfsfuAnnounceRaw);
+    const mediasoup = sanitizarAnuncioMediasoup(mediasoupAnnounceRaw);
+    const meta: Prisma.InputJsonValue | typeof Prisma.JsonNull =
+      cfsfu === null && mediasoup === null
+        ? Prisma.JsonNull
+        : ({ cfsfu, mediasoup } as unknown as Prisma.InputJsonValue);
 
     await this.prisma.peerPresence.upsert({
       where: { roomSlug_peerId: { roomSlug, peerId } },
@@ -95,13 +106,17 @@ export class PeersService {
     });
 
     return {
-      peers: vivos.map((p) => ({
-        peerId: p.peerId,
-        displayName: p.displayName,
-        isAnonymous: p.userId === null,
-        joinedAt: p.joinedAt.toISOString(),
-        cfsfu: sanitizarAnuncio(p.meta),
-      })),
+      peers: vivos.map((p) => {
+        const meta = isRecord(p.meta) ? p.meta : null;
+        return {
+          peerId: p.peerId,
+          displayName: p.displayName,
+          isAnonymous: p.userId === null,
+          joinedAt: p.joinedAt.toISOString(),
+          cfsfu: sanitizarAnuncioCf(meta?.cfsfu ?? null),
+          mediasoup: sanitizarAnuncioMediasoup(meta?.mediasoup ?? null),
+        };
+      }),
     };
   }
 
@@ -236,6 +251,10 @@ function clamp(valor: number): number {
   return Math.max(0, Math.min(1, valor));
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 /**
  * Deixa passar só o que é anúncio de cfsfu válido.
  *
@@ -243,25 +262,56 @@ function clamp(valor: number): number {
  * campo impedem a coluna de virar depósito. Qualquer coisa fora da forma vira
  * `null` — que é o estado normal nos modos que não usam o SFU.
  */
-function sanitizarAnuncio(valor: unknown): CfSfuAnnounce | null {
-  if (typeof valor !== 'object' || valor === null) return null;
-  const bruto = valor as Record<string, unknown>;
-  const sessionId = typeof bruto.sessionId === 'string' ? bruto.sessionId.slice(0, 128) : null;
+function sanitizarAnuncioCf(valor: unknown): CfSfuAnnounce | null {
+  if (!isRecord(valor)) return null;
+  const sessionId = typeof valor.sessionId === 'string' ? valor.sessionId.slice(0, 128) : null;
   if (sessionId === null || sessionId === '') return null;
-  if (!Array.isArray(bruto.tracks)) return null;
+  if (!Array.isArray(valor.tracks)) return null;
 
-  const tracks = bruto.tracks
+  const tracks = valor.tracks
     .slice(0, 8)
     .map((raw) => {
-      if (typeof raw !== 'object' || raw === null) return null;
-      const t = raw as Record<string, unknown>;
-      const kind = t.kind === 'audio' || t.kind === 'video' ? t.kind : null;
-      const trackName = typeof t.trackName === 'string' ? t.trackName.slice(0, 128) : null;
-      const label = typeof t.label === 'string' ? t.label.slice(0, 64) : null;
+      if (!isRecord(raw)) return null;
+      const kind = raw.kind === 'audio' || raw.kind === 'video' ? raw.kind : null;
+      const trackName = typeof raw.trackName === 'string' ? raw.trackName.slice(0, 128) : null;
+      const label = typeof raw.label === 'string' ? raw.label.slice(0, 64) : null;
       if (kind === null || trackName === null || trackName === '' || label === null) return null;
       return { kind, trackName, label };
     })
     .filter((t): t is CfSfuAnnounce['tracks'][number] => t !== null);
 
   return { sessionId, tracks };
+}
+
+/**
+ * Deixa passar só o que é anúncio de mediasoup válido.
+ *
+ * Mesmo tratamento do cfsfu acima, mas mais simples: o mediasoup não tem
+ * `sessionId` próprio (o `peerId` do telecord já identifica o par), só a lista
+ * de `producerId`s publicados.
+ */
+function sanitizarAnuncioMediasoup(valor: unknown): MediasoupAnnounce | null {
+  if (!isRecord(valor)) return null;
+  if (!Array.isArray(valor.tracks)) return null;
+
+  const tracks = valor.tracks
+    .slice(0, 8)
+    .map((raw) => {
+      if (!isRecord(raw)) return null;
+      const producerId = typeof raw.producerId === 'string' ? raw.producerId.slice(0, 128) : null;
+      const kind = raw.kind === 'audio' || raw.kind === 'video' ? raw.kind : null;
+      const trackKind =
+        raw.trackKind === 'mic' ||
+        raw.trackKind === 'camera' ||
+        raw.trackKind === 'screen-video' ||
+        raw.trackKind === 'screen-audio'
+          ? raw.trackKind
+          : null;
+      if (producerId === null || producerId === '' || kind === null || trackKind === null) return null;
+      return { producerId, kind, trackKind };
+    })
+    .filter((t): t is MediasoupAnnounce['tracks'][number] => t !== null);
+
+  if (tracks.length === 0) return null;
+  return { tracks };
 }

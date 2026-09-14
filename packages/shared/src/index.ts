@@ -974,10 +974,23 @@ export interface AdminSessionTokenRow {
  * a que o navegador de quem compartilha conseguir codificar. Existe para
  * compartilhamento de tela em alta resolução com latência baixa e escala melhor
  * que a malha P2P.
+ *
+ * `mediasoup` é a quinta opção: um SFU self-hosted próprio (biblioteca Node,
+ * não serviço gerenciado), rodando na mesma VM que hospeda o LiveKit. Ao
+ * contrário do LiveKit, o servidor é código do próprio telecord — dá controle
+ * total sobre o roteamento de mídia, ao custo de manter a sinalização (SPEC do
+ * transporte `mediasoup`, `/api/mediasoup/*`) escrita à mão em vez de usar o
+ * protocolo de um SFU de terceiros.
  */
-export type TransportMode = 'livekit' | 'p2p' | 'cfsfu' | 'vercel-relay';
+export type TransportMode = 'livekit' | 'p2p' | 'cfsfu' | 'vercel-relay' | 'mediasoup';
 
-export const TRANSPORT_MODES: TransportMode[] = ['livekit', 'p2p', 'cfsfu', 'vercel-relay'];
+export const TRANSPORT_MODES: TransportMode[] = [
+  'livekit',
+  'p2p',
+  'cfsfu',
+  'vercel-relay',
+  'mediasoup',
+];
 
 export interface PeerInfo {
   peerId: string;
@@ -991,6 +1004,8 @@ export interface PeerInfo {
    * `null`/ausente nos modos LiveKit e P2P.
    */
   cfsfu?: CfSfuAnnounce | null;
+  /** Mesmo papel de `cfsfu`, para o transporte `mediasoup`: quais producerId puxar. */
+  mediasoup?: MediasoupAnnounce | null;
 }
 
 export interface PeerRoster {
@@ -1167,6 +1182,124 @@ export interface CfSfuClientConfig {
   enabled: boolean;
   iceServers: IceServerConfig[];
   usage: CfSfuUsage;
+}
+
+// ---------------------------------------------------------------------------
+// mediasoup (transporte 'mediasoup' — SFU self-hosted próprio)
+//
+// O processo mediasoup mora na VM Oracle, ao lado do LiveKit, e NÃO é exposto
+// direto ao navegador: quem fala com ele é o proxy `/api/mediasoup/*` (mesmo
+// desenho do cfsfu — a `apps/api` valida a participação na sala e repassa a
+// chamada). A diferença para o cfsfu é que aqui o "SFU" é processo NOSSO: o
+// proxy fala HTTP com ele em vez de com uma API de terceiros, mas o formato de
+// mensagem é opaco (`unknown`) do lado de cá — são os tipos do próprio
+// mediasoup (RtpCapabilities, DtlsParameters, etc.), que este pacote não
+// declara para não amarrar `@telecord/shared` à versão exata da lib.
+// ---------------------------------------------------------------------------
+
+/** Que tipo de mídia esta track carrega — decide o rótulo e o roteamento na UI. */
+export type MediasoupTrackKind = 'mic' | 'camera' | 'screen-video' | 'screen-audio';
+
+/**
+ * Parâmetros de um `WebRtcTransport` do mediasoup, como o servidor os devolve.
+ *
+ * Opaco de propósito (`unknown` nos campos de forma variável do mediasoup):
+ * o cliente passa isto direto para `device.createSendTransport`/
+ * `createRecvTransport`, sem inspecionar o conteúdo.
+ */
+export interface MediasoupTransportInfo {
+  id: string;
+  iceParameters: unknown;
+  iceCandidates: unknown;
+  dtlsParameters: unknown;
+}
+
+/** Corpo de `POST /api/mediasoup/rooms/:roomSlug/transports`. */
+export interface MediasoupCreateTransportBody {
+  peerId: string;
+  /** Um `WebRtcTransport` para publicar, outro para assinar — nunca o mesmo. */
+  direction: 'send' | 'recv';
+}
+
+/** Corpo de `POST /api/mediasoup/rooms/:roomSlug/transports/:transportId/connect`. */
+export interface MediasoupConnectTransportBody {
+  peerId: string;
+  dtlsParameters: unknown;
+}
+
+/** Corpo de `POST /api/mediasoup/rooms/:roomSlug/transports/:transportId/produce`. */
+export interface MediasoupProduceBody {
+  peerId: string;
+  kind: 'audio' | 'video';
+  rtpParameters: unknown;
+  trackKind: MediasoupTrackKind;
+}
+
+export interface MediasoupProduceResult {
+  producerId: string;
+}
+
+/** Corpo de `POST /api/mediasoup/rooms/:roomSlug/transports/:transportId/consume`. */
+export interface MediasoupConsumeBody {
+  peerId: string;
+  producerId: string;
+  /** RTP capabilities do `Device` do assinante — o servidor recusa se o codec não bater. */
+  rtpCapabilities: unknown;
+}
+
+export interface MediasoupConsumeResult {
+  id: string;
+  producerId: string;
+  kind: 'audio' | 'video';
+  rtpParameters: unknown;
+}
+
+/** O que um par publicou, para o roster anunciar aos outros — descoberta de produtores. */
+export interface MediasoupPublishedTrack {
+  producerId: string;
+  kind: 'audio' | 'video';
+  trackKind: MediasoupTrackKind;
+}
+
+/** Anúncio carregado pelo heartbeat, mesmo mecanismo do `cfsfu` em `PeerInfo`. */
+export interface MediasoupAnnounce {
+  tracks: MediasoupPublishedTrack[];
+}
+
+/** Config pública do transporte mediasoup, servida por `GET /api/mediasoup/config`. */
+export interface MediasoupClientConfig {
+  enabled: boolean;
+  /** RTP capabilities do `Router` — o `Device` do cliente carrega com isto antes de tudo. */
+  routerRtpCapabilities: unknown;
+}
+
+/**
+ * Chat/soundboard do transporte mediasoup, por polling (SPEC de
+ * `RoomBroadcastMessage`) — equivalente ao canal de dados do LiveKit, sem um
+ * DataChannel de verdade por trás ainda.
+ */
+export interface MediasoupBroadcastEntry {
+  id: string;
+  fromPeer: string;
+  displayName: string;
+  /** JSON serializado de `RoomMessage` — o mesmo contrato do canal de dados do LiveKit. */
+  body: string;
+  createdAt: string;
+}
+
+/** Corpo de `POST /api/mediasoup/rooms/:roomSlug/broadcast`. */
+export interface MediasoupBroadcastSendBody {
+  peerId: string;
+  displayName: string;
+  /** JSON serializado de `RoomMessage`. */
+  body: string;
+}
+
+/** Resposta de `GET /api/mediasoup/rooms/:roomSlug/broadcast?since=<cursor>`. */
+export interface MediasoupBroadcastPollResult {
+  messages: MediasoupBroadcastEntry[];
+  /** Cursor para a próxima chamada — o `createdAt` da última mensagem recebida. */
+  cursor: string;
 }
 
 /**
