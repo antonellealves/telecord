@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-const MIN_SCALE = 1;
+const MIN_SCALE = 0.25;
 const MAX_SCALE = 6;
 const STEP = 1.35;
 
@@ -43,10 +43,21 @@ export function useZoomPan(): ZoomPan {
     content.style.cursor = scaleRef.current > 1 ? 'grab' : 'default';
   }, []);
 
-  /** Trava o deslocamento para o conteúdo nunca descolar das bordas. */
+  /**
+   * Trava o deslocamento para o conteúdo nunca descolar das bordas.
+   *
+   * Abaixo de 100% o conteúdo inteiro cabe na viewport — não sobra nada para
+   * "explorar" arrastando, então o limite vira zero e qualquer deslocamento
+   * anterior (de quando estava ampliado) é zerado junto.
+   */
   const clamp = useCallback(() => {
     const viewport = viewportRef.current;
     if (viewport === null) return;
+    if (scaleRef.current <= 1) {
+      xRef.current = 0;
+      yRef.current = 0;
+      return;
+    }
     const { width, height } = viewport.getBoundingClientRect();
     const limitX = ((scaleRef.current - 1) * width) / 2;
     const limitY = ((scaleRef.current - 1) * height) / 2;
@@ -74,11 +85,7 @@ export function useZoomPan(): ZoomPan {
       yRef.current = pointerY - ((pointerY - yRef.current) * next) / scaleRef.current;
       scaleRef.current = next;
 
-      if (next === MIN_SCALE) {
-        xRef.current = 0;
-        yRef.current = 0;
-      }
-
+      // `clamp()` já zera x/y quando next <= 1 — não precisa duplicar aqui.
       clamp();
       apply();
       setScale(next);
