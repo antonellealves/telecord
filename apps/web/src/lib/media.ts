@@ -7,6 +7,7 @@ import {
   type VideoCaptureOptions,
   type VideoEncoding,
 } from 'livekit-client';
+import { canCaptureSystemAudio } from './shell';
 
 /**
  * Níveis de qualidade da transmissão de tela.
@@ -239,13 +240,25 @@ export function screenShareCaptureOptions(
 ): ScreenShareCaptureOptions {
   const option = screenQuality(quality);
   return {
-    // O áudio da aba só existe em Chromium desktop; quando vier, sobe sem
-    // processamento de voz — o AEC destruiria o áudio do conteúdo.
-    audio: {
-      echoCancellation: false,
-      noiseSuppression: false,
-      autoGainControl: false,
-    },
+    /*
+     * O áudio da aba só existe em Chromium desktop; quando vier, sobe sem
+     * processamento de voz — o AEC destruiria o áudio do conteúdo.
+     *
+     * Suprimido inteiramente quando rodando dentro do shell Electron no
+     * macOS: lá não existe `audio: 'loopback'` (ver desktop/src/main/
+     * index.ts, `audioModeFor`), e pedir áudio mesmo assim só resultaria
+     * num prompt do sistema pedindo algo que o shell nunca vai entregar —
+     * pior do que simplesmente não perguntar.
+     */
+    ...(canCaptureSystemAudio()
+      ? {
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          },
+        }
+      : {}),
     /*
      * `text`, e não `motion`.
      *

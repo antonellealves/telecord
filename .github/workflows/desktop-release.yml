@@ -1,0 +1,65 @@
+name: Desktop Release
+
+# Dispara só em tag "desktop-vX.Y.Z" — separado do deploy do app web
+# (deploy.yml), que roda a cada push em main. O shell Electron tem seu
+# próprio ciclo de versão, independente do front.
+on:
+  push:
+    tags:
+      - 'desktop-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Instala dependências
+        run: npm install
+
+      - name: Compila o TypeScript
+        run: npm run build
+
+      # Os secrets de assinatura são OPCIONAIS de propósito: sem eles, o
+      # electron-builder produz um artefato não assinado normalmente — é o
+      # que permite este workflow funcionar antes de haver certificado
+      # configurado, e continuar funcionando se algum secret faltar depois.
+      - name: Publica (Windows)
+        if: runner.os == 'Windows'
+        run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+
+      - name: Publica (macOS)
+        if: runner.os == 'macOS'
+        run: npx electron-builder --mac --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Publica (Linux)
+        if: runner.os == 'Linux'
+        run: npx electron-builder --linux --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

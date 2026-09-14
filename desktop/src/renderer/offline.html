@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';" />
+<title>telecord — sem conexão</title>
+<style>
+  html, body {
+    height: 100%;
+    margin: 0;
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at 50% 30%, #1c1d25, #0e0f13);
+    color: #f2f2f5;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  .card {
+    text-align: center;
+    max-width: 360px;
+    padding: 32px;
+  }
+  h1 {
+    font-size: 18px;
+    margin: 0 0 8px;
+  }
+  p {
+    font-size: 13px;
+    color: #9a9ba5;
+    line-height: 1.5;
+    margin: 0 0 20px;
+  }
+  button {
+    background: #5b8cff;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover {
+    background: #6f99ff;
+  }
+  button:active {
+    background: #4a7bef;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Sem conexão com o telecord</h1>
+    <p>Não foi possível carregar o aplicativo. Verifique sua internet — o telecord tentará reconectar sozinho.</p>
+    <button id="retry">Tentar novamente</button>
+  </div>
+  <script src="offline.js"></script>
+</body>
+</html>

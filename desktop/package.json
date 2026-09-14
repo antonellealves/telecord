@@ -1,0 +1,27 @@
+{
+  "name": "@telecord/desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shell Electron do telecord — carrega o app web em produção, não o reescreve.",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "copy-assets": "node -e \"const fs=require('fs');fs.mkdirSync('dist/renderer',{recursive:true});for(const f of ['offline.html','picker.html'])fs.copyFileSync('src/renderer/'+f,'dist/renderer/'+f)\"",
+    "dev": "npm run build && electron dist/main/index.js",
+    "build": "tsc -p tsconfig.json && npm run copy-assets",
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "release": "npm run build && electron-builder --publish always"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "electron-log": "^5.2.4",
+    "electron-updater": "^6.3.9"
+  }
+}

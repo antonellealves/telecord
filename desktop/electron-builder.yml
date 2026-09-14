@@ -1,0 +1,58 @@
+appId: com.telecord.app
+productName: telecord
+copyright: Copyright © telecord
+directories:
+  output: release
+  buildResources: build
+
+# Nunca empacota nada do front web — o shell só carrega PROD_URL em
+# runtime. `files` restringe o asar ao que o próprio shell precisa.
+files:
+  - dist/**/*
+  - package.json
+  - "!**/*.ts"
+  - "!**/*.map"
+
+publish:
+  provider: github
+  owner: antonellealves
+  repo: telecord
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+mac:
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  icon: build/icon.icns
+  category: public.app-category.social
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Notarização/assinatura ficam condicionadas à presença dos secrets no
+  # workflow (ver .github/workflows/desktop-release.yml) — sem eles, o
+  # electron-builder produz um .dmg não assinado normalmente.
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+  icon: build/icon.png
+  category: Network
+  maintainer: telecord
+
+dmg:
+  sign: false

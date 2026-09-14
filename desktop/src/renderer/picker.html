@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+<title>Escolher tela ou janela</title>
+<style>
+  body {
+    margin: 0;
+    padding: 16px;
+    background: #17181d;
+    color: #f2f2f5;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  h1 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 12px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    max-height: 380px;
+    overflow-y: auto;
+  }
+  .item {
+    background: #24252c;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    padding: 8px;
+    cursor: pointer;
+    text-align: center;
+  }
+  .item:hover {
+    border-color: #5b8cff;
+  }
+  .item img {
+    width: 100%;
+    height: 90px;
+    object-fit: contain;
+    background: #000;
+    border-radius: 4px;
+  }
+  .item span {
+    display: block;
+    margin-top: 6px;
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .actions {
+    margin-top: 14px;
+    text-align: right;
+  }
+  button {
+    background: #2b2c34;
+    color: #f2f2f5;
+    border: 1px solid #3a3b44;
+    border-radius: 6px;
+    padding: 7px 14px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  button:hover {
+    background: #34353f;
+  }
+</style>
+</head>
+<body>
+  <h1>Escolha o que compartilhar</h1>
+  <div class="grid" id="grid"></div>
+  <div class="actions">
+    <button id="cancel">Cancelar</button>
+  </div>
+  <script src="picker.js"></script>
+</body>
+</html>
