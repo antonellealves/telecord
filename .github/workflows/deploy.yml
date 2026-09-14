@@ -335,6 +335,29 @@ jobs:
             sudo mkdir -p /opt/telecord-proxy
             sudo chown "$(whoami)":"$(whoami)" /opt/telecord-proxy
 
+      # MIGRAÇÃO ÚNICA: antes deste proxy compartilhado existir, o LiveKit
+      # tinha seu PRÓPRIO Caddy (ver histórico de livekit/docker-compose.
+      # prod.yml) segurando 80/443 sozinho. Numa VM que já tinha isso rodando
+      # de um deploy anterior, o `docker compose up` do proxy novo falha com
+      # "port is already allocated" — o Caddy antigo nunca chega a ser
+      # substituído sozinho porque vive num compose diferente. `|| true`
+      # porque numa VM nova (sem esse Caddy antigo) o `down` não tem o que
+      # derrubar, e isso não pode falhar o job.
+      - name: Derruba o Caddy antigo do LiveKit, se ainda existir
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.LIVEKIT_VM_HOST || vars.LIVEKIT_VM_HOST }}
+          username: ${{ secrets.LIVEKIT_VM_USER || vars.LIVEKIT_VM_USER }}
+          key: ${{ env.LIVEKIT_VM_SSH_KEY }}
+          script: |
+            set -uo pipefail
+            if [ -f /opt/telecord-livekit/docker-compose.prod.yml ]; then
+              cd /opt/telecord-livekit
+              docker compose -f docker-compose.prod.yml stop caddy || true
+              docker compose -f docker-compose.prod.yml rm -f caddy || true
+            fi
+            exit 0
+
       - name: Copia os arquivos de deploy para a VM
         uses: appleboy/scp-action@v0.1.7
         with:
