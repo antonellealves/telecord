@@ -345,14 +345,34 @@ jobs:
           target: /opt/telecord-proxy
           strip_components: 1
 
+      # LIVEKIT_PUBLIC_HOST e MEDIASOUP_PUBLIC_HOST não são segredo (são só o
+      # hostname nip.io público), então escrever o .env aqui — a partir do
+      # Environment do GitHub, mesma fonte que `deploy-livekit` já usa para
+      # verificar o deploy — é mais simples que depender de alguém preparar
+      # esse arquivo à mão na VM antes do primeiro deploy.
+      - name: Escreve o .env do proxy na VM
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.LIVEKIT_VM_HOST || vars.LIVEKIT_VM_HOST }}
+          username: ${{ secrets.LIVEKIT_VM_USER || vars.LIVEKIT_VM_USER }}
+          key: ${{ env.LIVEKIT_VM_SSH_KEY }}
+          envs: LIVEKIT_PUBLIC_HOST,MEDIASOUP_PUBLIC_HOST
+          script: |
+            set -euo pipefail
+            cat > /opt/telecord-proxy/.env <<EOF2
+            LIVEKIT_PUBLIC_HOST=$LIVEKIT_PUBLIC_HOST
+            MEDIASOUP_PUBLIC_HOST=$MEDIASOUP_PUBLIC_HOST
+            EOF2
+        env:
+          LIVEKIT_PUBLIC_HOST: ${{ secrets.LIVEKIT_PUBLIC_HOST || vars.LIVEKIT_PUBLIC_HOST }}
+          MEDIASOUP_PUBLIC_HOST: ${{ secrets.MEDIASOUP_PUBLIC_HOST || vars.MEDIASOUP_PUBLIC_HOST }}
+
       - name: Sobe o proxy na VM
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.LIVEKIT_VM_HOST || vars.LIVEKIT_VM_HOST }}
           username: ${{ secrets.LIVEKIT_VM_USER || vars.LIVEKIT_VM_USER }}
           key: ${{ env.LIVEKIT_VM_SSH_KEY }}
-          # O .env já mora na VM (feito manualmente uma vez) — nunca é escrito
-          # por este workflow, então nenhuma credencial passa pelo runner.
           script: |
             set -euo pipefail
             cd /opt/telecord-proxy
