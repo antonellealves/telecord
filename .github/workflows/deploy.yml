@@ -523,9 +523,7 @@ jobs:
 
       # O repositório inteiro vai para a VM (o Dockerfile builda com
       # `context: ../` a partir de mediasoup/, e precisa de packages/shared
-      # ao lado) — o .env de produção mora à parte, em
-      # /opt/telecord-mediasoup-src/mediasoup/.env, feito manualmente uma vez,
-      # e nunca é sobrescrito porque não faz parte do que o git rastreia.
+      # ao lado).
       - name: Copia o repositório para a VM
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -534,6 +532,27 @@ jobs:
           key: ${{ env.LIVEKIT_VM_SSH_KEY }}
           source: '.'
           target: /opt/telecord-mediasoup-src
+
+      # MEDIASOUP_ANNOUNCED_IP é o mesmo IP público da VM que já vale como
+      # LIVEKIT_VM_HOST/LIVEKIT_NODE_IP — não precisa de um secret à parte.
+      # MEDIASOUP_INTERNAL_SECRET é sensível de verdade; escrito aqui a
+      # partir do Environment do GitHub, nunca commitado.
+      - name: Escreve o .env do mediasoup-sfu na VM
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.LIVEKIT_VM_HOST || vars.LIVEKIT_VM_HOST }}
+          username: ${{ secrets.LIVEKIT_VM_USER || vars.LIVEKIT_VM_USER }}
+          key: ${{ env.LIVEKIT_VM_SSH_KEY }}
+          envs: MEDIASOUP_INTERNAL_SECRET,MEDIASOUP_ANNOUNCED_IP
+          script: |
+            set -euo pipefail
+            cat > /opt/telecord-mediasoup-src/mediasoup/.env <<EOF2
+            MEDIASOUP_INTERNAL_SECRET=$MEDIASOUP_INTERNAL_SECRET
+            MEDIASOUP_ANNOUNCED_IP=$MEDIASOUP_ANNOUNCED_IP
+            EOF2
+        env:
+          MEDIASOUP_INTERNAL_SECRET: ${{ secrets.MEDIASOUP_INTERNAL_SECRET || vars.MEDIASOUP_INTERNAL_SECRET }}
+          MEDIASOUP_ANNOUNCED_IP: ${{ secrets.LIVEKIT_VM_HOST || vars.LIVEKIT_VM_HOST }}
 
       - name: Builda a imagem e sobe o serviço na VM
         uses: appleboy/ssh-action@v1.2.0
