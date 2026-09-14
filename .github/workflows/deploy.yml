@@ -317,6 +317,24 @@ jobs:
 
       - uses: actions/checkout@v5
 
+      # Garante a pasta ANTES do scp, com o dono certo. Sem isto, a primeira
+      # vez que este job roda numa VM nova o SCP falha calado com "Process
+      # exited with status 1" se /opt/telecord-proxy não existir ainda ou já
+      # existir com outro dono (ex.: criada à mão com `sudo mkdir` sem
+      # `chown`) — mesmo padrão que já mordeu o setup manual do LiveKit, daí
+      # `setup-vm.sh` fazer `sudo mkdir` + `sudo chown $USER` por lá. Aqui o
+      # workflow deixa de depender de alguém lembrar de fazer isso à mão.
+      - name: Garante a pasta de deploy na VM, com o dono certo
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.LIVEKIT_VM_HOST || vars.LIVEKIT_VM_HOST }}
+          username: ${{ secrets.LIVEKIT_VM_USER || vars.LIVEKIT_VM_USER }}
+          key: ${{ env.LIVEKIT_VM_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            sudo mkdir -p /opt/telecord-proxy
+            sudo chown "$(whoami)":"$(whoami)" /opt/telecord-proxy
+
       - name: Copia os arquivos de deploy para a VM
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -446,6 +464,20 @@ jobs:
       # packages/shared) — por isso o monorepo inteiro vai para a VM, não só
       # a pasta mediasoup/. Ainda assim é bem mais leve que node_modules do
       # workspace completo: só código-fonte.
+      # Mesmo motivo do "Garante a pasta" em deploy-proxy: sem isto, a
+      # primeira vez numa VM nova (ou uma pasta criada à mão sem chown) faz o
+      # SCP falhar calado com "Process exited with status 1".
+      - name: Garante a pasta de deploy na VM, com o dono certo
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.LIVEKIT_VM_HOST || vars.LIVEKIT_VM_HOST }}
+          username: ${{ secrets.LIVEKIT_VM_USER || vars.LIVEKIT_VM_USER }}
+          key: ${{ env.LIVEKIT_VM_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            sudo mkdir -p /opt/telecord-mediasoup-src
+            sudo chown "$(whoami)":"$(whoami)" /opt/telecord-mediasoup-src
+
       # O repositório inteiro vai para a VM (o Dockerfile builda com
       # `context: ../` a partir de mediasoup/, e precisa de packages/shared
       # ao lado) — o .env de produção mora à parte, em
