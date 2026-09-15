@@ -31,6 +31,7 @@ import { useRoomMessages } from '../hooks/useRoomMessages';
 import { useRoomModeration } from '../hooks/useRoomModeration';
 import { useRoomSounds } from '../hooks/useRoomSounds';
 import { useScreenShares } from '../hooks/useScreenShares';
+import { useSoundboardSpeakers } from '../hooks/useSoundboardSpeakers';
 import { useSoundVolume } from '../hooks/useSoundVolume';
 import { useTalkControls } from '../hooks/useTalkControls';
 import { useForcedMove } from '../hooks/useForcedMove';
@@ -118,8 +119,24 @@ export function RoomShell({
     isSignedIn: authStatus === 'autenticado',
     notify: push,
   });
-  const { messages, unread, sendChat, playSound, playing, stopSound, markRead } =
-    useRoomMessages(() => sound.effective, roomSounds.find);
+  const soundboardSpeakers = useSoundboardSpeakers();
+  const { messages, unread, sendChat, playSound, playing, stopSound, markRead } = useRoomMessages(
+    () => sound.effective,
+    roomSounds.find,
+    undefined,
+    soundboardSpeakers.mark,
+  );
+  /*
+   * `isSpeaking` some do LiveKit (nível de áudio de verdade) OU de ter
+   * soltado um som do soundboard agora — as duas fontes acendem o mesmo
+   * destaque visual no box de participantes, para dar pra saber quem tocou
+   * o som sem precisar adivinhar.
+   */
+  const participantsWithSoundboard = participants.map((participant) =>
+    soundboardSpeakers.speaking.has(participant.identity)
+      ? { ...participant, isSpeaking: true }
+      : participant,
+  );
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   // Preferência de máquina; ver `readScreenQuality`.
@@ -326,7 +343,7 @@ export function RoomShell({
           {isParticipantsOpen ? (
             <>
               <ParticipantSidebar
-                participants={participants}
+                participants={participantsWithSoundboard}
                 isAway={isAway}
                 isAwayBusy={away.isBusy}
                 onToggleAway={away.toggle}
@@ -481,7 +498,7 @@ export function RoomShell({
           container={overlay.container}
           roomId={roomId}
           variant="livekit"
-          people={participants.map((p) => ({
+          people={participantsWithSoundboard.map((p) => ({
             id: p.identity,
             displayName: p.displayName,
             isSpeaking: p.isSpeaking,

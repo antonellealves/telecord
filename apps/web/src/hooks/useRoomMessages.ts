@@ -96,12 +96,22 @@ export function useRoomMessages(
    * mesma lógica — o formato da mensagem é o mesmo, só o cano muda.
    */
   transport?: MessageTransport,
+  /**
+   * Chamado quando um som do soundboard toca — local ou de outro
+   * participante — com a `identity` de quem soltou. Quem chama usa isto para
+   * acender o mesmo destaque visual de "está falando" (ver
+   * `useSoundboardSpeakers`), já que o soundboard não passa pelo áudio de
+   * verdade e não teria como acender sozinho.
+   */
+  onSound?: (identity: string) => void,
 ): RoomMessaging {
   const room = useRoomContext();
   // Por ref: trocar o transporte não pode reassinar o canal e cortar o som
   // que estiver tocando.
   const transportRef = useRef(transport);
   transportRef.current = transport;
+  const onSoundRef = useRef(onSound);
+  onSoundRef.current = onSound;
   const [messages, setMessages] = useState<ChatEntry[]>([]);
   const [unread, setUnread] = useState(0);
 
@@ -140,6 +150,10 @@ export function useRoomMessages(
 
       if (message.type === 'sound') {
         playLocally(message.soundId);
+        const identity = participant?.identity;
+        if (identity !== undefined && identity !== '') {
+          onSoundRef.current?.(identity);
+        }
         return;
       }
 
@@ -216,8 +230,12 @@ export function useRoomMessages(
     (soundId: string) => {
       publish({ type: 'sound', id: newId(), soundId, sentAt: Date.now() });
       playLocally(soundId);
+      const identity = transportRef.current?.localIdentity ?? room.localParticipant.identity;
+      if (identity !== undefined && identity !== '') {
+        onSoundRef.current?.(identity);
+      }
     },
-    [publish, playLocally],
+    [publish, playLocally, room],
   );
 
   const stopSound = useCallback(

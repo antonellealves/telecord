@@ -17,6 +17,7 @@ import { TransportPicker } from '../../components/TransportPicker';
 import { useChannelNav } from '../../hooks/useChannelNav';
 import { useResizablePanel } from '../../hooks/useResizablePanel';
 import { useRoomSounds } from '../../hooks/useRoomSounds';
+import { useSoundboardSpeakers } from '../../hooks/useSoundboardSpeakers';
 import { useAuth } from '../../hooks/useAuth';
 import { useOverlay } from '../../hooks/useOverlay';
 import { ParticipantOverlay } from '../../components/ParticipantOverlay';
@@ -79,8 +80,10 @@ type PanelWidthStyle = CSSProperties & {
  *   `useActivityReporter`): o relatório de atividade usa o TOKEN do LiveKit
  *   como credencial (`sendActivityEvents(participantToken, …)`), que não
  *   existe neste transporte.
- * - **"Quem está falando" (`isSpeaking`)**: o LiveKit calcula nível de áudio
- *   no servidor; o mediasoup-sfu ainda não expõe essa métrica.
+ * - **"Quem está falando" (`isSpeaking`) por nível de áudio de verdade**: o
+ *   LiveKit calcula isso no servidor; o mediasoup-sfu ainda não expõe essa
+ *   métrica. O destaque ainda acende ao soltar um som do soundboard (ver
+ *   `useSoundboardSpeakers`), que não depende dela.
  * - **Ausência (`away`) sincronizada com os outros**: fica local a este
  *   navegador (ver `useMediasoupAway`) até o roster carregar um campo de
  *   atributo livre por participante.
@@ -111,12 +114,24 @@ export function MediasoupRoomShell({
     isSignedIn: authStatus === 'autenticado',
     notify: push,
   });
+  const soundboardSpeakers = useSoundboardSpeakers();
   const { messages, unread, sendChat, playSound, playing, stopSound, markRead } = useMediasoupChat(
     roomId,
     peerId,
     displayName,
     () => sound.effective,
     roomSounds.find,
+    soundboardSpeakers.mark,
+  );
+  /*
+   * O mediasoup ainda não calcula "quem está falando" de verdade (ver nota no
+   * topo deste arquivo) — mas soltar um som do soundboard pode acender o
+   * mesmo destaque, do mesmo jeito que no LiveKit.
+   */
+  const participantsWithSoundboard = participants.map((participant) =>
+    soundboardSpeakers.speaking.has(participant.identity)
+      ? { ...participant, isSpeaking: true }
+      : participant,
   );
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -255,7 +270,7 @@ export function MediasoupRoomShell({
           {isParticipantsOpen ? (
             <>
               <ParticipantSidebar
-                participants={participants}
+                participants={participantsWithSoundboard}
                 isAway={away.isAway}
                 isAwayBusy={away.isBusy}
                 onToggleAway={away.toggle}
@@ -393,7 +408,7 @@ export function MediasoupRoomShell({
           // checagem de transporte — o outro valor, 'p2p', é o layout mais
           // enxuto do modo direto. mediasoup usa o mesmo grid do LiveKit.
           variant="livekit"
-          people={participants.map((p) => ({
+          people={participantsWithSoundboard.map((p) => ({
             id: p.identity,
             displayName: p.displayName,
             isSpeaking: p.isSpeaking,

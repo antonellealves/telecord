@@ -48,6 +48,12 @@ export function useMediasoupChat(
   displayName: string,
   getVolume: () => number,
   resolveSound: (soundId: string) => ResolvedSound | undefined,
+  /**
+   * Chamado quando um som do soundboard toca — local ou de outro
+   * participante — com o `peerId` de quem soltou. Ver
+   * `useSoundboardSpeakers`.
+   */
+  onSound?: (identity: string) => void,
 ): MediasoupChat {
   const [messages, setMessages] = useState<MediasoupChatEntry[]>([]);
   const [unread, setUnread] = useState(0);
@@ -55,6 +61,8 @@ export function useMediasoupChat(
 
   const seenRef = useRef(new Set<string>());
   const cursorRef = useRef<string | null>(null);
+  const onSoundRef = useRef(onSound);
+  onSoundRef.current = onSound;
 
   const append = useCallback((entry: MediasoupChatEntry, countUnread: boolean) => {
     if (seenRef.current.has(entry.id)) return;
@@ -90,6 +98,7 @@ export function useMediasoupChat(
 
           if (message.type === 'sound') {
             playLocally(message.soundId);
+            onSoundRef.current?.(entry.fromPeer);
             continue;
           }
           if (message.type === 'sound-stop') {
@@ -154,8 +163,9 @@ export function useMediasoupChat(
     (soundId: string) => {
       publish({ type: 'sound', id: newId(), soundId, sentAt: Date.now() });
       playLocally(soundId);
+      onSoundRef.current?.(peerId);
     },
-    [publish, playLocally],
+    [publish, playLocally, peerId],
   );
 
   const stopSound = useCallback(
