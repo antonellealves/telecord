@@ -247,8 +247,24 @@ jobs:
           fi
 
           echo "4. /api/rooms deve continuar sendo a função das salas ao vivo"
-          code=$(curl -sS -o /tmp/rooms.json -w '%{http_code}' --max-time 30 "$URL/api/rooms")
-          if [ "$code" = "200" ]; then
+          # Retry: este job (deploy) roda em paralelo com deploy-livekit — os
+          # dois só dependem de verify/migrate, de propósito, para não
+          # acoplar a publicação da Vercel a um deploy de VM (ver histórico).
+          # A consequência é que, quando o LiveKit está no meio do próprio
+          # rollout na VM ao mesmo tempo, esta curl pode chegar antes dele
+          # voltar a responder — 502 real, porém transitório, não um bug. Dá
+          # alguns segundos de chance antes de marcar falha de verdade.
+          rooms_ok=0
+          for i in $(seq 1 6); do
+            code=$(curl -sS -o /tmp/rooms.json -w '%{http_code}' --max-time 30 "$URL/api/rooms")
+            if [ "$code" = "200" ]; then
+              rooms_ok=1
+              break
+            fi
+            echo "   tentativa $i: $code — LiveKit pode estar no meio do próprio deploy, tentando de novo…"
+            sleep 5
+          done
+          if [ "$rooms_ok" = "1" ]; then
             echo "   ok (200)"
           else
             echo "::error::/api/rooms respondeu $code"
