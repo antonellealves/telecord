@@ -149,6 +149,17 @@ interface Link {
   /** Quem faz a oferta, para os dois lados não ofertarem ao mesmo tempo. */
   isInitiator: boolean;
   senders: RTCRtpSender[];
+  /**
+   * `ofertar` pediu uma oferta enquanto `pc.signalingState` não estava
+   * `stable` (outra negociação em andamento) e teve que desistir — sem isto,
+   * o pedido era descartado de vez: quem ligava a câmera ou começava a
+   * compartilhar tela bem no meio de uma negociação anterior nunca via a
+   * track chegar ao outro lado, e o par ficava com estado divergente pelo
+   * resto da chamada (o sintoma: botão "parar" preso, porque o lado local
+   * ACHA que publicou, mas a oferta nova nunca saiu). Marcado aqui, consumido
+   * assim que `onsignalingstatechange` volta a `stable`.
+   */
+  pendingRenegotiation: boolean;
 }
 
 /**
@@ -200,6 +211,10 @@ export function useP2PMesh({
     iceServers !== undefined && iceServers.length > 0 ? iceServers : DEFAULT_ICE_SERVERS;
   const videoRef = useRef<VideoSendProfile | null>(videoProfile ?? null);
   videoRef.current = videoProfile ?? null;
+  // `conectar` (abaixo) referencia `ofertar` antes dela existir — `ofertar`
+  // preenche isto assim que é criada, e o handler de `onsignalingstatechange`
+  // chama por aqui.
+  const ofertarRef = useRef<((outro: string) => Promise<void>) | null>(null);
 
   const marcar = useCallback((id: string, state: PeerConnectionState) => {
     setStates((atual) => {
@@ -219,7 +234,7 @@ export function useP2PMesh({
       const pc = new RTCPeerConnection({ iceServers: iceRef.current });
       const stream = new MediaStream();
       const isInitiator = peerId < outro;
-      const link: Link = { pc, channel: null, stream, isInitiator, senders: [] };
+      const link: Link = { pc, channel: null, stream, isInitiator, senders: [], pendingRenegotiation: false };
       links.current.set(outro, link);
 
       /*
@@ -277,6 +292,16 @@ export function useP2PMesh({
         }
       };
 
+      // Ver docstring de `pendingRenegotiation`: consome o pedido de oferta
+      // que `ofertar` teve que descartar por a negociação anterior ainda
+      // estar em andamento, assim que ela termina de verdade.
+      pc.onsignalingstatechange = () => {
+        if (pc.signalingState === 'stable' && link.pendingRenegotiation) {
+          link.pendingRenegotiation = false;
+          void ofertarRef.current?.(outro);
+        }
+      };
+
       // O que já estiver publicado entra agora; o resto entra no efeito abaixo.
       const atual = localRef.current;
       if (atual !== null) {
@@ -296,6 +321,7 @@ export function useP2PMesh({
     link.pc.onicecandidate = null;
     link.pc.ontrack = null;
     link.pc.onconnectionstatechange = null;
+    link.pc.onsignalingstatechange = null;
     link.pc.ondatachannel = null;
     if (link.channel !== null) {
       link.channel.onmessage = null;
@@ -356,7 +382,13 @@ export function useP2PMesh({
     async (outro: string): Promise<void> => {
       const link = conectar(outro);
       if (!link.isInitiator) return;
-      if (link.pc.signalingState !== 'stable') return;
+      if (link.pc.signalingState !== 'stable') {
+        // Ver docstring de `pendingRenegotiation`: não é hora de ofertar
+        // agora, mas o pedido não pode ser esquecido — `onsignalingstatechange`
+        // reencaminha assim que a negociação em curso terminar.
+        link.pendingRenegotiation = true;
+        return;
+      }
 
       marcar(outro, 'ligando');
       preferirCodecsVideo(link.pc);
@@ -367,6 +399,7 @@ export function useP2PMesh({
     },
     [conectar, marcar, peerId, roomSlug],
   );
+  ofertarRef.current = ofertar;
 
   /* O batimento: renova presença, lê a caixa e reconcilia a malha. */
   useEffect(() => {
