@@ -5,5 +5,6 @@ import { PeersService } from './peers.service';
 @Module({
   controllers: [PeersController],
   providers: [PeersService],
+  exports: [PeersService],
 })
 export class PeersModule {}

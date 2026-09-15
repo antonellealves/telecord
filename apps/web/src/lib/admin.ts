@@ -19,6 +19,7 @@ import type {
   LiveRoom,
   LogLevel,
   Page,
+  RoomTransport,
   SystemLogEntry,
 } from '@telecord/shared';
 import { apiGet, apiJson, query } from './apiClient';
@@ -131,31 +132,53 @@ export async function fetchLiveRooms(signal?: AbortSignal): Promise<LiveRoom[]> 
 
 export async function fetchLiveParticipants(
   slug: string,
+  transport: RoomTransport,
   signal?: AbortSignal,
 ): Promise<LiveParticipant[]> {
-  return apiGet<LiveParticipant[]>(`/admin/live/${encodeURIComponent(slug)}`, signal);
+  return apiGet<LiveParticipant[]>(
+    `/admin/live/${encodeURIComponent(slug)}${query({ transport })}`,
+    signal,
+  );
 }
 
 const live = (slug: string, identity: string): string =>
   `/admin/live/${encodeURIComponent(slug)}/${encodeURIComponent(identity)}`;
 
-/** `muted` explícito: o painel pode estar com um estado velho na tela. */
+/**
+ * `muted` explícito: o painel pode estar com um estado velho na tela.
+ *
+ * Em `transport: 'MEDIASOUP'` isto é COOPERATIVO — o SFU não tem como mutar
+ * outro peer à força (ver `MediasoupModerationService` no backend); o pedido
+ * fica pendente até o cliente da pessoa obedecer no próximo heartbeat.
+ */
 export async function muteParticipant(
   slug: string,
   identity: string,
   muted: boolean,
+  transport: RoomTransport,
 ): Promise<void> {
-  await apiJson<{ ok: true }>(`${live(slug, identity)}/mute`, 'POST', { muted });
+  await apiJson<{ ok: true }>(`${live(slug, identity)}/mute`, 'POST', { muted, transport });
 }
 
+/** Em `transport: 'MEDIASOUP'` também é cooperativo — ver `muteParticipant`. */
 export async function moveParticipant(
   slug: string,
   identity: string,
   destino: string,
+  transport: RoomTransport,
 ): Promise<void> {
-  await apiJson<{ ok: true }>(`${live(slug, identity)}/move`, 'POST', { destino });
+  await apiJson<{ ok: true }>(`${live(slug, identity)}/move`, 'POST', { destino, transport });
 }
 
-export async function removeParticipant(slug: string, identity: string): Promise<void> {
-  await apiJson<{ ok: true }>(live(slug, identity), 'DELETE', undefined);
+export async function removeParticipant(
+  slug: string,
+  identity: string,
+  transport: RoomTransport,
+): Promise<void> {
+  await apiJson<{ ok: true }>(`${live(slug, identity)}${query({ transport })}`, 'DELETE', undefined);
+}
+
+/** Apaga a sala mediasoup ao vivo inteira — kick em massa. Não existe para LiveKit (ver `admin.controller.ts`). */
+export async function deleteLiveRoom(slug: string): Promise<{ removed: number }> {
+  return apiJson<{ ok: true; removed: number }>(`/admin/live/${encodeURIComponent(slug)}`, 'DELETE', undefined);
 }

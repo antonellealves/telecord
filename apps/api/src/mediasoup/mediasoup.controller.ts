@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import type {
+  LiveRoom,
   MediasoupBroadcastPollResult,
   MediasoupClientConfig,
   MediasoupConnectTransportBody,
@@ -10,7 +11,7 @@ import type {
   MediasoupProduceResult,
   MediasoupTransportInfo,
 } from '@telecord/shared';
-import { OptionalAuth } from '../auth/auth.decorators';
+import { OptionalAuth, Public } from '../auth/auth.decorators';
 import { badRequest } from '../common/errors';
 import { MediasoupService } from './mediasoup.service';
 
@@ -25,6 +26,18 @@ import { MediasoupService } from './mediasoup.service';
 @Controller('mediasoup')
 export class MediasoupController {
   constructor(private readonly mediasoup: MediasoupService) {}
+
+  /**
+   * Salas mediasoup com gente dentro AGORA — equivalente público de
+   * `GET /api/rooms` (LiveKit), para a Home mostrar o badge de transporte nos
+   * cards com contagem viva. Sem paginação, mesmo espírito de `/admin/live`:
+   * são poucas salas simultâneas, não milhares.
+   */
+  @Public()
+  @Get('live-rooms')
+  liveRooms(): Promise<LiveRoom[]> {
+    return this.mediasoup.liveRooms();
+  }
 
   @OptionalAuth()
   @Get('rooms/:roomSlug/config')

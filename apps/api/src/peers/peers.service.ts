@@ -4,6 +4,7 @@ import {
   MAX_TILES_SAVED,
   type CfSfuAnnounce,
   type MediasoupAnnounce,
+  type PeerAdminCommand,
   type PeerInbox,
   type PeerRoster,
   type PeerSignalKind,
@@ -94,7 +95,14 @@ export class PeersService {
         roomSlug,
         lastSeenAt: { gte: new Date(agora.getTime() - PRESENCE_TTL_MS) },
       },
-      select: { peerId: true, displayName: true, userId: true, joinedAt: true, meta: true },
+      select: {
+        peerId: true,
+        displayName: true,
+        userId: true,
+        joinedAt: true,
+        meta: true,
+        adminCommand: true,
+      },
       orderBy: [{ joinedAt: 'asc' }, { peerId: 'asc' }],
       /*
        * Teto ALTO, e não limite de produto: a sala aceita quem chegar, e quem
@@ -115,9 +123,24 @@ export class PeersService {
           joinedAt: p.joinedAt.toISOString(),
           cfsfu: sanitizarAnuncioCf(meta?.cfsfu ?? null),
           mediasoup: sanitizarAnuncioMediasoup(meta?.mediasoup ?? null),
+          adminCommand: sanitizarComandoAdmin(p.adminCommand),
         };
       }),
     };
+  }
+
+  /**
+   * Grava um comando de moderação para um par específico — só o painel admin
+   * chama isto (ver `MediasoupModerationService`). Fica numa coluna separada
+   * de `meta` de propósito: `meta` é reescrito pelo PRÓPRIO cliente a cada
+   * heartbeat (linha 89 acima), e gravar o comando ali seria apagado no
+   * próximo `beat()` antes de o cliente sequer conseguir obedecer.
+   */
+  async setAdminCommand(roomSlug: string, peerId: string, command: PeerAdminCommand | null): Promise<void> {
+    await this.prisma.peerPresence.updateMany({
+      where: { roomSlug, peerId },
+      data: { adminCommand: command === null ? Prisma.JsonNull : (command as unknown as Prisma.InputJsonValue) },
+    });
   }
 
   async leave(roomSlug: string, peerId: string): Promise<void> {
@@ -253,6 +276,25 @@ function clamp(valor: number): number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+/**
+ * Deixa passar só o que é comando de admin válido — mesma cautela dos outros
+ * sanitizadores, mas a coluna aqui é escrita pelo SERVIDOR, não pelo
+ * navegador; a validação é para uma linha corrompida por um schema antigo não
+ * quebrar o heartbeat de todo mundo, não para desconfiar de um cliente hostil.
+ */
+function sanitizarComandoAdmin(valor: unknown): PeerAdminCommand | null {
+  if (!isRecord(valor)) return null;
+  const forceMuted = typeof valor.forceMuted === 'boolean' ? valor.forceMuted : undefined;
+  const moveTo =
+    valor.moveTo === null
+      ? null
+      : typeof valor.moveTo === 'string' && valor.moveTo !== ''
+        ? valor.moveTo.slice(0, 64)
+        : undefined;
+  if (forceMuted === undefined && moveTo === undefined) return null;
+  return { forceMuted, moveTo };
 }
 
 /**

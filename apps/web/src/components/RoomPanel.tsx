@@ -6,6 +6,7 @@ import {
   validateRoomName,
   type RoomDetail,
   type RoomMemberRole,
+  type RoomTransport,
   type RoomVisibility,
 } from '@telecord/shared';
 import { useAuth } from '../hooks/useAuth';
@@ -64,6 +65,7 @@ export function RoomPanel({ roomId, anchorRef, onClose }: RoomPanelProps): JSX.E
   const [description, setDescription] = useState('');
   const [emoji, setEmoji] = useState('');
   const [visibility, setVisibility] = useState<RoomVisibility>('PUBLIC');
+  const [transport, setTransport] = useState<RoomTransport>('LIVEKIT');
 
   const adopt = (detail: RoomDetail): void => {
     setRoom(detail);
@@ -72,6 +74,7 @@ export function RoomPanel({ roomId, anchorRef, onClose }: RoomPanelProps): JSX.E
     setDescription(detail.description ?? '');
     setEmoji(detail.emoji ?? '');
     setVisibility(detail.visibility);
+    setTransport(detail.transport);
   };
 
   useEffect(() => {
@@ -141,7 +144,7 @@ export function RoomPanel({ roomId, anchorRef, onClose }: RoomPanelProps): JSX.E
       return;
     }
 
-    const payload = { name, description, emoji, visibility };
+    const payload = { name, description, emoji, visibility, transport };
     // Sala sem linha e sala sem dono passam pelo mesmo caminho: `POST /rooms`
     // cria a primeira e adota a segunda. A rota recusa adotar sala que já tem
     // dono, então não há como este botão tomar a sala de alguém.
@@ -230,6 +233,22 @@ export function RoomPanel({ roomId, anchorRef, onClose }: RoomPanelProps): JSX.E
                   </select>
                 </label>
               </div>
+
+              <label className={styles.field}>
+                <span className={styles.label}>Transporte padrão</span>
+                <select
+                  className={styles.input}
+                  value={transport}
+                  onChange={(event) => setTransport(event.target.value as RoomTransport)}
+                >
+                  <option value="LIVEKIT">LiveKit</option>
+                  <option value="MEDIASOUP">mediasoup (servidor próprio)</option>
+                </select>
+              </label>
+              <p className={styles.fine}>
+                É só o rótulo que a sala carrega na lista e no painel — quem entra continua
+                podendo trocar o transporte na tela de entrada, sala por sala.
+              </p>
 
               <label className={styles.field}>
                 <span className={styles.label}>Descrição</span>

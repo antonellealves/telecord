@@ -22,6 +22,7 @@ import { badRequest } from '../common/errors';
 import { decodeCursor, parseLimit } from '../common/pagination';
 import { actorOf, clientOf } from '../rooms/rooms.controller';
 import { AdminService } from './admin.service';
+import { MediasoupModerationService } from './mediasoup-moderation.service';
 import { MetricsService } from './metrics.service';
 import { ModerationService } from './moderation.service';
 
@@ -49,6 +50,7 @@ export class AdminController {
     private readonly admin: AdminService,
     private readonly metrics: MetricsService,
     private readonly moderation: ModerationService,
+    private readonly mediasoupModeration: MediasoupModerationService,
   ) {}
 
   @Get('metrics')
@@ -167,18 +169,34 @@ export class AdminController {
   // -------------------------------------------------------------------------
   // Moderação da sala VIVA
   //
-  // Estas rotas falam com o SFU, não com o banco: quem está conectado agora só
-  // o LiveKit sabe. Todas passam por auditoria — ver `ModerationService`.
+  // Duas fontes, sem fonte central comum: LiveKit tem `RoomServiceClient`
+  // (`ModerationService`), mediasoup não tem e é agregado da presença
+  // (`MediasoupModerationService` — ver a docstring de lá para o porquê de
+  // mutar/mover serem cooperativos nesse transporte). `GET /admin/live`
+  // mescla as duas; as rotas por sala/participante recebem `?transport=` para
+  // saber qual das duas usar (default `LIVEKIT`, o comportamento de sempre).
+  // Todas passam por auditoria.
   // -------------------------------------------------------------------------
 
   @Get('live')
   async live(): Promise<LiveRoom[]> {
-    return this.moderation.liveRooms();
+    const [livekit, mediasoup] = await Promise.all([
+      this.moderation.liveRooms(),
+      this.mediasoupModeration.liveRooms(),
+    ]);
+    return [...livekit, ...mediasoup].sort(
+      (a, b) => b.participants - a.participants || a.slug.localeCompare(b.slug),
+    );
   }
 
   @Get('live/:slug')
-  async liveRoom(@Param('slug') slug: string): Promise<LiveParticipant[]> {
-    return this.moderation.liveParticipants(slug);
+  async liveRoom(
+    @Param('slug') slug: string,
+    @Query('transport') transport: string | undefined,
+  ): Promise<LiveParticipant[]> {
+    return isMediasoup(transport)
+      ? this.mediasoupModeration.liveParticipants(slug)
+      : this.moderation.liveParticipants(slug);
   }
 
   @Post('live/:slug/:identity/mute')
@@ -194,13 +212,13 @@ export class AdminController {
     if (typeof body.muted !== 'boolean') {
       throw badRequest('invalid_request', 'Informe `muted` como true ou false.');
     }
-    await this.moderation.muteParticipant(
-      slug,
-      identity,
-      body.muted,
-      actorOf(claims),
-      clientOf(request),
-    );
+    const actor = actorOf(claims);
+    const client = clientOf(request);
+    if (isMediasoup(body.transport)) {
+      await this.mediasoupModeration.muteParticipant(slug, identity, body.muted, actor, client);
+    } else {
+      await this.moderation.muteParticipant(slug, identity, body.muted, actor, client);
+    }
     return { ok: true };
   }
 
@@ -216,13 +234,13 @@ export class AdminController {
     if (destino === '') {
       throw badRequest('invalid_request', 'Informe a sala de destino.');
     }
-    await this.moderation.moveParticipant(
-      slug,
-      identity,
-      destino,
-      actorOf(claims),
-      clientOf(request),
-    );
+    const actor = actorOf(claims);
+    const client = clientOf(request);
+    if (isMediasoup(body.transport)) {
+      await this.mediasoupModeration.moveParticipant(slug, identity, destino, actor, client);
+    } else {
+      await this.moderation.moveParticipant(slug, identity, destino, actor, client);
+    }
     return { ok: true };
   }
 
@@ -230,12 +248,40 @@ export class AdminController {
   async kick(
     @Param('slug') slug: string,
     @Param('identity') identity: string,
+    @Query('transport') transport: string | undefined,
     @CurrentUser() claims: AccessClaims | undefined,
     @Req() request: Request,
   ): Promise<{ ok: true }> {
-    await this.moderation.removeParticipant(slug, identity, actorOf(claims), clientOf(request));
+    const actor = actorOf(claims);
+    const client = clientOf(request);
+    if (isMediasoup(transport)) {
+      await this.mediasoupModeration.removeParticipant(slug, identity, actor, client);
+    } else {
+      await this.moderation.removeParticipant(slug, identity, actor, client);
+    }
     return { ok: true };
   }
+
+  /**
+   * Apaga a sala VIVA inteira — kick em massa. Só existe para mediasoup: no
+   * LiveKit o equivalente já é possível hoje mesmo sem esta rota, chamando
+   * `DELETE .../identity` para cada participante listado (o painel não tinha
+   * um atalho porque ninguém pediu — a sala LiveKit também não expõe
+   * "deletar sala ao vivo" na SDK sem remover pessoa por pessoa).
+   */
+  @Delete('live/:slug')
+  async kickRoom(
+    @Param('slug') slug: string,
+    @CurrentUser() claims: AccessClaims | undefined,
+    @Req() request: Request,
+  ): Promise<{ ok: true; removed: number }> {
+    const removed = await this.mediasoupModeration.removeRoom(slug, actorOf(claims), clientOf(request));
+    return { ok: true, removed };
+  }
+}
+
+function isMediasoup(value: unknown): boolean {
+  return value === 'MEDIASOUP' || value === 'mediasoup';
 }
 
 function readLevel(value: string | undefined): LogLevel | null {

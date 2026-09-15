@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { PeerInfo } from '@telecord/shared';
 import { describeCameraError } from '../../lib/errors';
 import { cameraCaptureOptions } from '../../lib/media';
@@ -48,6 +48,14 @@ export function useMediasoupCameras(
   const localProducer = engine.localTracks.find((track) => track.trackKind === 'camera') ?? null;
   const isLocalOn = localProducer !== null;
 
+  /*
+   * Mesmo cuidado do `useMediasoupScreenShares`: sem cachear por
+   * `MediaStreamTrack`, cada heartbeat (o roster muda de referência a cada
+   * tick) recriava o wrapper da câmera remota e o <video> em `CameraStrip`
+   * reanexava a track a cada poucos segundos.
+   */
+  const remoteHandleCache = useRef(new Map<MediaStreamTrack, MediasoupTrackHandle>());
+
   const start = useCallback(() => {
     const connection = engine.connection;
     if (connection === null || isBusy) return;
@@ -96,15 +104,26 @@ export function useMediasoupCameras(
         publication: { track: localHandle },
       });
     }
+    const cache = remoteHandleCache.current;
+    const liveTracks = new Set<MediaStreamTrack>();
     for (const remote of remoteCams) {
+      liveTracks.add(remote.track);
+      let handle = cache.get(remote.track);
+      if (handle === undefined) {
+        handle = wrapMediaStreamTrack(remote.track);
+        cache.set(remote.track, handle);
+      }
       out.push({
         identity: remote.ownerPeerId,
         displayName: displayNameOf(engine.roster, remote.ownerPeerId),
         isLocal: false,
         isSpeaking: false,
         trackSid: remote.consumerId,
-        publication: { track: wrapMediaStreamTrack(remote.track) },
+        publication: { track: handle },
       });
+    }
+    for (const cachedTrack of cache.keys()) {
+      if (!liveTracks.has(cachedTrack)) cache.delete(cachedTrack);
     }
     return out.sort((a, b) => (a.trackSid < b.trackSid ? -1 : a.trackSid > b.trackSid ? 1 : 0));
   }, [engine.remoteTracks, engine.roster, isLocalOn, localProducer, localHandle, localPeerId]);

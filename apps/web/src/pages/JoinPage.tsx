@@ -13,6 +13,7 @@ import { ActiveRoomsList } from '../components/ActiveRoomsList';
 import { AmbientGradient } from '../components/AmbientGradient';
 import { ChannelsList } from '../components/ChannelsList';
 import { GamificationCenter } from '../components/GamificationCenter';
+import { useActiveMediasoupRooms } from '../hooks/useActiveMediasoupRooms';
 import { useActiveRooms } from '../hooks/useActiveRooms';
 import { useChannelDirectory } from '../hooks/useChannelDirectory';
 import { useRoomDirectory } from '../hooks/useRoomDirectory';
@@ -61,6 +62,7 @@ export function JoinPage(): JSX.Element {
   }, [user]);
 
   const activeRooms = useActiveRooms();
+  const activeMediasoupRooms = useActiveMediasoupRooms();
   /*
    * O nome das salas vem do banco; quem está online, do LiveKit. A lista
    * abaixo casa as duas — e sem serviço de contas o diretório chega vazio e a
@@ -328,11 +330,15 @@ export function JoinPage(): JSX.Element {
 
           <ActiveRoomsList
             rooms={activeRooms.rooms}
+            mediasoupRooms={activeMediasoupRooms.rooms}
             directory={directory.rooms}
             isLoading={activeRooms.isLoading}
             error={activeRooms.error}
             onEnter={enterRoom}
-            onRefresh={activeRooms.refresh}
+            onRefresh={() => {
+              activeRooms.refresh();
+              activeMediasoupRooms.refresh();
+            }}
           />
 
           <ul className={styles.notes}>

@@ -6,6 +6,7 @@ import {
   type Page,
   type RoomDetail,
   type RoomSummary,
+  type RoomTransport,
   type RoomVisibility,
 } from '@telecord/shared';
 import { badRequest, conflict, forbidden, notFound } from '../common/errors';
@@ -148,7 +149,14 @@ export class RoomsService {
    * Com dono, só ele e um administrador mexem.
    */
   async create(
-    input: { slug: string; name: string; description: string | null; emoji: string | null; visibility: RoomVisibility },
+    input: {
+      slug: string;
+      name: string;
+      description: string | null;
+      emoji: string | null;
+      visibility: RoomVisibility;
+      transport?: RoomTransport;
+    },
     actor: Actor,
     client: LogClient,
   ): Promise<RoomDetail> {
@@ -171,6 +179,7 @@ export class RoomsService {
           description: emptyToNull(input.description),
           emoji: emptyToNull(input.emoji),
           visibility: input.visibility,
+          transport: input.transport ?? 'LIVEKIT',
           ownerId: actor.id,
         },
         // A sala pode existir com `deletedAt` preenchido: recriar pelo mesmo
@@ -180,6 +189,7 @@ export class RoomsService {
           description: emptyToNull(input.description),
           emoji: emptyToNull(input.emoji),
           visibility: input.visibility,
+          transport: input.transport ?? 'LIVEKIT',
           ownerId: actor.id,
           deletedAt: null,
         },
@@ -217,7 +227,13 @@ export class RoomsService {
 
   async update(
     slug: string,
-    patch: { name?: string; description?: string | null; emoji?: string | null; visibility?: RoomVisibility },
+    patch: {
+      name?: string;
+      description?: string | null;
+      emoji?: string | null;
+      visibility?: RoomVisibility;
+      transport?: RoomTransport;
+    },
     actor: Actor,
     client: LogClient,
   ): Promise<RoomDetail> {
@@ -458,7 +474,13 @@ export class RoomsService {
 
   private async applyUpdate(
     room: Room,
-    patch: { name?: string; description?: string | null; emoji?: string | null; visibility?: RoomVisibility },
+    patch: {
+      name?: string;
+      description?: string | null;
+      emoji?: string | null;
+      visibility?: RoomVisibility;
+      transport?: RoomTransport;
+    },
     actor: Actor,
     client: LogClient,
     adopt: boolean,
@@ -468,6 +490,7 @@ export class RoomsService {
     if (patch.description !== undefined) data.description = emptyToNull(patch.description);
     if (patch.emoji !== undefined) data.emoji = emptyToNull(patch.emoji);
     if (patch.visibility !== undefined) data.visibility = patch.visibility;
+    if (patch.transport !== undefined) data.transport = patch.transport;
     if (adopt) data.owner = { connect: { id: actor.id } };
 
     const updated = await this.prisma.room.update({ where: { id: room.id }, data });
@@ -547,6 +570,7 @@ export class RoomsService {
       description: room.description,
       emoji: room.emoji,
       visibility: room.visibility,
+      transport: room.transport,
       memberCount: counts?.members ?? 0,
       soundCount: counts?.sounds ?? 0,
       createdAt: room.createdAt.toISOString(),

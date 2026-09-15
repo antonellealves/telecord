@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { PeerInfo, ScreenShareOwner } from '@telecord/shared';
 import { describeScreenShareError, isScreenShareSupported } from '../../lib/errors';
 import { DEFAULT_SCREEN_QUALITY, screenShareCaptureOptions, type ScreenQualityId } from '../../lib/media';
@@ -47,6 +47,18 @@ export function useMediasoupScreenShares(
 
   const localVideoProducer = engine.localTracks.find((track) => track.trackKind === 'screen-video') ?? null;
   const isLocalSharing = localVideoProducer !== null;
+
+  /*
+   * `entries` é recalculado a cada heartbeat (o roster muda de referência a
+   * cada tick de `TICK_MS`, mesmo sem nenhuma track entrando ou saindo).
+   * Sem este cache, cada recálculo criava um `wrapMediaStreamTrack` NOVO
+   * para a mesma `MediaStreamTrack` remota — e como `ScreenTile` reanexa o
+   * vídeo (`track.attach`/`detach`) toda vez que a referência de `track`
+   * muda, a tela do outro participante ficava sendo desconectada e
+   * reconectada do elemento <video> a cada 2.5s, aparecendo preta/travada.
+   * A local não sofria porque já vinha de `useState` (referência estável).
+   */
+  const remoteHandleCache = useRef(new Map<MediaStreamTrack, MediasoupTrackHandle>());
 
   const stop = useCallback(() => {
     if (isBusy) return;
@@ -113,7 +125,15 @@ export function useMediasoupScreenShares(
         publication: { track: localVideoHandle },
       });
     }
+    const cache = remoteHandleCache.current;
+    const liveTracks = new Set<MediaStreamTrack>();
     for (const remote of remoteShares) {
+      liveTracks.add(remote.track);
+      let handle = cache.get(remote.track);
+      if (handle === undefined) {
+        handle = wrapMediaStreamTrack(remote.track);
+        cache.set(remote.track, handle);
+      }
       out.push({
         owner: {
           identity: remote.ownerPeerId,
@@ -121,8 +141,11 @@ export function useMediasoupScreenShares(
           isLocal: false,
           trackSid: remote.consumerId,
         },
-        publication: { track: wrapMediaStreamTrack(remote.track) },
+        publication: { track: handle },
       });
+    }
+    for (const cachedTrack of cache.keys()) {
+      if (!liveTracks.has(cachedTrack)) cache.delete(cachedTrack);
     }
     return out.sort((a, b) => (a.owner.trackSid < b.owner.trackSid ? -1 : a.owner.trackSid > b.owner.trackSid ? 1 : 0));
   }, [engine.remoteTracks, engine.roster, isLocalSharing, localVideoProducer, localVideoHandle, localPeerId]);

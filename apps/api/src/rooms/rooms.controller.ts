@@ -22,6 +22,7 @@ import {
   type RoomDetail,
   type RoomMemberRole,
   type RoomSummary,
+  type RoomTransport,
   type RoomVisibility,
 } from '@telecord/shared';
 import { CurrentUser, OptionalAuth, Public } from '../auth/auth.decorators';
@@ -32,6 +33,7 @@ import type { LogClient } from '../logging/log.service';
 import { RoomsService, type Actor } from './rooms.service';
 
 const VISIBILITIES: readonly RoomVisibility[] = ['PUBLIC', 'UNLISTED'];
+const TRANSPORTS: readonly RoomTransport[] = ['LIVEKIT', 'MEDIASOUP'];
 const MEMBER_ROLES: readonly RoomMemberRole[] = ['OWNER', 'MOD', 'MEMBER'];
 
 /**
@@ -110,6 +112,7 @@ export class RoomsController {
         description,
         emoji: readEmoji(body.emoji),
         visibility: readVisibility(body.visibility) ?? 'PUBLIC',
+        transport: readTransport(body.transport) ?? 'LIVEKIT',
       },
       actorOf(claims),
       clientOf(request),
@@ -141,6 +144,11 @@ export class RoomsController {
       const visibility = readVisibility(body.visibility);
       if (visibility === null) throw badRequest('invalid_request', 'Visibilidade inválida.');
       patch.visibility = visibility;
+    }
+    if (body.transport !== undefined) {
+      const transport = readTransport(body.transport);
+      if (transport === null) throw badRequest('invalid_request', 'Transporte inválido.');
+      patch.transport = transport;
     }
 
     return this.rooms.update(slug, patch, actorOf(claims), clientOf(request));
@@ -257,4 +265,9 @@ function readEmoji(value: unknown): string | null {
 function readVisibility(value: unknown): RoomVisibility | null {
   if (typeof value !== 'string') return null;
   return VISIBILITIES.includes(value as RoomVisibility) ? (value as RoomVisibility) : null;
+}
+
+function readTransport(value: unknown): RoomTransport | null {
+  if (typeof value !== 'string') return null;
+  return TRANSPORTS.includes(value as RoomTransport) ? (value as RoomTransport) : null;
 }

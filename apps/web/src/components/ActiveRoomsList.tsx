@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ActiveRoom, RoomSummary } from '@telecord/shared';
+import type { ActiveRoom, LiveRoom, RoomSummary, RoomTransport } from '@telecord/shared';
 import { RefreshIcon } from './icons';
 import styles from './ActiveRoomsList.module.css';
 
@@ -14,6 +14,8 @@ const QUIET_LIMIT = 6;
 
 interface ActiveRoomsListProps {
   rooms: ActiveRoom[];
+  /** Salas mediasoup com gente dentro agora — equivalente de `rooms`, para o quinto transporte. */
+  mediasoupRooms: LiveRoom[];
   /** Salas com nome, vindas do banco. Vazio quando não há serviço de contas. */
   directory: RoomSummary[];
   isLoading: boolean;
@@ -22,7 +24,7 @@ interface ActiveRoomsListProps {
   onRefresh: () => void;
 }
 
-/** Uma linha da lista, já com as duas fontes casadas. */
+/** Uma linha da lista, já com as fontes casadas. */
 interface Entry {
   slug: string;
   /** Nome legível, quando a sala foi batizada. */
@@ -31,6 +33,14 @@ interface Entry {
   participants: number;
   startedAt: number | null;
   soundCount: number;
+  /**
+   * `null` quando a sala está vazia (sem sessão viva para inferir de qual
+   * transporte é) — só aparece com gente dentro, LiveKit ou mediasoup. Não
+   * confundir com `RoomSummary.transport` (o rótulo padrão da sala no banco,
+   * que não muda com quem está lá agora): o badge mostra o que está
+   * ACONTECENDO, não a preferência de cadastro.
+   */
+  liveTransport: RoomTransport | null;
 }
 
 function since(startedAt: number): string {
@@ -59,6 +69,7 @@ function since(startedAt: number): string {
  */
 export function ActiveRoomsList({
   rooms,
+  mediasoupRooms,
   directory,
   isLoading,
   error,
@@ -83,7 +94,7 @@ export function ActiveRoomsList({
   const { live, quiet } = useMemo(() => {
     const named = new Map(directory.map((room) => [room.slug, room]));
 
-    const liveEntries: Entry[] = rooms.map((room) => {
+    const liveKitEntries: Entry[] = rooms.map((room) => {
       const details = named.get(room.roomId);
       return {
         slug: room.roomId,
@@ -92,10 +103,32 @@ export function ActiveRoomsList({
         participants: room.participants,
         startedAt: room.startedAt,
         soundCount: details?.soundCount ?? 0,
+        liveTransport: 'LIVEKIT' as const,
       };
     });
 
-    const busy = new Set(rooms.map((room) => room.roomId));
+    /*
+     * mediasoup não tem `startedAt` de verdade (nenhum "creation time" único
+     * — é agregado da presença de quem está lá, ver `MediasoupService.liveRooms`
+     * no backend). `createdAt` ali é "quando o primeiro par de agora entrou",
+     * aproximação boa o bastante para "há X min" na lista.
+     */
+    const mediasoupEntries: Entry[] = mediasoupRooms.map((room) => {
+      const details = named.get(room.slug);
+      return {
+        slug: room.slug,
+        title: details?.name ?? null,
+        emoji: details?.emoji ?? null,
+        participants: room.participants,
+        startedAt: new Date(room.createdAt).getTime(),
+        soundCount: details?.soundCount ?? 0,
+        liveTransport: 'MEDIASOUP' as const,
+      };
+    });
+
+    const liveEntries = [...liveKitEntries, ...mediasoupEntries];
+
+    const busy = new Set(liveEntries.map((entry) => entry.slug));
     const quietEntries: Entry[] = directory
       .filter((room) => !busy.has(room.slug))
       .slice(0, QUIET_LIMIT)
@@ -106,10 +139,11 @@ export function ActiveRoomsList({
         participants: 0,
         startedAt: null,
         soundCount: room.soundCount,
+        liveTransport: null,
       }));
 
     return { live: liveEntries, quiet: quietEntries };
-  }, [rooms, directory]);
+  }, [rooms, mediasoupRooms, directory]);
 
   return (
     <section className={styles.block} aria-label="Salas">
@@ -179,6 +213,14 @@ function RoomRow({ entry, onEnter }: { entry: Entry; onEnter: (slug: string) => 
           </span>
         </span>
         <span className={styles.meta}>
+          {entry.liveTransport === 'MEDIASOUP' ? (
+            <span
+              className={styles.transportBadge}
+              title="Rodando no servidor de mídia próprio (mediasoup)"
+            >
+              mediasoup
+            </span>
+          ) : null}
           {entry.soundCount > 0 ? (
             <span className={styles.sounds} title={`${entry.soundCount} sons próprios`}>
               ♪ {entry.soundCount}

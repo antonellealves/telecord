@@ -6,5 +6,6 @@ import { MediasoupService } from './mediasoup.service';
 @Module({
   controllers: [MediasoupController],
   providers: [MediasoupService, MediasoupSfuClient],
+  exports: [MediasoupSfuClient, MediasoupService],
 })
 export class MediasoupModule {}

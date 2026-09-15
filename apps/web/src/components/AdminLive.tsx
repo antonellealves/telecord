@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { LiveParticipant, LiveRoom } from '@telecord/shared';
 import {
+  deleteLiveRoom,
   fetchLiveParticipants,
   fetchLiveRooms,
   moveParticipant,
@@ -14,7 +15,19 @@ import styles from './Admin.module.css';
 /** Recarrega sozinho: quem entra e sai muda a cada segundo. */
 const REFRESH_MS = 5000;
 
+/**
+ * Estado do mic, nas duas fontes possíveis.
+ *
+ * LiveKit sabe de verdade, por track (`tracks[].muted`, aplicado pelo
+ * servidor). mediasoup não tem essa fonte — `tracks` chega sempre vazio (ver
+ * `MediasoupModerationService.liveParticipants`) —, então o que o painel
+ * mostra ali é o COMANDO pendente (`pendingCommand.forceMuted`), que só vira
+ * realidade quando o cliente da pessoa obedecer no próximo heartbeat.
+ */
 function isMicMuted(participant: LiveParticipant): boolean | null {
+  if (participant.pendingCommand !== undefined) {
+    return participant.pendingCommand?.forceMuted ?? false;
+  }
   const mic = participant.tracks.find((track) => track.source.toUpperCase().includes('MIC'));
   return mic === undefined ? null : mic.muted;
 }
@@ -44,6 +57,9 @@ export function AdminLive(): JSX.Element {
   const [moving, setMoving] = useState<string | null>(null);
   const [destino, setDestino] = useState('');
 
+  const selectedRoom = rooms?.find((room) => room.slug === selected) ?? null;
+  const selectedTransport = selectedRoom?.transport ?? 'LIVEKIT';
+
   const loadRooms = useCallback(async (signal?: AbortSignal) => {
     try {
       const list = await fetchLiveRooms(signal);
@@ -59,16 +75,19 @@ export function AdminLive(): JSX.Element {
     }
   }, []);
 
-  const loadPeople = useCallback(async (slug: string, signal?: AbortSignal) => {
-    try {
-      setPeople(await fetchLiveParticipants(slug, signal));
-    } catch (error) {
-      if (signal?.aborted !== true) {
-        setFailure(error instanceof ApiError ? error.message : 'Não deu para ler os participantes.');
-        setPeople([]);
+  const loadPeople = useCallback(
+    async (slug: string, transport: LiveRoom['transport'], signal?: AbortSignal) => {
+      try {
+        setPeople(await fetchLiveParticipants(slug, transport, signal));
+      } catch (error) {
+        if (signal?.aborted !== true) {
+          setFailure(error instanceof ApiError ? error.message : 'Não deu para ler os participantes.');
+          setPeople([]);
+        }
       }
-    }
-  }, []);
+    },
+    [],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -81,18 +100,19 @@ export function AdminLive(): JSX.Element {
   }, [loadRooms]);
 
   useEffect(() => {
-    if (selected === null) {
+    if (selected === null || selectedRoom === null) {
       setPeople(null);
       return;
     }
     const controller = new AbortController();
-    void loadPeople(selected, controller.signal);
-    const timer = window.setInterval(() => void loadPeople(selected), REFRESH_MS);
+    void loadPeople(selected, selectedTransport, controller.signal);
+    const timer = window.setInterval(() => void loadPeople(selected, selectedTransport), REFRESH_MS);
     return () => {
       controller.abort();
       window.clearInterval(timer);
     };
-  }, [selected, loadPeople]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, selectedTransport, loadPeople]);
 
   const act = useCallback(
     async (identity: string, run: () => Promise<void>) => {
@@ -100,7 +120,7 @@ export function AdminLive(): JSX.Element {
       setFailure(null);
       try {
         await run();
-        if (selected !== null) await loadPeople(selected);
+        if (selected !== null) await loadPeople(selected, selectedTransport);
         await loadRooms();
       } catch (error) {
         setFailure(error instanceof ApiError ? error.message : 'A ação não funcionou.');
@@ -108,7 +128,25 @@ export function AdminLive(): JSX.Element {
         setBusy(null);
       }
     },
-    [selected, loadPeople, loadRooms],
+    [selected, selectedTransport, loadPeople, loadRooms],
+  );
+
+  const [deletingRoom, setDeletingRoom] = useState(false);
+  const deleteRoom = useCallback(
+    async (slug: string) => {
+      setDeletingRoom(true);
+      setFailure(null);
+      try {
+        await deleteLiveRoom(slug);
+        setSelected(null);
+        await loadRooms();
+      } catch (error) {
+        setFailure(error instanceof ApiError ? error.message : 'Não deu para apagar a sala.');
+      } finally {
+        setDeletingRoom(false);
+      }
+    },
+    [loadRooms],
   );
 
   return (
@@ -134,6 +172,7 @@ export function AdminLive(): JSX.Element {
             <thead>
               <tr>
                 <th>Sala</th>
+                <th>Transporte</th>
                 <th>Pessoas</th>
                 <th>Aberta desde</th>
                 <th />
@@ -141,8 +180,20 @@ export function AdminLive(): JSX.Element {
             </thead>
             <tbody>
               {rooms.map((room) => (
-                <tr key={room.slug}>
+                <tr key={`${room.transport}/${room.slug}`}>
                   <td>{room.slug}</td>
+                  <td>
+                    <span
+                      className={styles.badgeSoft}
+                      title={
+                        room.transport === 'MEDIASOUP'
+                          ? 'Servidor de mídia próprio (mediasoup)'
+                          : 'LiveKit'
+                      }
+                    >
+                      {room.transport === 'MEDIASOUP' ? 'mediasoup' : 'LiveKit'}
+                    </span>
+                  </td>
                   <td>{room.participants}</td>
                   <td>{formatWhen(room.createdAt)}</td>
                   <td>
@@ -164,7 +215,26 @@ export function AdminLive(): JSX.Element {
 
       {selected !== null ? (
         <>
-          <h3 className={styles.subheading}>Quem está em {selected}</h3>
+          <div className={styles.filters}>
+            <h3 className={styles.subheading}>Quem está em {selected}</h3>
+            {selectedTransport === 'MEDIASOUP' ? (
+              <button
+                type="button"
+                className={styles.danger}
+                disabled={deletingRoom}
+                title="Desconecta todo mundo da sala agora. A sala continua existindo — só a sessão ao vivo acaba."
+                onClick={() => void deleteRoom(selected)}
+              >
+                {deletingRoom ? 'Apagando…' : 'Apagar sala ao vivo'}
+              </button>
+            ) : null}
+          </div>
+          {selectedTransport === 'MEDIASOUP' ? (
+            <p className={styles.muted}>
+              Mutar e mover nesta sala dependem do navegador de quem está lá obedecer o pedido —
+              o servidor mediasoup não impõe isso como o LiveKit. Remover e apagar a sala são reais.
+            </p>
+          ) : null}
           {people === null ? (
             <p className={styles.muted}>Carregando…</p>
           ) : people.length === 0 ? (
@@ -212,7 +282,7 @@ export function AdminLive(): JSX.Element {
                             }
                             onClick={() =>
                               void act(person.identity, () =>
-                                muteParticipant(selected, person.identity, muted !== true),
+                                muteParticipant(selected, person.identity, muted !== true, selectedTransport),
                               )
                             }
                           >
@@ -238,7 +308,7 @@ export function AdminLive(): JSX.Element {
                             title="Desconecta. Não impede a volta — para isso, suspenda a conta."
                             onClick={() =>
                               void act(person.identity, () =>
-                                removeParticipant(selected, person.identity),
+                                removeParticipant(selected, person.identity, selectedTransport),
                               )
                             }
                           >
@@ -264,6 +334,7 @@ export function AdminLive(): JSX.Element {
                                       selected,
                                       person.identity,
                                       destino.trim(),
+                                      selectedTransport,
                                     );
                                     setMoving(null);
                                   })

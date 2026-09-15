@@ -74,6 +74,7 @@ export class ModerationService {
         slug: room.name,
         participants: room.numParticipants,
         createdAt: new Date(Number(room.creationTime) * 1000).toISOString(),
+        transport: 'LIVEKIT',
       });
     }
     return out.sort((a, b) => b.participants - a.participants || a.slug.localeCompare(b.slug));

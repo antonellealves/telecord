@@ -11,6 +11,8 @@ export interface MediasoupEngineOptions {
   roomId: string;
   peerId: string;
   displayName: string;
+  /** O painel admin pediu para mover este par para `roomSlug` — ver `MediasoupConnectionEvents.onForceMoved`. */
+  onForceMoved?: (roomSlug: string) => void;
 }
 
 /**
@@ -29,16 +31,24 @@ export interface MediasoupEngine {
   remoteTracks: RemoteTrackHandle[];
   error: string | null;
   connection: MediasoupConnection | null;
+  /** `true` quando o painel admin pediu mudo forçado no mic local — ver `onForceMuted`. */
+  forceMuted: boolean;
   clearError: () => void;
 }
 
-export function useMediasoupEngine({ roomId, peerId, displayName }: MediasoupEngineOptions): MediasoupEngine {
+export function useMediasoupEngine({
+  roomId,
+  peerId,
+  displayName,
+  onForceMoved,
+}: MediasoupEngineOptions): MediasoupEngine {
   const [connectionState, setConnectionState] = useState<MediasoupConnectionState>('new');
   const [roster, setRoster] = useState<PeerInfo[]>([]);
   const [localTracks, setLocalTracks] = useState<LocalTrackHandle[]>([]);
   const [remoteTracks, setRemoteTracks] = useState<RemoteTrackHandle[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [connection, setConnection] = useState<MediasoupConnection | null>(null);
+  const [forceMuted, setForceMuted] = useState(false);
 
   useEffect(() => {
     let vivo = true;
@@ -65,6 +75,12 @@ export function useMediasoupEngine({ roomId, peerId, displayName }: MediasoupEng
       },
       onAttributesReceived: () => undefined,
       onData: () => undefined,
+      onForceMuted: (muted) => {
+        if (vivo) setForceMuted(muted);
+      },
+      onForceMoved: (roomSlug) => {
+        if (vivo) onForceMoved?.(roomSlug);
+      },
     });
     setConnection(connectionInstance);
     void connectionInstance.connect();
@@ -76,6 +92,7 @@ export function useMediasoupEngine({ roomId, peerId, displayName }: MediasoupEng
       setRemoteTracks([]);
       setLocalTracks([]);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, peerId, displayName]);
 
   return {
@@ -85,6 +102,7 @@ export function useMediasoupEngine({ roomId, peerId, displayName }: MediasoupEng
     remoteTracks,
     error,
     connection,
+    forceMuted,
     clearError: () => setError(null),
   };
 }

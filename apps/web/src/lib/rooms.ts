@@ -9,7 +9,14 @@
  * A tela inicial junta os dois: a lista viva diz quem está online agora, o
  * diretório diz como a sala se chama.
  */
-import type { Page, RoomDetail, RoomMemberRole, RoomSummary, RoomVisibility } from '@telecord/shared';
+import type {
+  Page,
+  RoomDetail,
+  RoomMemberRole,
+  RoomSummary,
+  RoomTransport,
+  RoomVisibility,
+} from '@telecord/shared';
 import { apiGet, apiJson, query } from './apiClient';
 
 export async function fetchDirectory(cursor?: string, signal?: AbortSignal): Promise<Page<RoomSummary>> {
@@ -30,6 +37,8 @@ export async function createRoom(input: {
   description?: string | null;
   emoji?: string | null;
   visibility?: RoomVisibility;
+  /** Padrão `LIVEKIT` no servidor quando omitido — ver `RoomTransport`. */
+  transport?: RoomTransport;
 }): Promise<RoomDetail> {
   return apiJson<RoomDetail>('/rooms', 'POST', input);
 }
@@ -41,6 +50,7 @@ export async function updateRoom(
     description?: string | null;
     emoji?: string | null;
     visibility?: RoomVisibility;
+    transport?: RoomTransport;
   },
 ): Promise<RoomDetail> {
   return apiJson<RoomDetail>(`/rooms/${encodeURIComponent(slug)}`, 'PATCH', patch);

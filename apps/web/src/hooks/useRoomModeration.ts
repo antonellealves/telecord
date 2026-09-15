@@ -40,17 +40,19 @@ export function useRoomModeration(roomId: string, onError: (message: string) => 
   );
 
   const mute = useCallback(
-    (identity: string, muted: boolean) => run(identity, () => muteParticipant(roomId, identity, muted)),
+    (identity: string, muted: boolean) =>
+      run(identity, () => muteParticipant(roomId, identity, muted, 'LIVEKIT')),
     [roomId, run],
   );
 
   const move = useCallback(
-    (identity: string, destino: string) => run(identity, () => moveParticipant(roomId, identity, destino)),
+    (identity: string, destino: string) =>
+      run(identity, () => moveParticipant(roomId, identity, destino, 'LIVEKIT')),
     [roomId, run],
   );
 
   const remove = useCallback(
-    (identity: string) => run(identity, () => removeParticipant(roomId, identity)),
+    (identity: string) => run(identity, () => removeParticipant(roomId, identity, 'LIVEKIT')),
     [roomId, run],
   );
 

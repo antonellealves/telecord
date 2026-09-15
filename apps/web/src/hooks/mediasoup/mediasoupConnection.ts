@@ -47,6 +47,15 @@ export interface MediasoupConnectionEvents {
   onError: (message: string) => void;
   onAttributesReceived: (peerId: string, attributes: Record<string, string>) => void;
   onData: (payload: Uint8Array, fromPeerId: string) => void;
+  /**
+   * O painel admin pediu mudo forçado no mic local — cooperativo, sem
+   * equivalente de servidor no SFU mediasoup (ver `MediasoupModerationService`
+   * no backend). A conexão já pausa/retoma o `track.enabled` do producer de
+   * áudio sozinha; isto é só para a UI espelhar o estado do botão de mic.
+   */
+  onForceMuted: (muted: boolean) => void;
+  /** O painel admin pediu para mover este par para outra sala — mesmo espírito do "mover" do LiveKit, cooperativo aqui. */
+  onForceMoved: (roomSlug: string) => void;
 }
 
 /**
@@ -84,6 +93,9 @@ export class MediasoupConnection {
   private state: MediasoupConnectionState = 'new';
   private heartbeatTimer = 0;
   private alive = true;
+  /** Evita disparar `onForceMuted`/`onForceMoved` de novo a cada tick enquanto o comando continuar o mesmo. */
+  private lastForceMuted = false;
+  private lastMoveTo: string | null = null;
 
   constructor(
     private readonly roomId: string,
@@ -269,6 +281,7 @@ export class MediasoupConnection {
         if (!this.alive) return;
         this.roster = peers;
         this.events.onRosterChange(peers);
+        this.applyAdminCommand(peers);
 
         const device = this.device;
         const recvTransport = this.recvTransport;
@@ -293,6 +306,39 @@ export class MediasoupConnection {
       }
     };
     void beat();
+  }
+
+  /**
+   * Obedece o comando de moderação da própria entrada no roster, se houver.
+   *
+   * Cooperativo por natureza (ver docstring de `MediasoupModerationService`
+   * no backend): não existe rota do SFU para pausar o producer de OUTRO peer,
+   * então o único jeito de "mutar pelo admin" no mediasoup é o alvo mesmo
+   * pausar a própria track ao ler o pedido no heartbeat. Idem para mover —
+   * `onForceMoved` só entrega o slug; quem troca de sala de fato é
+   * `MediasoupRoomShell`/`RoomPage`, do mesmo jeito que já reagem à troca
+   * manual de transporte.
+   */
+  private applyAdminCommand(peers: PeerInfo[]): void {
+    const mine = peers.find((peer) => peer.peerId === this.peerId);
+    const command = mine?.adminCommand ?? null;
+
+    const forceMuted = command?.forceMuted === true;
+    if (forceMuted !== this.lastForceMuted) {
+      this.lastForceMuted = forceMuted;
+      for (const handle of this.localTracks.values()) {
+        if (handle.trackKind === 'mic') handle.track.enabled = !forceMuted;
+      }
+      this.events.onForceMuted(forceMuted);
+    }
+
+    const moveTo = command?.moveTo ?? null;
+    if (moveTo !== null && moveTo !== this.lastMoveTo) {
+      this.lastMoveTo = moveTo;
+      this.events.onForceMoved(moveTo);
+    } else if (moveTo === null) {
+      this.lastMoveTo = null;
+    }
   }
 
   private async consume(

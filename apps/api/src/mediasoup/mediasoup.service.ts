@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
   MAX_CHAT_LENGTH,
+  type LiveRoom,
   type MediasoupBroadcastEntry,
   type MediasoupBroadcastPollResult,
   type MediasoupClientConfig,
@@ -39,6 +40,43 @@ export class MediasoupService {
     private readonly client: MediasoupSfuClient,
     private readonly prisma: PrismaService,
   ) {}
+
+  /**
+   * Salas mediasoup com gente dentro AGORA — sem `RoomServiceClient` como o
+   * LiveKit, é agregado da própria presença (`PeerPresence`). Usado tanto
+   * pela Home pública (`GET /mediasoup/live-rooms`, contagem para o badge)
+   * quanto pelo painel admin (`MediasoupModerationService.liveRooms`, que
+   * chama isto para não duplicar a agregação).
+   */
+  async liveRooms(): Promise<LiveRoom[]> {
+    const rows = await this.prisma.peerPresence.findMany({
+      where: {
+        lastSeenAt: { gte: new Date(Date.now() - PRESENCE_TTL_MS) },
+      },
+      select: { roomSlug: true, joinedAt: true, meta: true },
+    });
+
+    const byRoom = new Map<string, { participants: number; earliest: Date }>();
+    for (const row of rows) {
+      if (!isMediasoupAnnounce(row.meta)) continue;
+      const current = byRoom.get(row.roomSlug);
+      if (current === undefined) {
+        byRoom.set(row.roomSlug, { participants: 1, earliest: row.joinedAt });
+      } else {
+        current.participants += 1;
+        if (row.joinedAt < current.earliest) current.earliest = row.joinedAt;
+      }
+    }
+
+    return [...byRoom.entries()]
+      .map(([slug, info]) => ({
+        slug,
+        participants: info.participants,
+        createdAt: info.earliest.toISOString(),
+        transport: 'MEDIASOUP' as const,
+      }))
+      .sort((a, b) => b.participants - a.participants || a.slug.localeCompare(b.slug));
+  }
 
   async clientConfig(roomSlug: string): Promise<MediasoupClientConfig> {
     if (!this.client.enabled) {
@@ -163,4 +201,12 @@ export class MediasoupService {
       throw forbidden('fora_da_sala', 'Entre na sala antes de usar o mediasoup.');
     }
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isMediasoupAnnounce(meta: unknown): boolean {
+  return isRecord(meta) && isRecord(meta.mediasoup);
 }

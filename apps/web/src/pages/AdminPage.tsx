@@ -178,6 +178,7 @@ export function AdminPage(): JSX.Element {
                 { header: 'Dono', cell: (row) => row.ownerLabel },
                 { header: 'Canal', cell: (row) => row.channelSlug },
                 { header: 'Visibilidade', cell: (row) => row.visibility },
+                { header: 'Transporte', cell: (row) => (row.transport === 'MEDIASOUP' ? 'mediasoup' : 'LiveKit') },
                 { header: 'Membros', cell: (row) => row.members },
                 { header: 'Sons', cell: (row) => row.sounds },
                 { header: 'Criada', cell: (row) => formatWhen(row.createdAt) },

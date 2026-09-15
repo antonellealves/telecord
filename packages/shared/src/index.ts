@@ -548,6 +548,15 @@ export const ROOM_DESCRIPTION_MAX_LENGTH = 200;
  */
 export type RoomVisibility = 'PUBLIC' | 'UNLISTED';
 
+/**
+ * Transporte padrão da sala — o rótulo que o diretório e o painel admin
+ * exibem (o badge "LiveKit"/"mediasoup" na Home). NÃO impede ninguém de
+ * trocar de transporte ao entrar: isso continua sendo `TransportMode`,
+ * preferência local do navegador (`TransportPicker`). É só o que a sala
+ * carrega como identidade — a maioria continua `LIVEKIT`, o padrão histórico.
+ */
+export type RoomTransport = 'LIVEKIT' | 'MEDIASOUP';
+
 /** Papel dentro de uma sala. Governa administrar a sala, não entrar nela. */
 export type RoomMemberRole = 'OWNER' | 'MOD' | 'MEMBER';
 
@@ -565,6 +574,7 @@ export interface RoomSummary {
   description: string | null;
   emoji: string | null;
   visibility: RoomVisibility;
+  transport: RoomTransport;
   memberCount: number;
   soundCount: number;
   /** ISO 8601. */
@@ -875,11 +885,17 @@ export interface AdminUserRow {
 // Moderação ao vivo e as demais tabelas no painel
 // ---------------------------------------------------------------------------
 
-/** Sala com gente dentro AGORA, lida do SFU e não do banco. */
+/**
+ * Sala com gente dentro AGORA — lida do SFU (LiveKit) ou agregada da presença
+ * (mediasoup, que não tem um `RoomServiceClient` central; ver
+ * `MediasoupModerationService`). `transport` é o discriminador que o painel
+ * "Ao vivo" e a Home usam para o badge e para saber quais ações oferecer.
+ */
 export interface LiveRoom {
   slug: string;
   participants: number;
   createdAt: string;
+  transport: RoomTransport;
 }
 
 export interface LiveTrack {
@@ -898,6 +914,12 @@ export interface LiveParticipant {
    */
   isAnonymous: boolean;
   tracks: LiveTrack[];
+  /**
+   * Só preenchido para `transport: 'MEDIASOUP'`. Mutar/mover nesse transporte
+   * dependem do cliente obedecer o comando no próximo heartbeat — ver
+   * `PeerAdminCommand`. `null` quando não há nada pendente.
+   */
+  pendingCommand?: PeerAdminCommand | null;
 }
 
 /** Linha de `Room` como o painel lê — a ficha, não a sala viva. */
@@ -906,6 +928,7 @@ export interface AdminRoomRow {
   slug: string;
   name: string;
   visibility: RoomVisibility;
+  transport: RoomTransport;
   ownerLabel: string | null;
   channelSlug: string | null;
   members: number;
@@ -1006,6 +1029,30 @@ export interface PeerInfo {
   cfsfu?: CfSfuAnnounce | null;
   /** Mesmo papel de `cfsfu`, para o transporte `mediasoup`: quais producerId puxar. */
   mediasoup?: MediasoupAnnounce | null;
+  /**
+   * Comando de moderação pendente para ESTE par, escrito só pelo painel admin
+   * (nunca pelo próprio cliente, ao contrário de `mediasoup`/`cfsfu` acima).
+   * Só existe no transporte `mediasoup`, que não tem um servidor de controle
+   * central como o LiveKit — mutar/mover dependem do cliente obedecer isto a
+   * cada heartbeat. `null`/ausente quando não há nada pendente.
+   */
+  adminCommand?: PeerAdminCommand | null;
+}
+
+/**
+ * Comando de moderação para um par no transporte mediasoup.
+ *
+ * Cooperativo por natureza: o SFU não expõe controle de producer alheio (ver
+ * `RoomRegistry`), então tanto `forceMuted` quanto `moveTo` só têm efeito
+ * quando o próprio cliente os lê no heartbeat e age — mesma ressalva que
+ * mutar já tem no LiveKit (a pessoa pode religar o microfone), só que aqui
+ * vale também para mover.
+ */
+export interface PeerAdminCommand {
+  /** `true` pausa o producer de áudio (mic) local; `false`/ausente libera. */
+  forceMuted?: boolean;
+  /** Slug da sala para onde o cliente deve migrar; `null` cancela um pedido pendente. */
+  moveTo?: string | null;
 }
 
 export interface PeerRoster {

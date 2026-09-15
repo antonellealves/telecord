@@ -215,6 +215,15 @@ enum RoomMemberRole {
   MEMBER
 }
 
+/// Transporte de mídia padrão da sala — o que o card na Home e o painel admin
+/// anunciam como "o que essa sala normalmente é". Não IMPEDE ninguém de trocar
+/// de transporte manualmente ao entrar (`TransportPicker`, preferência local do
+/// navegador): é só o rótulo que a sala carrega no diretório e no admin.
+enum RoomTransport {
+  LIVEKIT
+  MEDIASOUP
+}
+
 /** Igual a `RoomMemberRole` em forma, mas é o papel DENTRO DO CANAL — quem
  * pode criar salas nele, renomeá-lo, mexer nos membros. Não confundir com o
  * papel de uma sala específica dentro do canal, que continua em `RoomMember`. */
@@ -248,6 +257,9 @@ model Room {
   description String?         @db.VarChar(200)
   emoji       String?         @db.VarChar(16)
   visibility  RoomVisibility  @default(PUBLIC)
+  /// Ver `RoomTransport` — padrão LIVEKIT porque é o modo histórico, de antes
+  /// de mediasoup existir; salas antigas migram sem precisar de backfill.
+  transport   RoomTransport   @default(LIVEKIT)
   ownerId     String?
   /// Canal ao qual esta sala pertence, se algum. NULO é o padrão: a imensa
   /// maioria das salas continua avulsa, exatamente como antes de canais
@@ -613,6 +625,15 @@ model PeerPresence {
   /// `trackName`s que este par publicou no SFU — é como os outros descobrem o
   /// que puxar, já que o SFU não tem descoberta. Nulo nos modos LiveKit e P2P.
   meta Json?
+
+  /// Comando de moderação pendente para este par, escrito SÓ pelo servidor
+  /// (`meta` acima é escrito pelo cliente a cada heartbeat e seria sobrescrito
+  /// junto). O cliente mediasoup lê isto na resposta do heartbeat e obedece:
+  /// `forceMuted` pausa o producer de áudio local, `moveTo` desconecta e entra
+  /// na sala indicada. Sem equivalente de servidor para mutar/mover no SFU
+  /// mediasoup (ver `RoomRegistry`) — isto é cooperativo, mesma ressalva que
+  /// mutar já tem no LiveKit (a pessoa pode religar o microfone).
+  adminCommand Json?
 
   /// Um navegador, uma linha por sala. Reentrar atualiza em vez de duplicar.
   @@unique([roomSlug, peerId])

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { TransportMode } from '@telecord/shared';
 import { AmbientGradient } from '../../components/AmbientGradient';
 import { CameraStrip } from '../../components/CameraStrip';
@@ -73,9 +74,13 @@ type PanelWidthStyle = CSSProperties & {
  *
  * ## O que FICA DE FORA deste v1 (documentado, não esquecido)
  *
- * - **Moderação** (mutar/mover/remover outros participantes): depende da API
- *   de admin do LiveKit (`ModerationService`, metadata + kick forçado), que
- *   não tem equivalente no mediasoup ainda.
+ * - **Moderação** de OUTROS participantes a partir DESTA sala (não existe
+ *   botão de mutar/mover/remover alguém daqui, ao contrário do LiveKit) —
+ *   isso só existe no painel admin. O que este componente FAZ ter é o lado
+ *   de quem RECEBE um comando do painel: `useMediasoupEngine.forceMuted`
+ *   (mic pausado à força) e `onForceMoved` (redireciona para a sala que o
+ *   admin escolheu), ambos cooperativos — ver `MediasoupModerationService`
+ *   no backend para o porquê de o SFU não impor isso sozinho.
  * - **Gamificação e log de auditoria** (`useRoomGamification`,
  *   `useActivityReporter`): o relatório de atividade usa o TOKEN do LiveKit
  *   como credencial (`sendActivityEvents(participantToken, …)`), que não
@@ -97,12 +102,20 @@ export function MediasoupRoomShell({
   onLeaveIntent,
   onChangeTransport,
 }: Props): JSX.Element {
-  const engine = useMediasoupEngine({ roomId, peerId, displayName });
+  const navigate = useNavigate();
+  const { toasts, push, dismiss } = useToasts();
+  const onForceMoved = useCallback(
+    (destino: string) => {
+      push('info', `Um administrador moveu você para a sala "${destino}".`);
+      navigate(`/sala/${destino}`);
+    },
+    [navigate, push],
+  );
+  const engine = useMediasoupEngine({ roomId, peerId, displayName, onForceMoved });
   const status = useMediasoupConnectionStatus(engine);
   const participants = useMediasoupParticipants(engine, peerId, displayName);
   const peerVolume = useMediasoupPeerVolume(engine);
   const channelNav = useChannelNav(roomId);
-  const { toasts, push, dismiss } = useToasts();
   const shares = useMediasoupScreenShares(engine, peerId, push);
   const cameras = useMediasoupCameras(engine, peerId, push);
   const talk = useMediasoupTalkControls(engine, (message) => push('error', message));
@@ -204,6 +217,16 @@ export function MediasoupRoomShell({
       engine.clearError();
     }
   }, [engine, push]);
+
+  // Mic pausado à força pelo painel admin — avisa uma vez, a própria conexão
+  // já cuidou de silenciar o producer (ver `mediasoupConnection.applyAdminCommand`).
+  const wasForceMuted = useRef(false);
+  useEffect(() => {
+    if (engine.forceMuted && !wasForceMuted.current) {
+      push('error', 'Um administrador silenciou seu microfone nesta sala.');
+    }
+    wasForceMuted.current = engine.forceMuted;
+  }, [engine.forceMuted, push]);
 
   const leave = useCallback(() => {
     onLeaveIntent();
@@ -364,7 +387,7 @@ export function MediasoupRoomShell({
           <ControlBar
             talkMode={talk.mode}
             isMicrophoneEnabled={isMicrophoneEnabled}
-            isMicrophoneBusy={talk.isBusy}
+            isMicrophoneBusy={talk.isBusy || engine.forceMuted}
             onToggleMicrophone={talk.toggleOpenMic}
             onPressToTalk={talk.pressToTalk}
             onReleaseToTalk={talk.releaseToTalk}
