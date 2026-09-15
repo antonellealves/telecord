@@ -177,6 +177,25 @@ export class RoomRegistry {
       initialAvailableOutgoingBitrate: 1_000_000,
     });
 
+    /*
+     * O mesmo `peerId` pode pedir um transporte novo sem o antigo ter
+     * fechado — o caso comum é dar F5: a aba nova reconecta com o MESMO
+     * `peerId` (estável via localStorage) e chama `createTransport` de novo
+     * antes do socket de presença da aba antiga notificar o `disconnect`.
+     * Sem fechar o antigo aqui, ele ficava órfão para sempre — nunca mais
+     * referenciado por `peer.transports`, mas com o `WebRtcTransport` e os
+     * producers dele (a tela que a aba antiga compartilhava) vivos no
+     * mediasoup, PRA SEMPRE, porque só chega a fechar se alguém chamar
+     * `.close()` nele — nada mais faz isso sozinho. Cada refresh empilhava
+     * mais um "fantasma" compartilhando a mesma tela — o sintoma era o
+     * mesmo participante aparecendo compartilhando várias vezes depois de
+     * recarregar a página algumas vezes.
+     */
+    const anterior = direction === 'send' ? peer.transports.send : peer.transports.recv;
+    if (anterior !== null && anterior.id !== transport.id) {
+      anterior.close();
+    }
+
     if (direction === 'send') peer.transports.send = transport;
     else peer.transports.recv = transport;
 

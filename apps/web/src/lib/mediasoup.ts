@@ -6,8 +6,6 @@
  * participação na sala antes de repassar. Mesmo desenho de `cfsfu.ts`.
  */
 import type {
-  MediasoupBroadcastPollResult,
-  MediasoupBroadcastSendBody,
   MediasoupClientConfig,
   MediasoupConnectTransportBody,
   MediasoupConsumeBody,
@@ -97,22 +95,4 @@ export function msResumeConsumer(
 
 export function msLeave(roomSlug: string, peerId: string): Promise<{ ok: true }> {
   return apiJson<{ ok: true }>(`${roomPath(roomSlug)}/leave`, 'POST', { peerId });
-}
-
-/** Chat/soundboard por polling — ver `RoomBroadcastMessage` no schema da API. */
-export function msSendBroadcast(
-  roomSlug: string,
-  body: MediasoupBroadcastSendBody,
-): Promise<{ ok: true }> {
-  return apiJson<{ ok: true }>(`${roomPath(roomSlug)}/broadcast`, 'POST', body);
-}
-
-export function msPollBroadcast(
-  roomSlug: string,
-  peerId: string,
-  since: string | null,
-): Promise<MediasoupBroadcastPollResult> {
-  return apiGet<MediasoupBroadcastPollResult>(
-    `${roomPath(roomSlug)}/broadcast${query({ peerId, since })}`,
-  );
 }

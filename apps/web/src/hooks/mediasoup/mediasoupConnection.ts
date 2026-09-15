@@ -3,16 +3,17 @@ import type { Transport } from 'mediasoup-client/types';
 import { io, type Socket } from 'socket.io-client';
 import type {
   ClientToServerPresenceEvents,
-  MediasoupAnnounce,
   MediasoupTrackKind,
   PeerInfo,
+  PresenceChatMessage,
+  PresenceModerationCommand,
   PresenceRosterUpdate,
   PresenceTrackAnnounced,
   PresenceTrackClosed,
   ServerToClientPresenceEvents,
 } from '@telecord/shared';
 import { MEDIASOUP_PUBLIC_URL } from '../../lib/config';
-import { peerHeartbeat, peerLeave } from '../../lib/peers';
+import { peerLeave } from '../../lib/peers';
 import {
   fetchMediasoupConfig,
   msConnectTransport,
@@ -22,17 +23,6 @@ import {
   msProduce,
   msResumeConsumer,
 } from '../../lib/mediasoup';
-
-/**
- * Cadência do anúncio de baixa frequência — NÃO é mais o roster (isso é o
- * socket de presença) NEM a descoberta de tracks novas (isso agora é
- * `track:announced`/`track:closed` no mesmo socket, ver `connectPresenceSocket`).
- * Só existe para publicar a LISTA de tracks locais (o backend usa isso para
- * moderação/depuração) e ler `adminCommand` pendente, que ainda vive em
- * `PeerPresence.meta` (ver `mediasoup.service.ts`) e não tem equivalente no
- * socket de presença.
- */
-const ANNOUNCE_TICK_MS = 4000;
 
 export type MediasoupConnectionState = 'new' | 'connecting' | 'connected' | 'failed' | 'disconnected';
 
@@ -75,8 +65,9 @@ export interface MediasoupConnectionEvents {
 
 /**
  * Conexão de baixo nível com o SFU mediasoup: Device, os dois `Transport`s
- * (envio/recepção), produtores e consumidores, e o roster do telecord
- * (heartbeat de presença + descoberta de producers).
+ * (envio/recepção), produtores e consumidores, e o roster do telecord — tudo
+ * ao vivo pelo socket de presença (ver `connectPresenceSocket`), sem
+ * nenhum polling HTTP remanescente deste lado.
  *
  * Não é um hook — é uma classe simples, instanciada uma vez por sala e
  * mantida numa ref pelos hooks React que a usam (useMediasoupParticipants,
@@ -106,8 +97,15 @@ export class MediasoupConnection {
   private readonly consumedProducerIds = new Set<string>();
   private roster: PeerInfo[] = [];
   private state: MediasoupConnectionState = 'new';
-  private announceTimer = 0;
   private presenceSocket: Socket<ServerToClientPresenceEvents, ClientToServerPresenceEvents> | null = null;
+  /**
+   * Ouvintes de chat, à parte de `MediasoupConnectionEvents` (que tem UM dono
+   * só, `useMediasoupEngine`) — `useMediasoupChat` é montado DEPOIS do
+   * engine e precisa se inscrever na conexão já criada, não no construtor
+   * dela. `Set` porque não há por que limitar a um só (StrictMode monta o
+   * hook duas vezes em dev, por exemplo) nem duplicar entrega.
+   */
+  private readonly chatListeners = new Set<(fromPeer: string, displayName: string, body: string) => void>();
   private alive = true;
   /** Evita disparar `onForceMuted`/`onForceMoved` de novo a cada tick enquanto o comando continuar o mesmo. */
   private lastForceMuted = false;
@@ -203,7 +201,6 @@ export class MediasoupConnection {
       this.recvTransport = recvTransport;
       this.drainPendingTracks();
 
-      this.startAnnounceTick();
       // A UI libera assim que os dois transportes existem e a presença já
       // foi anunciada (feito acima, antes de criar os transportes) — não
       // espera o handshake DTLS, que só ocorre ao publicar/assinar algo.
@@ -218,7 +215,6 @@ export class MediasoupConnection {
 
   close(): void {
     this.alive = false;
-    window.clearTimeout(this.announceTimer);
     this.presenceSocket?.disconnect();
     this.presenceSocket = null;
     this.sendTransport?.close();
@@ -273,6 +269,24 @@ export class MediasoupConnection {
 
   get localTrackHandles(): LocalTrackHandle[] {
     return [...this.localTracks.values()];
+  }
+
+  /**
+   * Manda uma mensagem de chat/soundboard pelo socket de presença — substitui
+   * o polling de `RoomBroadcastMessage` (`msPollBroadcast`/`msSendBroadcast`).
+   * Sem persistência aqui: quem entra depois não recebe histórico, mesma
+   * regra que já valia (ver `pollBroadcast` em `mediasoup.service.ts`).
+   * Fire-and-forget: se o socket ainda não abriu, a mensagem se perde — não
+   * há fila, do mesmo jeito que `useP2PMesh.broadcast` já não enfileira.
+   */
+  sendChat(body: string): void {
+    this.presenceSocket?.emit('chat:send', { displayName: this.displayName, body });
+  }
+
+  /** Inscreve um ouvinte de mensagens de chat/soundboard vindas de outros peers. Devolve a função para cancelar. */
+  subscribeChat(listener: (fromPeer: string, displayName: string, body: string) => void): () => void {
+    this.chatListeners.add(listener);
+    return () => this.chatListeners.delete(listener);
   }
 
   /** Publica um atributo próprio no roster (ex.: "ausente") — o mesmo `PeerInfo.mediasoup` que outros já leem via heartbeat. */
@@ -348,6 +362,20 @@ export class MediasoupConnection {
       if (!this.alive || event.roomSlug !== this.roomId) return;
       this.consumedProducerIds.delete(event.producerId);
     });
+
+    // Mute/move do painel admin, ao vivo — substitui a leitura de
+    // `adminCommand` no heartbeat de 4s (ver `MediasoupSfuClient.pushCommand`
+    // em apps/api). Este socket só recebe o que for endereçado a ESTE peer
+    // (ver `peerRoom` em `presence.ts`), então não precisa filtrar por peerId.
+    socket.on('moderation:command', (command: PresenceModerationCommand) => {
+      if (!this.alive || command.roomSlug !== this.roomId) return;
+      this.applyAdminCommand(command);
+    });
+
+    socket.on('chat:message', (message: PresenceChatMessage) => {
+      if (!this.alive || message.roomSlug !== this.roomId) return;
+      for (const listener of this.chatListeners) listener(message.fromPeer, message.displayName, message.body);
+    });
   }
 
   /** Tracks anunciadas antes dos transportes ficarem prontos — drenada assim que `recvTransport`/`device` existem, ver `connect()`. */
@@ -369,57 +397,27 @@ export class MediasoupConnection {
   }
 
   /**
-   * Anúncio de baixa cadência: publica a lista de `tracks` locais (para
-   * moderação/depuração no backend) e lê `adminCommand` pendente — a
-   * descoberta de producers novos NÃO passa mais por aqui, ver
-   * `track:announced`/`track:closed` em `connectPresenceSocket`.
-   */
-  private startAnnounceTick(): void {
-    const announce = async (): Promise<void> => {
-      try {
-        const tracks = this.localTrackHandles.map((handle) => ({
-          producerId: handle.producerId,
-          kind: handle.kind,
-          trackKind: handle.trackKind,
-        }));
-        const payload: MediasoupAnnounce | null = tracks.length > 0 ? { tracks } : null;
-        const { peers } = await peerHeartbeat(this.roomId, this.peerId, this.displayName, null, payload);
-        if (!this.alive) return;
-        this.applyAdminCommand(peers);
-      } catch {
-        // Uma falha de anúncio não derruba a mídia já estabelecida.
-      } finally {
-        if (this.alive) this.announceTimer = window.setTimeout(() => void announce(), ANNOUNCE_TICK_MS);
-      }
-    };
-    void announce();
-  }
-
-  /**
-   * Obedece o comando de moderação da própria entrada no roster, se houver.
+   * Obedece um comando de moderação empurrado ao vivo pelo socket de
+   * presença (ver `moderation:command` em `connectPresenceSocket`).
    *
    * Cooperativo por natureza (ver docstring de `MediasoupModerationService`
    * no backend): não existe rota do SFU para pausar o producer de OUTRO peer,
    * então o único jeito de "mutar pelo admin" no mediasoup é o alvo mesmo
-   * pausar a própria track ao ler o pedido no heartbeat. Idem para mover —
+   * pausar a própria track ao receber o pedido. Idem para mover —
    * `onForceMoved` só entrega o slug; quem troca de sala de fato é
    * `MediasoupRoomShell`/`RoomPage`, do mesmo jeito que já reagem à troca
    * manual de transporte.
    */
-  private applyAdminCommand(peers: PeerInfo[]): void {
-    const mine = peers.find((peer) => peer.peerId === this.peerId);
-    const command = mine?.adminCommand ?? null;
-
-    const forceMuted = command?.forceMuted === true;
-    if (forceMuted !== this.lastForceMuted) {
-      this.lastForceMuted = forceMuted;
+  private applyAdminCommand(command: PresenceModerationCommand): void {
+    if (command.forceMuted !== undefined && command.forceMuted !== this.lastForceMuted) {
+      this.lastForceMuted = command.forceMuted;
       for (const handle of this.localTracks.values()) {
-        if (handle.trackKind === 'mic') handle.track.enabled = !forceMuted;
+        if (handle.trackKind === 'mic') handle.track.enabled = !command.forceMuted;
       }
-      this.events.onForceMuted(forceMuted);
+      this.events.onForceMuted(command.forceMuted);
     }
 
-    const moveTo = command?.moveTo ?? null;
+    const moveTo = command.moveTo ?? null;
     if (moveTo !== null && moveTo !== this.lastMoveTo) {
       this.lastMoveTo = moveTo;
       this.events.onForceMoved(moveTo);

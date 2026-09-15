@@ -1,9 +1,27 @@
 import type { Server as HttpServer } from 'node:http';
 import { Server as SocketIOServer, type Socket } from 'socket.io';
+import type { PresenceModerationCommand } from '@telecord/shared';
 import { verifyAdminPresenceToken, verifyPresenceToken } from '@telecord/shared';
 import type { RoomRegistry } from './rooms';
 
 const ADMIN_ROOM_PREFIX = 'admin:';
+/** Uma sala Socket.IO por peer, só para `pushModerationCommand` conseguir mirar UM par sem varrer a sala inteira. */
+const peerRoom = (roomSlug: string, peerId: string): string => `peer:${roomSlug}:${peerId}`;
+
+let ioInstance: SocketIOServer | null = null;
+
+/**
+ * Chamado pela rota interna `POST /rooms/:roomSlug/peers/:peerId/command`
+ * (ver `http.ts`) para empurrar mute/move ao vivo — substitui a leitura de
+ * `adminCommand` no heartbeat de 4s do cliente. Fire-and-forget: se o peer
+ * não estiver com o socket de presença aberto agora (aba fechada, ainda
+ * conectando), o comando simplesmente não chega — mesma natureza
+ * "cooperativa" que já existia (ver `MediasoupModerationService`), só que
+ * sem a garantia fraca de "ele vai ler no próximo tick".
+ */
+export function pushModerationCommand(command: PresenceModerationCommand): void {
+  ioInstance?.to(peerRoom(command.roomSlug, command.peerId)).emit('moderation:command', command);
+}
 
 interface PeerSocketData {
   kind: 'peer';
@@ -42,6 +60,7 @@ export function startPresenceServer(httpServer: HttpServer, internalSecret: stri
     path: '/presence',
     cors: { origin: '*' },
   });
+  ioInstance = io;
 
   io.use((socket, next) => {
     const token = socket.handshake.auth.token;
@@ -97,6 +116,9 @@ function handlePeerConnection(socket: Socket, registry: RoomRegistry, data: Peer
   const { peerId, roomSlug, displayName } = data;
 
   void socket.join(roomSlug);
+  // Sala PRÓPRIA deste par — é nela que `pushModerationCommand` mira, sem
+  // precisar varrer todo mundo em `roomSlug` para achar o socket certo.
+  void socket.join(peerRoom(roomSlug, peerId));
   registry.setPresence(roomSlug, peerId, displayName);
   broadcastRoster(socket, registry, roomSlug);
 
@@ -107,6 +129,29 @@ function handlePeerConnection(socket: Socket, registry: RoomRegistry, data: Peer
     if (track.peerId === peerId) continue;
     socket.emit('track:announced', track);
   }
+
+  /*
+   * Chat/soundboard: retransmite para o resto da sala assim que chega —
+   * substitui o polling de 1.5s (`msPollBroadcast`/`msSendBroadcast`). O
+   * corpo é opaco aqui (o mesmo `RoomMessage` serializado que os outros
+   * transportes já usam); a validação de forma continua do lado do cliente.
+   * SEM persistência: quem entra depois não recebe histórico — mesma regra
+   * que já valia com o polling (`pollBroadcast` nunca voltava do cursor de
+   * quem perguntava). `RoomBroadcastMessage`/`sendBroadcast`/`pollBroadcast`
+   * continuam existindo em `apps/api` (rota morta, sem cliente chamando),
+   * não foram removidos para não arriscar a migração do schema à toa.
+   */
+  socket.on('chat:send', (payload: unknown) => {
+    if (typeof payload !== 'object' || payload === null) return;
+    const { displayName: senderName, body } = payload as { displayName?: unknown; body?: unknown };
+    if (typeof senderName !== 'string' || typeof body !== 'string' || body.length === 0) return;
+    socket.to(roomSlug).emit('chat:message', {
+      roomSlug,
+      fromPeer: peerId,
+      displayName: senderName.slice(0, 64),
+      body,
+    });
+  });
 
   socket.on('disconnect', () => {
     registry.removePeer(roomSlug, peerId);

@@ -101,6 +101,23 @@ export class MediasoupSfuClient {
     await this.call('POST', `/rooms/${encodeURIComponent(roomSlug)}/leave`, { peerId });
   }
 
+  /**
+   * Empurra mute/move para UM peer ao vivo pelo socket de presença — ver
+   * `pushModerationCommand` em `apps/mediasoup-sfu/src/presence.ts`.
+   * Best-effort: quem chama (`MediasoupModerationService`) já escreveu o
+   * comando em `PeerPresence.adminCommand` ANTES desta chamada, que
+   * continua sendo a fonte de verdade (ex.: alguém que reconectar lê de lá).
+   * Isto só acelera quem já está com o socket aberto agora — por isso o erro
+   * aqui não deveria derrubar a ação de moderação, só a entrega imediata.
+   */
+  async pushCommand(
+    roomSlug: string,
+    peerId: string,
+    command: { forceMuted?: boolean; moveTo?: string | null },
+  ): Promise<void> {
+    await this.call('POST', `/rooms/${encodeURIComponent(roomSlug)}/peers/${encodeURIComponent(peerId)}/command`, command);
+  }
+
   /** Quem está na sala agora, direto da memória do SFU — ver `RoomRegistry.listPresence`. Usado por `MediasoupModerationService.liveParticipants`. */
   async roomPresence(roomSlug: string): Promise<{ peerId: string; displayName: string; joinedAt: string }[]> {
     const result = await this.call<{ peers: { peerId: string; displayName: string; joinedAt: string }[] }>(

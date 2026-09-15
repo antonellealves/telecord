@@ -129,7 +129,7 @@ export function MediasoupRoomShell({
   });
   const soundboardSpeakers = useSoundboardSpeakers();
   const { messages, unread, sendChat, playSound, playing, stopSound, markRead } = useMediasoupChat(
-    roomId,
+    engine.connection,
     peerId,
     displayName,
     () => sound.effective,

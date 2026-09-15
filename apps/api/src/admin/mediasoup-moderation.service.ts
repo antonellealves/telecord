@@ -123,6 +123,10 @@ export class MediasoupModerationService {
   ): Promise<void> {
     await this.assertPresent(slug, peerId);
     await this.peers.setAdminCommand(slug, peerId, muted ? { forceMuted: true } : { forceMuted: false });
+    // Best-effort: entrega imediata a quem já está com o socket de presença
+    // aberto. Se falhar (ex.: peer sem socket agora), o comando já está
+    // salvo acima — só não chegou ao vivo desta vez.
+    await this.sfu.pushCommand(slug, peerId, { forceMuted: muted }).catch(() => undefined);
 
     await this.log.audit({
       actorId: actor.id,
@@ -156,6 +160,7 @@ export class MediasoupModerationService {
     }
     await this.assertPresent(slug, peerId);
     await this.peers.setAdminCommand(slug, peerId, { moveTo: destino });
+    await this.sfu.pushCommand(slug, peerId, { moveTo: destino }).catch(() => undefined);
 
     await this.log.audit({
       actorId: actor.id,

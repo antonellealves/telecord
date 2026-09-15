@@ -9,6 +9,7 @@ import type {
   MediasoupProduceResult,
   MediasoupTransportInfo,
 } from '@telecord/shared';
+import { pushModerationCommand } from './presence';
 import { BadRequestError, NotFoundError, RoomRegistry } from './rooms';
 
 const MAX_BODY_BYTES = 256 * 1024;
@@ -273,6 +274,21 @@ async function handle(
     const body = (await readBody(req)) as { peerId?: unknown };
     const peerId = requireString(body.peerId, 'peerId');
     registry.removePeer(roomSlug, peerId);
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  // Empurra mute/move para UM peer ao vivo — ver `pushModerationCommand` em
+  // `presence.ts`. Chamado por `MediasoupSfuClient.pushCommand` (apps/api)
+  // logo depois de `MediasoupModerationService` escrever o comando no Prisma;
+  // a escrita continua sendo a fonte de verdade, isto só acelera a entrega.
+  // path: /rooms/:roomSlug/peers/:peerId/command
+  if (parts.length === 5 && parts[2] === 'peers' && parts[4] === 'command' && req.method === 'POST') {
+    const peerId = parts[3]!;
+    const body = (await readBody(req)) as { forceMuted?: unknown; moveTo?: unknown };
+    const forceMuted = typeof body.forceMuted === 'boolean' ? body.forceMuted : undefined;
+    const moveTo = typeof body.moveTo === 'string' || body.moveTo === null ? body.moveTo : undefined;
+    pushModerationCommand({ roomSlug, peerId, forceMuted, moveTo });
     sendJson(res, 200, { ok: true });
     return;
   }

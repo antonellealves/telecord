@@ -1,17 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  CHAT_HISTORY_LIMIT,
-  MAX_CHAT_LENGTH,
-  parseRoomMessage,
-  type RoomMessage,
-} from '@telecord/shared';
-import { msPollBroadcast, msSendBroadcast } from '../../lib/mediasoup';
+import { CHAT_HISTORY_LIMIT, MAX_CHAT_LENGTH, parseRoomMessage, type RoomMessage } from '@telecord/shared';
+import type { MediasoupConnection } from './mediasoupConnection';
 import { useSoundPlayer, type ResolvedSound, type SoundPlayback } from '../useSoundPlayer';
 
 export type { ResolvedSound, SoundPlayback } from '../useSoundPlayer';
-
-/** Ritmo do polling de chat — mais rápido que o heartbeat de presença (2500ms), porque aqui atraso é percebido como "chat lento". */
-const POLL_MS = 1500;
 
 export interface MediasoupChatEntry {
   id: string;
@@ -37,13 +29,17 @@ function newId(): string {
 }
 
 /**
- * Chat e soundboard do transporte mediasoup — equivalente a
- * `useRoomMessages`, mas por polling HTTP (`RoomBroadcastMessage`) em vez do
- * canal de dados do LiveKit. Ver o schema da API para o porquê de não ser
- * ainda um DataChannel nativo do mediasoup (SCTP).
+ * Chat e soundboard do transporte mediasoup — ao vivo pelo socket de
+ * presença (`MediasoupConnection.sendChat`/`subscribeChat`), sem polling.
+ * Substitui o antigo `msPollBroadcast`/`msSendBroadcast` (HTTP a cada
+ * 1.5s) — ver `presence.ts` no mediasoup-sfu para o relay.
+ *
+ * Sem histórico: quem entra na sala não recebe mensagens de antes, mesma
+ * regra que já valia com o polling (`pollBroadcast` nunca voltava para trás
+ * do cursor de quem perguntava).
  */
 export function useMediasoupChat(
-  roomId: string,
+  connection: MediasoupConnection | null,
   peerId: string,
   displayName: string,
   getVolume: () => number,
@@ -60,7 +56,6 @@ export function useMediasoupChat(
   const { playing, play: playLocally, stop: stopLocally } = useSoundPlayer(getVolume, resolveSound);
 
   const seenRef = useRef(new Set<string>());
-  const cursorRef = useRef<string | null>(null);
   const onSoundRef = useRef(onSound);
   onSoundRef.current = onSound;
 
@@ -74,68 +69,47 @@ export function useMediasoupChat(
     if (countUnread) setUnread((value) => value + 1);
   }, []);
 
-  // Polling: busca o que chegou desde o último cursor.
   useEffect(() => {
-    let vivo = true;
-    let timer = 0;
-
-    const poll = async (): Promise<void> => {
+    if (connection === null) return;
+    return connection.subscribeChat((fromPeer, authorName, rawBody) => {
+      if (fromPeer === peerId) return; // eco do que eu mesmo mandei — já apareceu localmente ao enviar.
+      let raw: unknown;
       try {
-        const { messages: entries, cursor } = await msPollBroadcast(roomId, peerId, cursorRef.current);
-        if (!vivo) return;
-        cursorRef.current = cursor;
-
-        for (const entry of entries) {
-          if (entry.fromPeer === peerId) continue; // eco do que eu mesmo mandei — já apareceu localmente ao enviar.
-          let raw: unknown;
-          try {
-            raw = JSON.parse(entry.body) as unknown;
-          } catch {
-            continue;
-          }
-          const message = parseRoomMessage(raw);
-          if (message === null) continue;
-
-          if (message.type === 'sound') {
-            playLocally(message.soundId);
-            onSoundRef.current?.(entry.fromPeer);
-            continue;
-          }
-          if (message.type === 'sound-stop') {
-            stopLocally(message.soundId);
-            continue;
-          }
-          append(
-            {
-              id: message.id,
-              author: entry.displayName,
-              authorIdentity: entry.fromPeer,
-              body: message.body,
-              sentAt: message.sentAt,
-              isLocal: false,
-            },
-            true,
-          );
-        }
+        raw = JSON.parse(rawBody) as unknown;
       } catch {
-        // Uma falha de polling não deve travar o loop — tenta de novo no próximo tique.
-      } finally {
-        if (vivo) timer = window.setTimeout(() => void poll(), POLL_MS);
+        return;
       }
-    };
-    void poll();
+      const message = parseRoomMessage(raw);
+      if (message === null) return;
 
-    return () => {
-      vivo = false;
-      window.clearTimeout(timer);
-    };
-  }, [roomId, peerId, append, playLocally, stopLocally]);
+      if (message.type === 'sound') {
+        playLocally(message.soundId);
+        onSoundRef.current?.(fromPeer);
+        return;
+      }
+      if (message.type === 'sound-stop') {
+        stopLocally(message.soundId);
+        return;
+      }
+      append(
+        {
+          id: message.id,
+          author: authorName,
+          authorIdentity: fromPeer,
+          body: message.body,
+          sentAt: message.sentAt,
+          isLocal: false,
+        },
+        true,
+      );
+    });
+  }, [connection, peerId, append, playLocally, stopLocally]);
 
   const publish = useCallback(
     (message: RoomMessage) => {
-      void msSendBroadcast(roomId, { peerId, displayName, body: JSON.stringify(message) }).catch(() => undefined);
+      connection?.sendChat(JSON.stringify(message));
     },
-    [roomId, peerId, displayName],
+    [connection],
   );
 
   const sendChat = useCallback(
