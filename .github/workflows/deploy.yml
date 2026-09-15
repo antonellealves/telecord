@@ -131,11 +131,13 @@ jobs:
           MASK_SECRET: ${{ secrets.LIVEKIT_API_SECRET || vars.LIVEKIT_API_SECRET }}
           MASK_CF_TOKEN: ${{ secrets.CF_REALTIME_APP_TOKEN || vars.CF_REALTIME_APP_TOKEN }}
           MASK_MEDIASOUP_SECRET: ${{ secrets.MEDIASOUP_INTERNAL_SECRET || vars.MEDIASOUP_INTERNAL_SECRET }}
+          MASK_BYPASS: ${{ secrets.VERCEL_PROTECTION_BYPASS_SECRET || vars.VERCEL_PROTECTION_BYPASS_SECRET }}
         run: |
           if [ -n "${MASK_TOKEN:-}" ]; then echo "::add-mask::$MASK_TOKEN"; fi
           if [ -n "${MASK_SECRET:-}" ]; then echo "::add-mask::$MASK_SECRET"; fi
           if [ -n "${MASK_CF_TOKEN:-}" ]; then echo "::add-mask::$MASK_CF_TOKEN"; fi
           if [ -n "${MASK_MEDIASOUP_SECRET:-}" ]; then echo "::add-mask::$MASK_MEDIASOUP_SECRET"; fi
+          if [ -n "${MASK_BYPASS:-}" ]; then echo "::add-mask::$MASK_BYPASS"; fi
 
       # LIVEKIT_URL (server-side, api/rooms.ts), VITE_LIVEKIT_URL (pública, o
       # navegador conecta nela via wss://) e LIVEKIT_PUBLIC_HOST (o hostname
@@ -264,13 +266,43 @@ jobs:
           URL: ${{ steps.deploy.outputs.url }}
           # Vazia = autenticação não configurada; o passo 3 se pula sozinho.
           AUTH_ON: ${{ vars.VITE_API_URL }}
+          # "Deployment Protection" da Vercel (Settings → Deployment
+          # Protection) coloca uma tela de login na frente de TODA rota,
+          # /api/* incluído — sem isto, toda curl abaixo bate nela e volta
+          # 401 "Protected deployment" em vez de testar o app de verdade.
+          # O bypass é criado em Settings → Deployment Protection →
+          # "Protection Bypass for Automation" (a Vercel gera o valor; não
+          # existe endpoint para lê-lo depois, só para regenerar). Vazio =
+          # a proteção está desligada (ou o segredo ainda não foi
+          # configurado no Environment) — os passos seguem sem o header.
+          BYPASS: ${{ secrets.VERCEL_PROTECTION_BYPASS_SECRET || vars.VERCEL_PROTECTION_BYPASS_SECRET }}
         run: |
           set -euo pipefail
           fail=0
 
+          # Header + query string: a Vercel aceita os dois, mas alguns
+          # redirects internos (rewrite da SPA) preservam query string e
+          # descartam header custom — mandar os dois cobre os dois casos
+          # sem precisar descobrir qual rota faz o quê.
+          bypass_header=()
+          bypass_query=""
+          if [ -n "${BYPASS:-}" ]; then
+            bypass_header=(-H "x-vercel-protection-bypass: $BYPASS")
+            bypass_query="x-vercel-protection-bypass=$BYPASS&x-vercel-set-bypass-cookie=true"
+          fi
+          qs() {
+            # Anexa a query string de bypass a uma URL que pode ou não já ter "?".
+            if [ -z "$bypass_query" ]; then echo "$1"; return; fi
+            case "$1" in
+              *\?*) echo "$1&$bypass_query" ;;
+              *) echo "$1?$bypass_query" ;;
+            esac
+          }
+
           echo "1. POST /api/token deve assinar o token"
           code=$(curl -sS -o /tmp/token.json -w '%{http_code}' --max-time 30 \
-            -X POST "$URL/api/token" \
+            "${bypass_header[@]}" \
+            -X POST "$(qs "$URL/api/token")" \
             -H 'content-type: application/json' \
             -d '{"roomId":"ci-smoke","displayName":"CI"}')
           if [ "$code" = "200" ]; then
@@ -283,12 +315,12 @@ jobs:
           fi
 
           echo "2. /sala/:id deve cair no rewrite da SPA"
-          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$URL/sala/ci-smoke")
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "${bypass_header[@]}" "$(qs "$URL/sala/ci-smoke")")
           if [ "$code" = "200" ]; then echo "   ok (200)"; else echo "::error::rewrite de SPA respondeu $code"; fail=1; fi
 
           if [ -n "${AUTH_ON:-}" ]; then
             echo "3. o serviço de autenticação deve responder"
-            code=$(curl -sS -o /tmp/prov.json -w '%{http_code}' --max-time 30 "$URL/api/auth/providers")
+            code=$(curl -sS -o /tmp/prov.json -w '%{http_code}' --max-time 30 "${bypass_header[@]}" "$(qs "$URL/api/auth/providers")")
             if [ "$code" = "200" ]; then
               echo "   ok (200) $(cat /tmp/prov.json)"
             else
@@ -314,7 +346,7 @@ jobs:
           # imagem numa VM pequena com link mais lento.
           rooms_ok=0
           for i in $(seq 1 20); do
-            code=$(curl -sS -o /tmp/rooms.json -w '%{http_code}' --max-time 15 "$URL/api/rooms")
+            code=$(curl -sS -o /tmp/rooms.json -w '%{http_code}' --max-time 15 "${bypass_header[@]}" "$(qs "$URL/api/rooms")")
             if [ "$code" = "200" ]; then
               rooms_ok=1
               break
@@ -338,7 +370,7 @@ jobs:
             # cairia na função errada — e o sintoma seria o diretório de salas
             # devolvendo a lista do LiveKit em silêncio.
             echo "5. /api/rooms/directory deve cair no serviço, não na função"
-            code=$(curl -sS -o /tmp/dir.json -w '%{http_code}' --max-time 30 "$URL/api/rooms/directory")
+            code=$(curl -sS -o /tmp/dir.json -w '%{http_code}' --max-time 30 "${bypass_header[@]}" "$(qs "$URL/api/rooms/directory")")
             if [ "$code" = "200" ] && grep -q '"items"' /tmp/dir.json; then
               echo "   ok (200, formato de página)"
             else
@@ -348,7 +380,7 @@ jobs:
             fi
 
             echo "6. rota de administração deve exigir sessão"
-            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$URL/api/admin/logs")
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "${bypass_header[@]}" "$(qs "$URL/api/admin/logs")")
             if [ "$code" = "401" ]; then
               echo "   ok (401)"
             else
@@ -360,7 +392,7 @@ jobs:
           fi
 
           echo "7. rota de API inexistente deve dar 404, não o HTML da SPA"
-          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$URL/api/nada")
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "${bypass_header[@]}" "$(qs "$URL/api/nada")")
           if [ "$code" = "404" ]; then echo "   ok (404)"; else echo "::error::/api/nada respondeu $code"; fail=1; fi
 
           echo "### Deploy verificado" >> "$GITHUB_STEP_SUMMARY"
