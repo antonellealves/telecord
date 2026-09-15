@@ -411,6 +411,13 @@ jobs:
   # arquivos que definem o serviço e manda subir de novo.
   deploy-livekit:
     name: Publica o LiveKit (VM)
+    # Só depois do proxy — nunca em paralelo com deploy-mediasoup: a VM é uma
+    # E2.1.Micro com ~500MB de RAM real, e o `docker compose build` do
+    # mediasoup (pnpm install + tsc + download do worker nativo) rodando ao
+    # mesmo tempo que este `pull`/`up` do LiveKit esgota a memória da VM — foi
+    # o que derrubou os dois jobs juntos (LiveKit com "couldn't connect",
+    # mediasoup com build incompleto). Rodar em série custa alguns minutos a
+    # mais por deploy; rodar em paralelo já derrubou o deploy inteiro.
     needs: [verify, deploy-proxy]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
@@ -487,7 +494,11 @@ jobs:
   # terceiro — não há o que dar `pull`.
   deploy-mediasoup:
     name: Publica o mediasoup-sfu (VM)
-    needs: [verify, deploy-proxy]
+    # needs inclui deploy-livekit (não só deploy-proxy) de propósito: força
+    # este job a esperar o LiveKit terminar de subir antes de começar o
+    # `docker compose build` pesado do mediasoup na mesma VM — ver o
+    # comentário em deploy-livekit sobre os ~500MB de RAM da VM.
+    needs: [verify, deploy-proxy, deploy-livekit]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
