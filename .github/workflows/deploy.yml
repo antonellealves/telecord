@@ -373,6 +373,27 @@ jobs:
       # Environment do GitHub, mesma fonte que `deploy-livekit` já usa para
       # verificar o deploy — é mais simples que depender de alguém preparar
       # esse arquivo à mão na VM antes do primeiro deploy.
+      # O Caddyfile tem um site block por host (ver infra/Caddyfile) — se os
+      # dois vierem iguais, o Caddy recusa subir com "ambiguous site
+      # definition" e fica em crash-loop silencioso (foi o que aconteceu:
+      # LIVEKIT_PUBLIC_HOST e MEDIASOUP_PUBLIC_HOST configurados com o MESMO
+      # valor no Environment). Falhar aqui, ANTES de escrever o .env, dá um
+      # erro claro no lugar de um 502 só descoberto minutos depois nos
+      # healthchecks de LiveKit/mediasoup.
+      - name: Confere que os dois hosts públicos são diferentes
+        run: |
+          if [ -z "${LIVEKIT_PUBLIC_HOST:-}" ] || [ -z "${MEDIASOUP_PUBLIC_HOST:-}" ]; then
+            echo "::error::LIVEKIT_PUBLIC_HOST e MEDIASOUP_PUBLIC_HOST precisam estar definidos no Environment Production."
+            exit 1
+          fi
+          if [ "$LIVEKIT_PUBLIC_HOST" = "$MEDIASOUP_PUBLIC_HOST" ]; then
+            echo "::error::LIVEKIT_PUBLIC_HOST e MEDIASOUP_PUBLIC_HOST estão iguais ($LIVEKIT_PUBLIC_HOST) — o Caddy recusa subir com dois site blocks para o mesmo host. Use dois hosts nip.io distintos apontando para o mesmo IP (ex.: livekit-<ip>.nip.io e ms-<ip>.nip.io)."
+            exit 1
+          fi
+        env:
+          LIVEKIT_PUBLIC_HOST: ${{ secrets.LIVEKIT_PUBLIC_HOST || vars.LIVEKIT_PUBLIC_HOST }}
+          MEDIASOUP_PUBLIC_HOST: ${{ secrets.MEDIASOUP_PUBLIC_HOST || vars.MEDIASOUP_PUBLIC_HOST }}
+
       - name: Escreve o .env do proxy na VM
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -400,30 +421,6 @@ jobs:
             set -euo pipefail
             cd /opt/telecord-proxy
             docker compose -f docker-compose.proxy.yml up -d --remove-orphans
-
-      # Diagnóstico temporário: a curl externa para :443 vinha dando "couldn't
-      # connect to server" instantâneo em TODAS as tentativas do healthcheck
-      # do LiveKit — sintoma de porta fechada antes de chegar no Caddy (ex.:
-      # Security List / NSG da Oracle sem 443 liberado) OU do container caddy
-      # não estar de pé. Isto roda DE DENTRO da VM (firewalld/NSG não afeta
-      # localhost), então separa as duas causas: se `curl localhost:443`
-      # funcionar aqui mas a curl externa do job seguinte continuar falhando,
-      # o problema é a Security List da Oracle, não o Caddy.
-      - name: Diagnóstico do proxy (temporário)
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.LIVEKIT_VM_HOST || vars.LIVEKIT_VM_HOST }}
-          username: ${{ secrets.LIVEKIT_VM_USER || vars.LIVEKIT_VM_USER }}
-          key: ${{ env.LIVEKIT_VM_SSH_KEY }}
-          script: |
-            set -x
-            cd /opt/telecord-proxy
-            docker compose -f docker-compose.proxy.yml ps
-            sudo ss -tlnp | grep -E ':(80|443)' || echo "nada escutando em 80/443"
-            sudo firewall-cmd --list-ports || true
-            curl -sS -o /dev/null -w 'localhost:443 -> %{http_code}\n' --max-time 5 -k https://localhost:443/ || echo "curl local falhou"
-            docker compose -f docker-compose.proxy.yml logs --tail=50 caddy
-            exit 0
 
   # Servidor LiveKit self-host, numa VM à parte (Oracle Cloud) — desacoplado
   # do deploy da Vercel acima: um não depende do outro, e este só faz sentido
