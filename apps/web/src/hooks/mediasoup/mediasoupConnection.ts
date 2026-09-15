@@ -7,6 +7,8 @@ import type {
   MediasoupTrackKind,
   PeerInfo,
   PresenceRosterUpdate,
+  PresenceTrackAnnounced,
+  PresenceTrackClosed,
   ServerToClientPresenceEvents,
 } from '@telecord/shared';
 import { MEDIASOUP_PUBLIC_URL } from '../../lib/config';
@@ -23,10 +25,12 @@ import {
 
 /**
  * Cadência do anúncio de baixa frequência — NÃO é mais o roster (isso é o
- * socket de presença agora): só existe para publicar `tracks` novas e ler
- * `adminCommand` pendente, dado que essas duas coisas ainda vivem só em
- * `PeerPresence.meta`/`adminCommand` (ver `mediasoup.service.ts`). Mais lento
- * que o antigo TICK_MS de 2.5s porque não precisa mais carregar o roster.
+ * socket de presença) NEM a descoberta de tracks novas (isso agora é
+ * `track:announced`/`track:closed` no mesmo socket, ver `connectPresenceSocket`).
+ * Só existe para publicar a LISTA de tracks locais (o backend usa isso para
+ * moderação/depuração) e ler `adminCommand` pendente, que ainda vive em
+ * `PeerPresence.meta` (ver `mediasoup.service.ts`) e não tem equivalente no
+ * socket de presença.
  */
 const ANNOUNCE_TICK_MS = 4000;
 
@@ -197,6 +201,7 @@ export class MediasoupConnection {
 
       this.sendTransport = sendTransport;
       this.recvTransport = recvTransport;
+      this.drainPendingTracks();
 
       this.startAnnounceTick();
       // A UI libera assim que os dois transportes existem e a presença já
@@ -299,10 +304,10 @@ export class MediasoupConnection {
 
     socket.on('roster:update', (update: PresenceRosterUpdate) => {
       if (!this.alive || update.roomSlug !== this.roomId) return;
-      // O socket só carrega presença pura (peerId/displayName/joinedAt) — os
-      // campos de anúncio de tracks e comando de moderação vêm do heartbeat
-      // de baixa cadência (`startAnnounceTick`) e precisam ser preservados
-      // ao reconstruir o `PeerInfo[]` que o resto da conexão espera.
+      // O socket só carrega presença pura (peerId/displayName/joinedAt) — o
+      // comando de moderação vem do heartbeat de baixa cadência
+      // (`startAnnounceTick`) e precisa ser preservado ao reconstruir o
+      // `PeerInfo[]` que o resto da conexão espera.
       const byId = new Map(this.roster.map((peer) => [peer.peerId, peer]));
       const merged: PeerInfo[] = update.peers.map((entry) => ({
         peerId: entry.peerId,
@@ -315,15 +320,59 @@ export class MediasoupConnection {
       this.roster = merged;
       this.events.onRosterChange(merged);
     });
+
+    // Descoberta de producers novos (mic, câmera, tela) AO VIVO — substitui a
+    // varredura do heartbeat de 4s. É isto que corrige a tela preta ao
+    // compartilhar: antes, o outro par só descobria o producer novo no
+    // próximo tick do `startAnnounceTick`, e uma tela que MUDAVA de producer
+    // (parar/recomeçar rápido) podia perder a janela.
+    socket.on('track:announced', (event: PresenceTrackAnnounced) => {
+      if (!this.alive || event.roomSlug !== this.roomId || event.peerId === this.peerId) return;
+      if (this.consumedProducerIds.has(event.producerId)) return;
+      this.consumedProducerIds.add(event.producerId);
+      const device = this.device;
+      const recvTransport = this.recvTransport;
+      if (device === null || recvTransport === null) {
+        // Ainda conectando (o socket abre antes dos transportes existirem,
+        // ver `connect()`) — devolve à fila para a próxima tentativa possível.
+        this.consumedProducerIds.delete(event.producerId);
+        this.pendingTracks.push(event);
+        return;
+      }
+      void this.consume(recvTransport, device, event.producerId, event.peerId, event.trackKind).catch(() => {
+        this.consumedProducerIds.delete(event.producerId);
+      });
+    });
+
+    socket.on('track:closed', (event: PresenceTrackClosed) => {
+      if (!this.alive || event.roomSlug !== this.roomId) return;
+      this.consumedProducerIds.delete(event.producerId);
+    });
+  }
+
+  /** Tracks anunciadas antes dos transportes ficarem prontos — drenada assim que `recvTransport`/`device` existem, ver `connect()`. */
+  private pendingTracks: PresenceTrackAnnounced[] = [];
+
+  private drainPendingTracks(): void {
+    if (this.device === null || this.recvTransport === null || this.pendingTracks.length === 0) return;
+    const device = this.device;
+    const recvTransport = this.recvTransport;
+    const pending = this.pendingTracks;
+    this.pendingTracks = [];
+    for (const event of pending) {
+      if (this.consumedProducerIds.has(event.producerId)) continue;
+      this.consumedProducerIds.add(event.producerId);
+      void this.consume(recvTransport, device, event.producerId, event.peerId, event.trackKind).catch(() => {
+        this.consumedProducerIds.delete(event.producerId);
+      });
+    }
   }
 
   /**
-   * Anúncio de baixa cadência: publica `tracks` novas e lê `adminCommand`
-   * pendente — NÃO é mais o roster (isso é o socket de presença agora, ver
-   * `connectPresenceSocket`). Continua chamando `peerHeartbeat` como antes,
-   * mas o array `peers` que ele devolve só serve para achar a PRÓPRIA
-   * entrada (`adminCommand`) e os `mediasoup.tracks` dos OUTROS, para
-   * descobrir producers novos a consumir.
+   * Anúncio de baixa cadência: publica a lista de `tracks` locais (para
+   * moderação/depuração no backend) e lê `adminCommand` pendente — a
+   * descoberta de producers novos NÃO passa mais por aqui, ver
+   * `track:announced`/`track:closed` em `connectPresenceSocket`.
    */
   private startAnnounceTick(): void {
     const announce = async (): Promise<void> => {
@@ -337,23 +386,6 @@ export class MediasoupConnection {
         const { peers } = await peerHeartbeat(this.roomId, this.peerId, this.displayName, null, payload);
         if (!this.alive) return;
         this.applyAdminCommand(peers);
-
-        const device = this.device;
-        const recvTransport = this.recvTransport;
-        if (device !== null && recvTransport !== null) {
-          for (const peer of peers) {
-            if (peer.peerId === this.peerId || peer.mediasoup == null) continue;
-            for (const track of peer.mediasoup.tracks) {
-              if (this.consumedProducerIds.has(track.producerId)) continue;
-              this.consumedProducerIds.add(track.producerId);
-              await this.consume(recvTransport, device, track.producerId, peer.peerId, track.trackKind).catch(
-                () => {
-                  this.consumedProducerIds.delete(track.producerId);
-                },
-              );
-            }
-          }
-        }
       } catch {
         // Uma falha de anúncio não derruba a mídia já estabelecida.
       } finally {

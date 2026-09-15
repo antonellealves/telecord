@@ -34,3 +34,4 @@ apps/api/src/generated/
 # Prisma ao lado dele, ambos gerados no build.
 api-bundle/
 
+docker-compose.override.yml

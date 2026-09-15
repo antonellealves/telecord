@@ -74,15 +74,45 @@ interface PresenceEntry {
   joinedAt: number;
 }
 
+export interface TrackAnnouncedEvent {
+  roomSlug: string;
+  peerId: string;
+  producerId: string;
+  kind: 'audio' | 'video';
+  trackKind: MediasoupTrackKind;
+}
+
+export interface TrackClosedEvent {
+  roomSlug: string;
+  peerId: string;
+  producerId: string;
+}
+
 export class RoomRegistry {
   private readonly rooms = new Map<string, Room>();
   /** `roomSlug -> peerId -> presença`, mantido pelo canal Socket.IO (`presence.ts`), separado de `Room.peers` — ver docstring do topo do arquivo. */
   private readonly presence = new Map<string, Map<string, PresenceEntry>>();
+  /**
+   * Ligado por `presence.ts` depois que o Socket.IO sobe — `produce()`/fechamento
+   * de producer chamam isto para avisar a sala em tempo real, substituindo o
+   * anúncio de tracks que antes só chegava no próximo tick do heartbeat de 4s
+   * (`ANNOUNCE_TICK_MS` no cliente). `null` até `presence.ts` chamar `setTrackListeners`.
+   */
+  private onTrackAnnounced: ((event: TrackAnnouncedEvent) => void) | null = null;
+  private onTrackClosed: ((event: TrackClosedEvent) => void) | null = null;
 
   constructor(
     private readonly worker: mediasoup.types.Worker,
     private readonly announcedIp: string,
   ) {}
+
+  setTrackListeners(
+    onTrackAnnounced: (event: TrackAnnouncedEvent) => void,
+    onTrackClosed: (event: TrackClosedEvent) => void,
+  ): void {
+    this.onTrackAnnounced = onTrackAnnounced;
+    this.onTrackClosed = onTrackClosed;
+  }
 
   async getOrCreateRoom(roomSlug: string): Promise<Room> {
     const existing = this.rooms.get(roomSlug);
@@ -184,7 +214,10 @@ export class RoomRegistry {
 
     producer.on('transportclose', () => {
       peer.producers.delete(producer.id);
+      this.onTrackClosed?.({ roomSlug, peerId, producerId: producer.id });
     });
+
+    this.onTrackAnnounced?.({ roomSlug, peerId, producerId: producer.id, kind: producer.kind, trackKind });
 
     return producer;
   }
@@ -247,6 +280,19 @@ export class RoomRegistry {
       kind: producer.kind,
       trackKind,
     }));
+  }
+
+  /** Snapshot de todas as tracks publicadas na sala agora — para quem acabou de conectar o socket de presença consumir sem esperar um `track:announced` que já passou. */
+  publishedTracksInRoom(roomSlug: string): TrackAnnouncedEvent[] {
+    const room = this.rooms.get(roomSlug);
+    if (room === undefined) return [];
+    const out: TrackAnnouncedEvent[] = [];
+    for (const [peerId, peer] of room.peers.entries()) {
+      for (const { producer, trackKind } of peer.producers.values()) {
+        out.push({ roomSlug, peerId, producerId: producer.id, kind: producer.kind, trackKind });
+      }
+    }
+    return out;
   }
 
   /** Fecha tudo que este par tinha na sala — chamado quando ele sai (SPEC: `leave`, e agora também pelo `disconnect` do socket de presença). */

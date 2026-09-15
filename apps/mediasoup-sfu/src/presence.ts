@@ -59,6 +59,15 @@ export function startPresenceServer(httpServer: HttpServer, internalSecret: stri
     });
   });
 
+  registry.setTrackListeners(
+    (event) => {
+      io.to(event.roomSlug).emit('track:announced', event);
+    },
+    (event) => {
+      io.to(event.roomSlug).emit('track:closed', event);
+    },
+  );
+
   io.on('connection', (socket: Socket) => {
     const data = socket.data as PresenceSocketData;
 
@@ -90,6 +99,14 @@ function handlePeerConnection(socket: Socket, registry: RoomRegistry, data: Peer
   void socket.join(roomSlug);
   registry.setPresence(roomSlug, peerId, displayName);
   broadcastRoster(socket, registry, roomSlug);
+
+  // Snapshot das tracks já publicadas por OUTROS pares — sem isto, quem entra
+  // numa sala com um compartilhamento de tela já em andamento nunca recebe o
+  // `track:announced` original (esse evento já passou) e fica sem consumir.
+  for (const track of registry.publishedTracksInRoom(roomSlug)) {
+    if (track.peerId === peerId) continue;
+    socket.emit('track:announced', track);
+  }
 
   socket.on('disconnect', () => {
     registry.removePeer(roomSlug, peerId);
