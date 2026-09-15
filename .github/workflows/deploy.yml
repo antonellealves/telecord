@@ -254,15 +254,19 @@ jobs:
           # rollout na VM ao mesmo tempo, esta curl pode chegar antes dele
           # voltar a responder — 502 real, porém transitório, não um bug. Dá
           # alguns segundos de chance antes de marcar falha de verdade.
+          # 20 tentativas de 10s (até ~3min20s): deploy-livekit faz SCP,
+          # pull da imagem, up e o próprio healthcheck com retry — pode levar
+          # bem mais que os 30s testados antes, principalmente no pull da
+          # imagem numa VM pequena com link mais lento.
           rooms_ok=0
-          for i in $(seq 1 6); do
-            code=$(curl -sS -o /tmp/rooms.json -w '%{http_code}' --max-time 30 "$URL/api/rooms")
+          for i in $(seq 1 20); do
+            code=$(curl -sS -o /tmp/rooms.json -w '%{http_code}' --max-time 15 "$URL/api/rooms")
             if [ "$code" = "200" ]; then
               rooms_ok=1
               break
             fi
             echo "   tentativa $i: $code — LiveKit pode estar no meio do próprio deploy, tentando de novo…"
-            sleep 5
+            sleep 10
           done
           if [ "$rooms_ok" = "1" ]; then
             echo "   ok (200)"
@@ -625,6 +629,13 @@ jobs:
           host: ${{ secrets.LIVEKIT_VM_HOST || vars.LIVEKIT_VM_HOST }}
           username: ${{ secrets.LIVEKIT_VM_USER || vars.LIVEKIT_VM_USER }}
           key: ${{ env.LIVEKIT_VM_SSH_KEY }}
+          # command_timeout padrão do appleboy/ssh-action é 10m — o build
+          # (pnpm install + tsc + download do worker nativo do mediasoup)
+          # nesta VM de ~500MB de RAM já levou passou disso (10m32s
+          # observado), batendo em "Run Command Timeout" a um passo do fim
+          # (EXPOSE, penúltimo do Dockerfile). Não é o build travando, é só
+          # o limite do próprio ssh-action sendo curto demais para esta VM.
+          command_timeout: 20m
           script: |
             set -euo pipefail
             cd /opt/telecord-mediasoup-src/mediasoup
