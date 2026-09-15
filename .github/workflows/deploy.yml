@@ -133,6 +133,31 @@ jobs:
         run: |
           if [ -n "${MASK_TOKEN:-}" ]; then echo "::add-mask::$MASK_TOKEN"; fi
           if [ -n "${MASK_SECRET:-}" ]; then echo "::add-mask::$MASK_SECRET"; fi
+
+      # LIVEKIT_URL (server-side, usada por api/rooms.ts) e LIVEKIT_PUBLIC_HOST
+      # (o hostname da VM, ver deploy-proxy) são DOIS valores no Environment
+      # que precisam apontar para o MESMO servidor — nada no GitHub garante
+      # isso sozinho. Já divergiram uma vez (LIVEKIT_URL ficou com o host
+      # antigo depois de trocar LIVEKIT_PUBLIC_HOST para resolver a colisão
+      # com MEDIASOUP_PUBLIC_HOST) e o sintoma foi /api/rooms em 502
+      # permanente, indistinguível de o LiveKit estar fora do ar de verdade.
+      # Falha cedo, ANTES do deploy, com uma mensagem que aponta a causa.
+      - name: Confere que LIVEKIT_URL aponta para LIVEKIT_PUBLIC_HOST
+        env:
+          LIVEKIT_URL: ${{ secrets.LIVEKIT_URL || vars.LIVEKIT_URL }}
+          LIVEKIT_PUBLIC_HOST: ${{ secrets.LIVEKIT_PUBLIC_HOST || vars.LIVEKIT_PUBLIC_HOST }}
+        run: |
+          if [ -z "${LIVEKIT_URL:-}" ] || [ -z "${LIVEKIT_PUBLIC_HOST:-}" ]; then
+            echo "Um dos dois está vazio — sem LiveKit self-host configurado, nada a conferir."
+            exit 0
+          fi
+          case "$LIVEKIT_URL" in
+            *"$LIVEKIT_PUBLIC_HOST"*) ;;
+            *)
+              echo "::error::LIVEKIT_URL ($LIVEKIT_URL) não contém o host de LIVEKIT_PUBLIC_HOST ($LIVEKIT_PUBLIC_HOST) — api/rooms.ts vai falar com o servidor errado (ou nenhum) e /api/rooms vai responder 502. Atualize LIVEKIT_URL no Environment Production para https://$LIVEKIT_PUBLIC_HOST."
+              exit 1
+              ;;
+          esac
           if [ -n "${MASK_CF_TOKEN:-}" ]; then echo "::add-mask::$MASK_CF_TOKEN"; fi
 
       - uses: actions/checkout@v5
