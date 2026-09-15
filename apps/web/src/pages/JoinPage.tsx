@@ -190,7 +190,7 @@ export function JoinPage(): JSX.Element {
               * no momento de criar.
               */}
             <div className={styles.field}>
-              <span className={styles.label}>Como a transmissão viaja</span>
+              <span className={styles.label}>Escolha como a transmissão viaja</span>
               <TransportPicker
                 value={transport}
                 hidden={cfEnabled && !cfBlocked ? [] : ['cfsfu']}
