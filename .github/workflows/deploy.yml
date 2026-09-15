@@ -477,8 +477,25 @@ jobs:
           # query string na verdade responde 404 nesta versão — não é rota de
           # health check, é o próprio handshake WebSocket, que exige
           # access_token para dar qualquer resposta diferente de 404.
-          code=$(curl -sS -o /tmp/rtc.json -w '%{http_code}' --max-time 30 "https://$HOST/")
-          if [ "$code" = "200" ]; then
+          #
+          # Retry, não uma tentativa só: `docker compose up -d` no passo
+          # anterior retorna assim que o container É CRIADO, não quando o
+          # livekit-server já está de fato escutando em 7880 — o entrypoint
+          # ainda precisa instalar gettext e rodar envsubst antes de subir o
+          # binário. Uma curl imediata batia nisso com "couldn't connect"
+          # (exit 7) e derrubava o job à toa, mesmo com o serviço subindo
+          # normalmente alguns segundos depois.
+          ok=0
+          for i in $(seq 1 10); do
+            code=$(curl -sS -o /tmp/rtc.json -w '%{http_code}' --max-time 10 "https://$HOST/" || echo 000)
+            if [ "$code" = "200" ]; then
+              ok=1
+              break
+            fi
+            echo "tentativa $i: $code — aguardando o LiveKit subir…"
+            sleep 3
+          done
+          if [ "$ok" = "1" ]; then
             echo "ok ($code)"
           else
             echo "::error::https://$HOST/ respondeu $code"
@@ -582,8 +599,20 @@ jobs:
           HOST: ${{ secrets.MEDIASOUP_PUBLIC_HOST || vars.MEDIASOUP_PUBLIC_HOST }}
         run: |
           set -euo pipefail
-          code=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 30 "https://$HOST/healthz")
-          if [ "$code" = "200" ]; then
+          # Retry pelo mesmo motivo do healthcheck do LiveKit acima: `up -d`
+          # retorna assim que o container sobe, não quando o processo Node já
+          # está escutando em 3100.
+          ok=0
+          for i in $(seq 1 10); do
+            code=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 10 "https://$HOST/healthz" || echo 000)
+            if [ "$code" = "200" ]; then
+              ok=1
+              break
+            fi
+            echo "tentativa $i: $code — aguardando o mediasoup-sfu subir…"
+            sleep 3
+          done
+          if [ "$ok" = "1" ]; then
             echo "ok ($code)"
           else
             echo "::error::https://$HOST/healthz respondeu $code"
