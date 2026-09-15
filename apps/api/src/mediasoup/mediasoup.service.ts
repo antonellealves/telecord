@@ -202,7 +202,25 @@ export class MediasoupService {
     return { messages, cursor };
   }
 
-  /** Mesma portaria do `CfsfuService.assertMember` — reaproveita o roster de presença. */
+  /**
+   * Confere que `peerId` está mesmo na sala antes de repassar a chamada ao
+   * SFU. Duas fontes, nessa ordem:
+   *
+   * 1. `PeerPresence`/Prisma, escrita UMA VEZ por `clientConfig` (acima) —
+   *    cobre a janela entre "o token foi assinado" e "o socket de presença
+   *    terminou o handshake", que pode ser maior que zero (`connect()` no
+   *    cliente dispara `connectPresenceSocket` e a criação de transporte
+   *    quase ao mesmo tempo, sem esperar o socket confirmar).
+   * 2. Presença AO VIVO do socket (`RoomRegistry.listPresence`, via
+   *    `roomPresence`) — cobre tudo depois disso. Sem esta segunda fonte, a
+   *    linha do Prisma (que ninguém mais renova — o heartbeat de 4s que
+   *    fazia isso foi removido junto com o resto do polling) expirava aos
+   *    20s e qualquer ação depois desse ponto — como começar a compartilhar
+   *    tela minutos depois de entrar — caía aqui com `fora_da_sala`, e o
+   *    sintoma era o compartilhamento falhar silenciosamente (a chamada de
+   *    `produce` no cliente é best-effort, então a UI não mostrava erro
+   *    nenhum, só a tela preta do outro lado).
+   */
   private async assertMember(roomSlug: string, peerId: string): Promise<void> {
     const presente = await this.prisma.peerPresence.findFirst({
       where: {
@@ -212,9 +230,12 @@ export class MediasoupService {
       },
       select: { id: true },
     });
-    if (presente === null) {
-      throw forbidden('fora_da_sala', 'Entre na sala antes de usar o mediasoup.');
-    }
+    if (presente !== null) return;
+
+    const aoVivo = await this.client.roomPresence(roomSlug).catch(() => []);
+    if (aoVivo.some((peer) => peer.peerId === peerId)) return;
+
+    throw forbidden('fora_da_sala', 'Entre na sala antes de usar o mediasoup.');
   }
 }
 
