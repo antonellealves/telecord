@@ -27,6 +27,21 @@ export const LIVEKIT_URL: string =
 export const TOKEN_ENDPOINT: string = import.meta.env.VITE_TOKEN_ENDPOINT ?? '/api/token';
 
 /**
+ * Origem pública do processo mediasoup-sfu, para o navegador abrir o canal
+ * Socket.IO de presença direto nele (ver `mediasoupConnection.ts`) — mesmo
+ * padrão de `VITE_LIVEKIT_URL`/`LIVEKIT_URL` acima: o navegador fala com a VM
+ * direto (mídia e, agora, presença), `apps/api` só assina o token que
+ * autoriza a conexão. Sem default: ao contrário do LiveKit (serviço
+ * gerenciado com host fixo), o mediasoup é self-host — sem a variável, o
+ * transporte mediasoup simplesmente não aparece como opção (mesmo critério
+ * de `AUTH_API_URL` acima).
+ */
+export const MEDIASOUP_PUBLIC_URL: string = (import.meta.env.VITE_MEDIASOUP_PUBLIC_URL?.trim() ?? '').replace(
+  /\/$/,
+  '',
+);
+
+/**
  * Origem do serviço de autenticação, sem barra no fim.
  *
  * Vazia por padrão, e isso é o desenho, não descuido: sem a variável, o app

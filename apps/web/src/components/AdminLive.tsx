@@ -1,5 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
-import type { LiveParticipant, LiveRoom } from '@telecord/shared';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { io, type Socket } from 'socket.io-client';
+import type {
+  ClientToServerPresenceEvents,
+  LiveParticipant,
+  LiveRoom,
+  PresenceRosterUpdate,
+  ServerToClientPresenceEvents,
+} from '@telecord/shared';
 import {
   deleteLiveRoom,
   fetchLiveParticipants,
@@ -9,6 +16,8 @@ import {
   removeParticipant,
 } from '../lib/admin';
 import { ApiError } from '../lib/apiClient';
+import { MEDIASOUP_PUBLIC_URL } from '../lib/config';
+import { fetchAdminPresenceToken } from '../lib/mediasoup';
 import { formatWhen } from './AdminLogs';
 import styles from './Admin.module.css';
 
@@ -24,6 +33,28 @@ const REFRESH_MS = 5000;
  * mostra ali é o COMANDO pendente (`pendingCommand.forceMuted`), que só vira
  * realidade quando o cliente da pessoa obedecer no próximo heartbeat.
  */
+/**
+ * Reconstrói um `LiveParticipant` a partir de uma entrada pura de
+ * `roster:update` (peerId/displayName/joinedAt), preservando `isAnonymous`/
+ * `pendingCommand` de quem já estava na lista carregada por HTTP — o socket
+ * não carrega essas duas coisas (continuam só em `PeerPresence`/Prisma, ver
+ * `MediasoupModerationService.liveParticipants`).
+ */
+function rosterEntryToParticipant(
+  peer: PresenceRosterUpdate['peers'][number],
+  current: LiveParticipant[],
+): LiveParticipant {
+  const existing = current.find((p) => p.identity === peer.peerId);
+  return {
+    identity: peer.peerId,
+    displayName: peer.displayName,
+    joinedAt: peer.joinedAt,
+    isAnonymous: existing?.isAnonymous ?? true,
+    tracks: [],
+    pendingCommand: existing?.pendingCommand ?? null,
+  };
+}
+
 function isMicMuted(participant: LiveParticipant): boolean | null {
   if (participant.pendingCommand !== undefined) {
     return participant.pendingCommand?.forceMuted ?? false;
@@ -59,6 +90,7 @@ export function AdminLive(): JSX.Element {
 
   const selectedRoom = rooms?.find((room) => room.slug === selected) ?? null;
   const selectedTransport = selectedRoom?.transport ?? 'LIVEKIT';
+  const socketRef = useRef<Socket<ServerToClientPresenceEvents, ClientToServerPresenceEvents> | null>(null);
 
   const loadRooms = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -106,6 +138,10 @@ export function AdminLive(): JSX.Element {
     }
     const controller = new AbortController();
     void loadPeople(selected, selectedTransport, controller.signal);
+    // O polling continua como fallback de reconexão/primeira carga (e é a
+    // única fonte para LiveKit, que não tem canal de presença); para
+    // mediasoup, quem dá a sensação de "ao vivo" agora é `roster:update`
+    // (ver os dois efeitos de socket abaixo).
     const timer = window.setInterval(() => void loadPeople(selected, selectedTransport), REFRESH_MS);
     return () => {
       controller.abort();
@@ -113,6 +149,63 @@ export function AdminLive(): JSX.Element {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, selectedTransport, loadPeople]);
+
+  /**
+   * Um socket admin só, aberto enquanto o painel "Ao vivo" estiver montado —
+   * não um por sala selecionada, porque o token de admin (ver
+   * `signAdminPresenceToken`) não tem `roomSlug` fixo e o painel troca de
+   * sala sem pedir token novo (`admin:watch`/`admin:unwatch` abaixo cuidam
+   * disso). `roster:update` atualiza `people` na hora e recalcula a
+   * contagem da linha correspondente em `rooms`, sem esperar o próximo tick
+   * de `REFRESH_MS`.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    void fetchAdminPresenceToken()
+      .then(({ token }) => {
+        if (cancelled) return;
+        const socket: Socket<ServerToClientPresenceEvents, ClientToServerPresenceEvents> = io(
+          MEDIASOUP_PUBLIC_URL,
+          { path: '/presence', auth: { token }, reconnection: true },
+        );
+        socket.on('roster:update', (update: PresenceRosterUpdate) => {
+          setPeople((current) => {
+            if (current === null) return current;
+            // Só aplica se a sala assistida ainda for a selecionada — evita
+            // uma resposta atrasada de uma sala anterior sobrescrever a atual.
+            return update.roomSlug === selected
+              ? update.peers.map((peer) => rosterEntryToParticipant(peer, current))
+              : current;
+          });
+          setRooms((current) =>
+            current === null
+              ? current
+              : current.map((room) =>
+                  room.slug === update.roomSlug && room.transport === 'MEDIASOUP'
+                    ? { ...room, participants: update.peers.length }
+                    : room,
+                ),
+          );
+        });
+        socketRef.current = socket;
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (socket === null || selected === null || selectedTransport !== 'MEDIASOUP') return;
+    socket.emit('admin:watch', selected);
+    return () => {
+      socket.emit('admin:unwatch', selected);
+    };
+  }, [selected, selectedTransport]);
 
   const act = useCallback(
     async (identity: string, run: () => Promise<void>) => {

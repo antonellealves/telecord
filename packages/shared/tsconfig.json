@@ -6,7 +6,12 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "types": []
+    "types": [],
+    // DOM só para as globals universais (crypto.subtle, TextEncoder, atob/btoa) que
+    // `presenceToken.ts` usa — existem tanto no navegador quanto no Node 19+,
+    // sem trazer tipos de fato específicos de DOM (document, window) para o resto
+    // do pacote, que continua sendo consumido por um processo Node puro também.
+    "lib": ["ES2022", "DOM"]
   },
   "include": ["src/**/*.ts"]
 }

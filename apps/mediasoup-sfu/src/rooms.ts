@@ -12,6 +12,13 @@ import type {
  * processo derruba toda sala ativa — comportamento aceito, mesmo trade-off
  * de reiniciar o `livekit-server`.
  *
+ * Desde a chegada do canal de presença por Socket.IO (`presence.ts`), este
+ * registry também é o dono da PRESENÇA ao vivo (quem está na sala agora,
+ * `displayName`, `joinedAt`) — antes essa informação só existia em
+ * `PeerPresence` no Prisma, via `apps/api`. Presença aqui é mantida à parte
+ * de `peers` (que continua existindo só para quem tem transporte/mídia),
+ * porque uma pessoa pode ter socket conectado sem nunca ter publicado nada.
+ *
  * Codec Opus com DTX/RED espelhando `apps/web/src/lib/media.ts` (Parte 1):
  * mesma meta de qualidade "estúdio" dos dois lados do transporte, para que
  * trocar de `livekit` para `mediasoup` numa sala não seja downgrade de voz.
@@ -62,8 +69,15 @@ interface Room {
   peers: Map<string, Peer>;
 }
 
+interface PresenceEntry {
+  displayName: string;
+  joinedAt: number;
+}
+
 export class RoomRegistry {
   private readonly rooms = new Map<string, Room>();
+  /** `roomSlug -> peerId -> presença`, mantido pelo canal Socket.IO (`presence.ts`), separado de `Room.peers` — ver docstring do topo do arquivo. */
+  private readonly presence = new Map<string, Map<string, PresenceEntry>>();
 
   constructor(
     private readonly worker: mediasoup.types.Worker,
@@ -235,22 +249,63 @@ export class RoomRegistry {
     }));
   }
 
-  /** Fecha tudo que este par tinha na sala — chamado quando ele sai (SPEC: `leave`). */
+  /** Fecha tudo que este par tinha na sala — chamado quando ele sai (SPEC: `leave`, e agora também pelo `disconnect` do socket de presença). */
   removePeer(roomSlug: string, peerId: string): void {
     const room = this.rooms.get(roomSlug);
     const peer = room?.peers.get(peerId);
-    if (peer === undefined) return;
+    if (peer !== undefined) {
+      peer.transports.send?.close();
+      peer.transports.recv?.close();
+      room?.peers.delete(peerId);
+    }
 
-    peer.transports.send?.close();
-    peer.transports.recv?.close();
-    room?.peers.delete(peerId);
+    const presenceRoom = this.presence.get(roomSlug);
+    presenceRoom?.delete(peerId);
+    if (presenceRoom !== undefined && presenceRoom.size === 0) {
+      this.presence.delete(roomSlug);
+    }
 
     // Sala vazia não precisa continuar com Router vivo — libera a memória do
-    // Worker, crítica nesta VM (ver setup-vm.sh: ~500MB reais de RAM).
-    if (room !== undefined && room.peers.size === 0) {
+    // Worker, crítica nesta VM (ver setup-vm.sh: ~500MB reais de RAM). "Vazia"
+    // soma peers de mídia E peers só-de-presença: alguém que só teve socket
+    // conectado, sem nunca ter publicado/consumido nada, ainda ocupa a sala.
+    if (room !== undefined && room.peers.size === 0 && (this.presence.get(roomSlug)?.size ?? 0) === 0) {
       room.router.close();
       this.rooms.delete(roomSlug);
     }
+  }
+
+  /** Registra/renova a presença de um par na sala — chamado ao conectar (ou reconectar) o socket de presença. */
+  setPresence(roomSlug: string, peerId: string, displayName: string): void {
+    let presenceRoom = this.presence.get(roomSlug);
+    if (presenceRoom === undefined) {
+      presenceRoom = new Map();
+      this.presence.set(roomSlug, presenceRoom);
+    }
+    const existing = presenceRoom.get(peerId);
+    presenceRoom.set(peerId, { displayName, joinedAt: existing?.joinedAt ?? Date.now() });
+  }
+
+  /** Quem está na sala agora, para o roster do Socket.IO e para `apps/api` consultar via HTTP interno. */
+  listPresence(roomSlug: string): { peerId: string; displayName: string; joinedAt: string }[] {
+    const presenceRoom = this.presence.get(roomSlug);
+    if (presenceRoom === undefined) return [];
+    return [...presenceRoom.entries()].map(([peerId, entry]) => ({
+      peerId,
+      displayName: entry.displayName,
+      joinedAt: new Date(entry.joinedAt).toISOString(),
+    }));
+  }
+
+  /** Agregado de todas as salas com presença — alimenta `MediasoupService.liveRooms()`. */
+  listRoomsWithPresence(): { slug: string; participants: number; earliestJoinedAt: string }[] {
+    const result: { slug: string; participants: number; earliestJoinedAt: string }[] = [];
+    for (const [slug, presenceRoom] of this.presence.entries()) {
+      if (presenceRoom.size === 0) continue;
+      const earliest = Math.min(...[...presenceRoom.values()].map((entry) => entry.joinedAt));
+      result.push({ slug, participants: presenceRoom.size, earliestJoinedAt: new Date(earliest).toISOString() });
+    }
+    return result;
   }
 
   private findTransport(

@@ -157,8 +157,14 @@ const CFSFU_ENV = [
  * MEDIASOUP_INTERNAL_URL é a URL PÚBLICA do proxy TLS da VM
  * (https://<MEDIASOUP_PUBLIC_HOST>) — a função da Vercel roda fora da rede
  * da VM, então não há um endereço interno para chamar.
+ *
+ * VITE_MEDIASOUP_PUBLIC_URL é o MESMO host, mas de BUILD: o navegador abre o
+ * canal de presença Socket.IO direto nele (ver apps/mediasoup-sfu/src/presence.ts),
+ * então precisa estar no bundle, igual VITE_LIVEKIT_URL. Sem ela, o canal de
+ * presença não conecta — mesmo sintoma que MEDIASOUP_INTERNAL_URL ausente,
+ * mas silencioso (a sala ainda conecta a mídia, só o roster ao vivo não chega).
  */
-const MEDIASOUP_ENV = ['MEDIASOUP_INTERNAL_URL', 'MEDIASOUP_INTERNAL_SECRET'];
+const MEDIASOUP_ENV = ['MEDIASOUP_INTERNAL_URL', 'MEDIASOUP_INTERNAL_SECRET', 'VITE_MEDIASOUP_PUBLIC_URL'];
 
 /*
  * O que NÃO chegou é tão informativo quanto o que chegou, e antes disto o

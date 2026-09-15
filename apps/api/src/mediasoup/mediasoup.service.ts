@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   MAX_CHAT_LENGTH,
+  signPresenceToken,
   type LiveRoom,
   type MediasoupBroadcastEntry,
   type MediasoupBroadcastPollResult,
@@ -13,9 +14,14 @@ import {
   type MediasoupProduceResult,
   type MediasoupTransportInfo,
 } from '@telecord/shared';
+import { CONFIG, type AppConfig } from '../common/config';
 import { badRequest, forbidden } from '../common/errors';
+import { PeersService } from '../peers/peers.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediasoupSfuClient } from './mediasoup-sfu.client';
+
+/** Vida do token de presença — curta de propósito, ver docstring de `presenceToken.ts`. */
+const PRESENCE_TOKEN_TTL_MS = 120_000;
 
 /** Mesma janela do cfsfu e do P2P: só quem renovou presença recentemente conta como na sala. */
 const PRESENCE_TTL_MS = 20_000;
@@ -39,51 +45,60 @@ export class MediasoupService {
   constructor(
     private readonly client: MediasoupSfuClient,
     private readonly prisma: PrismaService,
+    private readonly peers: PeersService,
+    @Inject(CONFIG) private readonly appConfig: AppConfig,
   ) {}
 
   /**
-   * Salas mediasoup com gente dentro AGORA — sem `RoomServiceClient` como o
-   * LiveKit, é agregado da própria presença (`PeerPresence`). Usado tanto
-   * pela Home pública (`GET /mediasoup/live-rooms`, contagem para o badge)
-   * quanto pelo painel admin (`MediasoupModerationService.liveRooms`, que
-   * chama isto para não duplicar a agregação).
+   * Salas mediasoup com gente dentro AGORA — direto da memória do SFU
+   * (`RoomRegistry.listRoomsWithPresence`, via `GET /rooms/presence`), não
+   * mais de `PeerPresence`/Prisma: presença ao vivo do mediasoup é evento
+   * real (Socket.IO) desde que o canal `/presence` existe, sem TTL de 20s
+   * para decidir quem ainda está dentro. Usado tanto pela Home pública
+   * (`GET /mediasoup/live-rooms`, contagem para o badge) quanto pelo painel
+   * admin (`MediasoupModerationService.liveRooms`, que chama isto para não
+   * duplicar a agregação).
    */
   async liveRooms(): Promise<LiveRoom[]> {
-    const rows = await this.prisma.peerPresence.findMany({
-      where: {
-        lastSeenAt: { gte: new Date(Date.now() - PRESENCE_TTL_MS) },
-      },
-      select: { roomSlug: true, joinedAt: true, meta: true },
-    });
-
-    const byRoom = new Map<string, { participants: number; earliest: Date }>();
-    for (const row of rows) {
-      if (!isMediasoupAnnounce(row.meta)) continue;
-      const current = byRoom.get(row.roomSlug);
-      if (current === undefined) {
-        byRoom.set(row.roomSlug, { participants: 1, earliest: row.joinedAt });
-      } else {
-        current.participants += 1;
-        if (row.joinedAt < current.earliest) current.earliest = row.joinedAt;
-      }
-    }
-
-    return [...byRoom.entries()]
-      .map(([slug, info]) => ({
-        slug,
-        participants: info.participants,
-        createdAt: info.earliest.toISOString(),
+    const rooms = await this.client.liveRoomsPresence();
+    return rooms
+      .map((room) => ({
+        slug: room.slug,
+        participants: room.participants,
+        createdAt: room.earliestJoinedAt,
         transport: 'MEDIASOUP' as const,
       }))
       .sort((a, b) => b.participants - a.participants || a.slug.localeCompare(b.slug));
   }
 
-  async clientConfig(roomSlug: string): Promise<MediasoupClientConfig> {
-    if (!this.client.enabled) {
-      return { enabled: false, routerRtpCapabilities: null };
+  /**
+   * Config pública da sala + token de presença de curta duração (ver
+   * `presenceToken.ts`) para o navegador abrir o canal Socket.IO direto no
+   * mediasoup-sfu. O heartbeat aqui é o ÚNICO que resta no fluxo HTTP: dá a
+   * `assertMember` uma linha de `PeerPresence` fresca ANTES de assinar o
+   * token — emitir o token sem essa prova deixaria qualquer um entrar numa
+   * sala sem ter passado pela portaria. Depois disto, o browser não faz mais
+   * polling de roster: quem mantém presença é o socket.
+   */
+  async clientConfig(
+    roomSlug: string,
+    peerId: string,
+    displayName: string,
+    userId: string | null,
+  ): Promise<MediasoupClientConfig> {
+    if (!this.client.enabled || this.appConfig.mediasoup === null) {
+      return { enabled: false, routerRtpCapabilities: null, presenceToken: null };
     }
+    await this.peers.heartbeat(roomSlug, peerId, displayName, userId, null, null);
     const routerRtpCapabilities = await this.client.routerRtpCapabilities(roomSlug);
-    return { enabled: true, routerRtpCapabilities };
+    const presenceToken = await signPresenceToken({
+      peerId,
+      roomSlug,
+      displayName,
+      secret: this.appConfig.mediasoup.internalSecret,
+      ttlMs: PRESENCE_TOKEN_TTL_MS,
+    });
+    return { enabled: true, routerRtpCapabilities, presenceToken };
   }
 
   async createTransport(
@@ -203,10 +218,3 @@ export class MediasoupService {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function isMediasoupAnnounce(meta: unknown): boolean {
-  return isRecord(meta) && isRecord(meta.mediasoup);
-}

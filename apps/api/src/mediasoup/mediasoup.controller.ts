@@ -11,7 +11,8 @@ import type {
   MediasoupProduceResult,
   MediasoupTransportInfo,
 } from '@telecord/shared';
-import { OptionalAuth, Public } from '../auth/auth.decorators';
+import { CurrentUser, OptionalAuth, Public } from '../auth/auth.decorators';
+import type { AccessClaims } from '../auth/tokens';
 import { badRequest } from '../common/errors';
 import { MediasoupService } from './mediasoup.service';
 
@@ -39,10 +40,27 @@ export class MediasoupController {
     return this.mediasoup.liveRooms();
   }
 
+  /**
+   * Além das RTP capabilities, devolve o token de presença (curta duração)
+   * que o navegador usa para abrir o canal Socket.IO direto no
+   * mediasoup-sfu — ver `MediasoupService.clientConfig`. `peerId`/`displayName`
+   * chegam por query porque é aqui, e não mais num heartbeat HTTP separado
+   * de 2.5 em 2.5s, que a linha de presença inicial é criada.
+   */
   @OptionalAuth()
   @Get('rooms/:roomSlug/config')
-  config(@Param('roomSlug') roomSlug: string): Promise<MediasoupClientConfig> {
-    return this.mediasoup.clientConfig(requireSlug(roomSlug));
+  config(
+    @Param('roomSlug') roomSlug: string,
+    @Query('peerId') peerId: string,
+    @Query('displayName') displayName: string,
+    @CurrentUser() claims: AccessClaims | undefined,
+  ): Promise<MediasoupClientConfig> {
+    return this.mediasoup.clientConfig(
+      requireSlug(roomSlug),
+      requireText(peerId, 'peerId'),
+      requireText(displayName, 'displayName'),
+      claims?.sub ?? null,
+    );
   }
 
   @OptionalAuth()

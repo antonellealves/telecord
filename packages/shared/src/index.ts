@@ -11,6 +11,14 @@
 // codifica, a função de relay lê o cabeçalho.
 export * from './vercel-relay.js';
 
+// Presença por Socket.IO do transporte `mediasoup` (ver ambos os arquivos):
+// `presenceToken` assina/verifica com `node:crypto`, então quem importar
+// estas duas funções pelo lado do navegador puxa Node — hoje só
+// `apps/api` (assina) e `apps/mediasoup-sfu` (verifica) fazem isso;
+// `apps/web` só usa os tipos de `presenceProtocol`.
+export * from './presenceToken.js';
+export * from './presenceProtocol.js';
+
 // ---------------------------------------------------------------------------
 // Limites e formatos (SPEC §2.1)
 // ---------------------------------------------------------------------------
@@ -1318,6 +1326,12 @@ export interface MediasoupClientConfig {
   enabled: boolean;
   /** RTP capabilities do `Router` — o `Device` do cliente carrega com isto antes de tudo. */
   routerRtpCapabilities: unknown;
+  /**
+   * Token de curta duração (ver `presenceToken.ts`) para o cliente abrir o
+   * canal Socket.IO de presença direto no mediasoup-sfu. `null` quando
+   * `enabled` é falso.
+   */
+  presenceToken: string | null;
 }
 
 /**

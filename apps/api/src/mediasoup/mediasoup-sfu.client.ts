@@ -101,6 +101,26 @@ export class MediasoupSfuClient {
     await this.call('POST', `/rooms/${encodeURIComponent(roomSlug)}/leave`, { peerId });
   }
 
+  /** Quem está na sala agora, direto da memória do SFU — ver `RoomRegistry.listPresence`. Usado por `MediasoupModerationService.liveParticipants`. */
+  async roomPresence(roomSlug: string): Promise<{ peerId: string; displayName: string; joinedAt: string }[]> {
+    const result = await this.call<{ peers: { peerId: string; displayName: string; joinedAt: string }[] }>(
+      'GET',
+      `/rooms/${encodeURIComponent(roomSlug)}/presence`,
+      undefined,
+    );
+    return result.peers;
+  }
+
+  /** Agregado de todas as salas com presença — usado por `MediasoupService.liveRooms`. */
+  async liveRoomsPresence(): Promise<{ slug: string; participants: number; earliestJoinedAt: string }[]> {
+    const result = await this.call<{ rooms: { slug: string; participants: number; earliestJoinedAt: string }[] }>(
+      'GET',
+      '/rooms/presence',
+      undefined,
+    );
+    return result.rooms;
+  }
+
   private requireConfig(): MediasoupConfig {
     if (this.config === null) {
       throw serviceUnavailable(

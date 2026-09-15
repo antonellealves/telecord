@@ -250,6 +250,11 @@ jobs:
           # POST em /api/mediasoup/* respondia 403.
           MEDIASOUP_INTERNAL_URL: ${{ (secrets.MEDIASOUP_PUBLIC_HOST || vars.MEDIASOUP_PUBLIC_HOST) != '' && format('https://{0}', secrets.MEDIASOUP_PUBLIC_HOST || vars.MEDIASOUP_PUBLIC_HOST) || '' }}
           MEDIASOUP_INTERNAL_SECRET: ${{ secrets.MEDIASOUP_INTERNAL_SECRET || vars.MEDIASOUP_INTERNAL_SECRET }}
+          # Mesmo host de MEDIASOUP_INTERNAL_URL acima, mas de BUILD: o
+          # navegador abre o canal de presença Socket.IO direto nele (ver
+          # apps/mediasoup-sfu/src/presence.ts) — sem esta variável o roster
+          # ao vivo simplesmente não conecta, mesmo com o resto da sala ok.
+          VITE_MEDIASOUP_PUBLIC_URL: ${{ (secrets.MEDIASOUP_PUBLIC_HOST || vars.MEDIASOUP_PUBLIC_HOST) != '' && format('https://{0}', secrets.MEDIASOUP_PUBLIC_HOST || vars.MEDIASOUP_PUBLIC_HOST) || '' }}
         run: node scripts/vercel-deploy.mjs
 
       # Fecha o ciclo: sem isto, um deploy "verde" ainda pode estar sem

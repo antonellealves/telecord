@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import type { LiveParticipant, LiveRoom } from '@telecord/shared';
+import { Inject, Injectable } from '@nestjs/common';
+import { signAdminPresenceToken, type LiveParticipant, type LiveRoom } from '@telecord/shared';
 import { ActivityService } from '../activity/activity.service';
-import { badRequest } from '../common/errors';
+import { CONFIG, type AppConfig } from '../common/config';
+import { badRequest, serviceUnavailable } from '../common/errors';
 import { LogService } from '../logging/log.service';
 import type { LogClient } from '../logging/log.service';
 import { MediasoupSfuClient } from '../mediasoup/mediasoup-sfu.client';
@@ -10,8 +11,17 @@ import { PeersService } from '../peers/peers.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { Actor } from '../rooms/rooms.service';
 
-/** Mesma janela do resto do mediasoup (`MediasoupService`, `PeersService`). */
+/**
+ * Janela do `PeerPresence`/Prisma, usada só por `assertPresent` (guarda de
+ * mutar/mover/remover, que continua sobre a mesma tabela de sempre — fora do
+ * escopo da migração de roster para o socket). NÃO é mais usada por
+ * `liveParticipants`/`liveRooms`, que agora vêm da memória do SFU (ver
+ * `MediasoupService.liveRooms`).
+ */
 const PRESENCE_TTL_MS = 20_000;
+
+/** Vida do token de presença de admin — mesma folga curta do token de peer, ver `presenceToken.ts`. */
+const PRESENCE_TOKEN_TTL_MS = 120_000;
 
 /**
  * Poderes de moderação sobre a sala mediasoup VIVA.
@@ -45,6 +55,7 @@ export class MediasoupModerationService {
     private readonly mediasoup: MediasoupService,
     private readonly log: LogService,
     private readonly activity: ActivityService,
+    @Inject(CONFIG) private readonly appConfig: AppConfig,
   ) {}
 
   /** Agregação de verdade mora em `MediasoupService.liveRooms` (reusada também pela Home pública). */
@@ -52,42 +63,54 @@ export class MediasoupModerationService {
     return this.mediasoup.liveRooms();
   }
 
+  /**
+   * Quem está na sala mediasoup AGORA, direto da memória do SFU
+   * (`this.sfu.roomPresence`) — não mais de `PeerPresence`/Prisma, que tinha
+   * até 20s de atraso para refletir quem saiu. `adminCommand`/`userId`
+   * (mute/move pendente, se é anônimo) continuam só no Prisma — busca-se por
+   * `peerId IN (...)` da lista que já veio do SFU, sem depender do TTL para
+   * decidir quem está dentro.
+   */
   async liveParticipants(slug: string): Promise<LiveParticipant[]> {
-    const rows = await this.prisma.peerPresence.findMany({
-      where: {
-        roomSlug: slug,
-        lastSeenAt: { gte: new Date(Date.now() - PRESENCE_TTL_MS) },
-      },
-      select: {
-        peerId: true,
-        displayName: true,
-        userId: true,
-        joinedAt: true,
-        meta: true,
-        adminCommand: true,
-      },
-      orderBy: [{ joinedAt: 'asc' }, { peerId: 'asc' }],
-    });
+    const presentes = await this.sfu.roomPresence(slug);
+    if (presentes.length === 0) return [];
 
-    return rows
-      .filter((row) => isMediasoupAnnounce(row.meta))
-      .map((row) => {
-        const command = isRecord(row.adminCommand) ? row.adminCommand : null;
-        return {
-          identity: row.peerId,
-          displayName: row.displayName,
-          joinedAt: row.joinedAt.toISOString(),
-          isAnonymous: row.userId === null,
-          tracks: [],
-          pendingCommand:
-            command === null
-              ? null
-              : {
-                  forceMuted: command.forceMuted === true,
-                  moveTo: typeof command.moveTo === 'string' ? command.moveTo : null,
-                },
-        };
-      });
+    const rows = await this.prisma.peerPresence.findMany({
+      where: { roomSlug: slug, peerId: { in: presentes.map((p) => p.peerId) } },
+      select: { peerId: true, userId: true, adminCommand: true },
+    });
+    const byPeerId = new Map(rows.map((row) => [row.peerId, row]));
+
+    return presentes.map((peer) => {
+      const row = byPeerId.get(peer.peerId);
+      const command = isRecord(row?.adminCommand) ? row.adminCommand : null;
+      return {
+        identity: peer.peerId,
+        displayName: peer.displayName,
+        joinedAt: peer.joinedAt,
+        isAnonymous: (row?.userId ?? null) === null,
+        tracks: [],
+        pendingCommand:
+          command === null
+            ? null
+            : {
+                forceMuted: command.forceMuted === true,
+                moveTo: typeof command.moveTo === 'string' ? command.moveTo : null,
+              },
+      };
+    });
+  }
+
+  /** Emitido só para quem já passou pelo guard de admin (ver `admin.controller.ts`) — o painel "Ao vivo" abre um socket com isto. */
+  async issueAdminPresenceToken(actor: Actor): Promise<string> {
+    if (this.appConfig.mediasoup === null) {
+      throw serviceUnavailable('mediasoup_desligado', 'A opção mediasoup não está configurada neste servidor.');
+    }
+    return signAdminPresenceToken({
+      actorId: actor.id,
+      secret: this.appConfig.mediasoup.internalSecret,
+      ttlMs: PRESENCE_TOKEN_TTL_MS,
+    });
   }
 
   /** Cooperativo — ver docstring da classe. */
@@ -211,8 +234,4 @@ export class MediasoupModerationService {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
-}
-
-function isMediasoupAnnounce(meta: unknown): boolean {
-  return isRecord(meta) && isRecord(meta.mediasoup);
 }

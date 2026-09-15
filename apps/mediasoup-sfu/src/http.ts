@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type {
   MediasoupConnectTransportBody,
   MediasoupConsumeBody,
@@ -68,11 +68,16 @@ function requireString(value: unknown, field: string): string {
 /**
  * Servidor HTTP interno do mediasoup-sfu.
  *
- * NUNCA exposto ao navegador — só `apps/api` fala com ele (ver
- * `apps/api/src/mediasoup/mediasoup.service.ts`), autenticado por segredo
- * compartilhado. Espelha em forma o `CloudflareRealtimeClient`: aqui é este
- * processo quem faz o papel da API da Cloudflare, só que como serviço nosso
- * na VM em vez de terceiro.
+ * As rotas `/rooms/*` daqui continuam só para `apps/api` (ver
+ * `apps/api/src/mediasoup/mediasoup.service.ts`), autenticado pelo Bearer
+ * `internalSecret`. O que MUDOU: este mesmo `http.Server` agora também
+ * carrega, num caminho separado (`/presence`, ver `presence.ts`), um canal
+ * Socket.IO exposto PUBLICAMENTE ao navegador, com um mecanismo de auth
+ * diferente (token de curta duração, não o Bearer) — os dois convivem na
+ * mesma porta porque o Caddy da VM (`infra/Caddyfile`) já encaminha essa
+ * porta inteira para fora via `MEDIASOUP_PUBLIC_HOST`. Espelha em forma o
+ * `CloudflareRealtimeClient`: aqui é este processo quem faz o papel da API
+ * da Cloudflare, só que como serviço nosso na VM em vez de terceiro.
  *
  * Sem framework (Express/Nest): é um processo pequeno, de responsabilidade
  * única, e a lista de rotas cabe inteira nesta função sem perder legibilidade.
@@ -81,7 +86,7 @@ export function startHttpServer(
   port: number,
   internalSecret: string,
   registry: RoomRegistry,
-): void {
+): Server {
   const server = createServer((req, res) => {
     void handle(req, res, internalSecret, registry).catch((error) => {
       if (error instanceof HttpError) {
@@ -102,6 +107,7 @@ export function startHttpServer(
     });
   });
   server.listen(port);
+  return server;
 }
 
 async function handle(
@@ -130,12 +136,30 @@ async function handle(
   }
 
   const parts = path.split('/').filter((segment) => segment !== '');
-  // /rooms/:roomSlug/...
-  if (parts[0] !== 'rooms' || typeof parts[1] !== 'string') {
+  if (parts[0] !== 'rooms') {
+    sendJson(res, 404, { error: 'rota desconhecida' });
+    return;
+  }
+
+  // /rooms/presence — agregado de todas as salas, sem :roomSlug. Alimenta
+  // `MediasoupService.liveRooms()` (antes lia `PeerPresence` do Prisma).
+  if (parts.length === 2 && parts[1] === 'presence' && req.method === 'GET') {
+    sendJson(res, 200, { rooms: registry.listRoomsWithPresence() });
+    return;
+  }
+
+  if (typeof parts[1] !== 'string') {
     sendJson(res, 404, { error: 'rota desconhecida' });
     return;
   }
   const roomSlug = decodeURIComponent(parts[1]);
+
+  // /rooms/:roomSlug/presence — quem está na sala agora. Alimenta
+  // `MediasoupModerationService.liveParticipants()`.
+  if (parts.length === 3 && parts[2] === 'presence' && req.method === 'GET') {
+    sendJson(res, 200, { peers: registry.listPresence(roomSlug) });
+    return;
+  }
 
   if (parts.length === 3 && parts[2] === 'rtp-capabilities' && req.method === 'GET') {
     const capabilities = await registry.routerRtpCapabilities(roomSlug);

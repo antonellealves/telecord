@@ -4,8 +4,12 @@
 # Roda NA MESMA VM Oracle que já hospeda o LiveKit (ver livekit/setup-vm.sh),
 # mas como serviço à parte: um processo NOSSO (build a partir de
 # mediasoup/Dockerfile), não uma imagem de terceiro. `apps/api` (na Vercel) é
-# quem fala com ele, através do proxy /api/mediasoup/* — este processo nunca é
-# exposto ao navegador do participante, só à `apps/api`.
+# quem fala com as rotas /rooms/* (control-plane do SFU), através do proxy
+# /api/mediasoup/*, autenticado por MEDIASOUP_INTERNAL_SECRET. O canal de
+# presença (`/presence`, Socket.IO — ver apps/mediasoup-sfu/src/presence.ts)
+# É exposto diretamente ao navegador do participante, na MESMA porta 3100,
+# atrás do mesmo Caddy — autenticado por um token de curta duração assinado
+# com o mesmo segredo, não pelo Bearer completo.
 #
 # Uso na VM (feito pelo workflow de deploy, ver .github/workflows/deploy.yml):
 #   cd /opt/telecord-mediasoup-src/mediasoup   # repo inteiro, não só esta pasta —

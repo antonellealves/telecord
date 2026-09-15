@@ -199,6 +199,19 @@ export class AdminController {
       : this.moderation.liveParticipants(slug);
   }
 
+  /**
+   * Token de curta duração para o painel "Ao vivo" abrir o canal Socket.IO
+   * de presença direto no mediasoup-sfu — mesmo mecanismo do peer normal
+   * (`MediasoupService.clientConfig`), mas sem `roomSlug` fixo: o admin troca
+   * de sala no dropdown sem pedir token novo (ver `signAdminPresenceToken`).
+   * Só quem já passou pelo guard deste controller chega aqui.
+   */
+  @Get('live/presence-token')
+  async livePresenceToken(@CurrentUser() claims: AccessClaims | undefined): Promise<{ token: string }> {
+    const token = await this.mediasoupModeration.issueAdminPresenceToken(actorOf(claims));
+    return { token };
+  }
+
   @Post('live/:slug/:identity/mute')
   async mute(
     @Param('slug') slug: string,

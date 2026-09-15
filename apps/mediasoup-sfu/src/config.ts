@@ -10,10 +10,13 @@ class ConfigError extends Error {}
 export interface SfuConfig {
   port: number;
   /**
-   * Credencial compartilhada com `apps/api`: este processo nunca é exposto ao
-   * navegador (o proxy em `/api/mediasoup/*` é quem fala com ele), então um
-   * segredo simples em cabeçalho `Authorization: Bearer` basta — é tráfego
-   * servidor-servidor, não a borda pública.
+   * Credencial compartilhada com `apps/api`, usada de duas formas: (1) as
+   * rotas `/rooms/*` deste processo exigem `Authorization: Bearer
+   * <internalSecret>`, tráfego servidor-servidor via o proxy `/api/mediasoup/*`;
+   * (2) o MESMO segredo assina/verifica o token de curta duração do canal
+   * `/presence` (ver `presenceToken.ts` em `@telecord/shared`), que esse sim
+   * é exposto ao navegador — reuso deliberado, sem segredo novo, porque
+   * verificar o token não exige o Bearer completo, só recalcular o HMAC.
    */
   internalSecret: string;
   /**

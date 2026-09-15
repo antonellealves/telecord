@@ -1,10 +1,15 @@
 import { Device } from 'mediasoup-client';
 import type { Transport } from 'mediasoup-client/types';
+import { io, type Socket } from 'socket.io-client';
 import type {
+  ClientToServerPresenceEvents,
   MediasoupAnnounce,
   MediasoupTrackKind,
   PeerInfo,
+  PresenceRosterUpdate,
+  ServerToClientPresenceEvents,
 } from '@telecord/shared';
+import { MEDIASOUP_PUBLIC_URL } from '../../lib/config';
 import { peerHeartbeat, peerLeave } from '../../lib/peers';
 import {
   fetchMediasoupConfig,
@@ -16,8 +21,14 @@ import {
   msResumeConsumer,
 } from '../../lib/mediasoup';
 
-/** Mesmo ritmo do `useCfSfuRoom`: um heartbeat só faz o roster e a descoberta. */
-const TICK_MS = 2500;
+/**
+ * Cadência do anúncio de baixa frequência — NÃO é mais o roster (isso é o
+ * socket de presença agora): só existe para publicar `tracks` novas e ler
+ * `adminCommand` pendente, dado que essas duas coisas ainda vivem só em
+ * `PeerPresence.meta`/`adminCommand` (ver `mediasoup.service.ts`). Mais lento
+ * que o antigo TICK_MS de 2.5s porque não precisa mais carregar o roster.
+ */
+const ANNOUNCE_TICK_MS = 4000;
 
 export type MediasoupConnectionState = 'new' | 'connecting' | 'connected' | 'failed' | 'disconnected';
 
@@ -91,7 +102,8 @@ export class MediasoupConnection {
   private readonly consumedProducerIds = new Set<string>();
   private roster: PeerInfo[] = [];
   private state: MediasoupConnectionState = 'new';
-  private heartbeatTimer = 0;
+  private announceTimer = 0;
+  private presenceSocket: Socket<ServerToClientPresenceEvents, ClientToServerPresenceEvents> | null = null;
   private alive = true;
   /** Evita disparar `onForceMuted`/`onForceMoved` de novo a cada tick enquanto o comando continuar o mesmo. */
   private lastForceMuted = false;
@@ -107,9 +119,16 @@ export class MediasoupConnection {
   async connect(): Promise<void> {
     this.setState('connecting');
     try {
-      const config = await fetchMediasoupConfig(this.roomId);
+      /*
+       * `fetchMediasoupConfig` já FAZ o heartbeat inicial do lado do servidor
+       * (ver `MediasoupService.clientConfig`) — é o que dá a `assertMember`
+       * uma linha de presença fresca antes de liberar `createTransport`, e é
+       * quem assina o `presenceToken` usado logo abaixo. Não há mais heartbeat
+       * HTTP separado antes de criar transporte.
+       */
+      const config = await fetchMediasoupConfig(this.roomId, this.peerId, this.displayName);
       if (!this.alive) return;
-      if (!config.enabled) {
+      if (!config.enabled || config.presenceToken === null) {
         this.events.onError('O mediasoup não está configurado neste servidor.');
         this.setState('failed');
         return;
@@ -120,17 +139,7 @@ export class MediasoupConnection {
       if (!this.alive) return;
       this.device = device;
 
-      /*
-       * Um heartbeat ANTES de criar transporte. `assertMember` no
-       * `MediasoupService` (apps/api) só deixa passar quem já tem uma linha
-       * de presença recente — e essa linha só existe depois do primeiro
-       * heartbeat. Sem isto, `createTransport` chegava antes de qualquer
-       * presença registrada e o proxy recusava com 403 em toda sala nova.
-       */
-      const { peers } = await peerHeartbeat(this.roomId, this.peerId, this.displayName, null, null);
-      if (!this.alive) return;
-      this.roster = peers;
-      this.events.onRosterChange(peers);
+      this.connectPresenceSocket(config.presenceToken);
 
       const sendInfo = await msCreateTransport(this.roomId, { peerId: this.peerId, direction: 'send' });
       const recvInfo = await msCreateTransport(this.roomId, { peerId: this.peerId, direction: 'recv' });
@@ -189,7 +198,7 @@ export class MediasoupConnection {
       this.sendTransport = sendTransport;
       this.recvTransport = recvTransport;
 
-      this.startHeartbeat();
+      this.startAnnounceTick();
       // A UI libera assim que os dois transportes existem e a presença já
       // foi anunciada (feito acima, antes de criar os transportes) — não
       // espera o handshake DTLS, que só ocorre ao publicar/assinar algo.
@@ -204,7 +213,9 @@ export class MediasoupConnection {
 
   close(): void {
     this.alive = false;
-    window.clearTimeout(this.heartbeatTimer);
+    window.clearTimeout(this.announceTimer);
+    this.presenceSocket?.disconnect();
+    this.presenceSocket = null;
     this.sendTransport?.close();
     this.recvTransport?.close();
     this.sendTransport = null;
@@ -212,6 +223,10 @@ export class MediasoupConnection {
     this.device = null;
     this.localTracks.clear();
     this.consumedProducerIds.clear();
+    // `msLeave` fecha os transportes/presença no SFU como fallback de
+    // melhor-esforço (o `disconnect` do socket já faz isso do lado dele);
+    // `peerLeave` continua limpando a linha `PeerPresence`/sinalização no
+    // Prisma, que o socket não toca.
     void msLeave(this.roomId, this.peerId).catch(() => undefined);
     void peerLeave(this.roomId, this.peerId).catch(() => undefined);
   }
@@ -268,19 +283,59 @@ export class MediasoupConnection {
     this.events.onStateChange(state);
   }
 
-  private startHeartbeat(): void {
-    const beat = async (): Promise<void> => {
+  /**
+   * Abre o canal Socket.IO de presença direto no mediasoup-sfu — a
+   * substituição do heartbeat de roster de 2.5s. `disconnect` do lado do
+   * servidor (fechar aba, F5, queda de rede) é o que agora tira alguém do
+   * roster de todo mundo, em vez de depender de um TTL de 20s sem renovação.
+   */
+  private connectPresenceSocket(presenceToken: string): void {
+    const socket: Socket<ServerToClientPresenceEvents, ClientToServerPresenceEvents> = io(MEDIASOUP_PUBLIC_URL, {
+      path: '/presence',
+      auth: { token: presenceToken },
+      reconnection: true,
+    });
+    this.presenceSocket = socket;
+
+    socket.on('roster:update', (update: PresenceRosterUpdate) => {
+      if (!this.alive || update.roomSlug !== this.roomId) return;
+      // O socket só carrega presença pura (peerId/displayName/joinedAt) — os
+      // campos de anúncio de tracks e comando de moderação vêm do heartbeat
+      // de baixa cadência (`startAnnounceTick`) e precisam ser preservados
+      // ao reconstruir o `PeerInfo[]` que o resto da conexão espera.
+      const byId = new Map(this.roster.map((peer) => [peer.peerId, peer]));
+      const merged: PeerInfo[] = update.peers.map((entry) => ({
+        peerId: entry.peerId,
+        displayName: entry.displayName,
+        isAnonymous: byId.get(entry.peerId)?.isAnonymous ?? true,
+        joinedAt: entry.joinedAt,
+        mediasoup: byId.get(entry.peerId)?.mediasoup ?? null,
+        adminCommand: byId.get(entry.peerId)?.adminCommand ?? null,
+      }));
+      this.roster = merged;
+      this.events.onRosterChange(merged);
+    });
+  }
+
+  /**
+   * Anúncio de baixa cadência: publica `tracks` novas e lê `adminCommand`
+   * pendente — NÃO é mais o roster (isso é o socket de presença agora, ver
+   * `connectPresenceSocket`). Continua chamando `peerHeartbeat` como antes,
+   * mas o array `peers` que ele devolve só serve para achar a PRÓPRIA
+   * entrada (`adminCommand`) e os `mediasoup.tracks` dos OUTROS, para
+   * descobrir producers novos a consumir.
+   */
+  private startAnnounceTick(): void {
+    const announce = async (): Promise<void> => {
       try {
         const tracks = this.localTrackHandles.map((handle) => ({
           producerId: handle.producerId,
           kind: handle.kind,
           trackKind: handle.trackKind,
         }));
-        const announce: MediasoupAnnounce | null = tracks.length > 0 ? { tracks } : null;
-        const { peers } = await peerHeartbeat(this.roomId, this.peerId, this.displayName, null, announce);
+        const payload: MediasoupAnnounce | null = tracks.length > 0 ? { tracks } : null;
+        const { peers } = await peerHeartbeat(this.roomId, this.peerId, this.displayName, null, payload);
         if (!this.alive) return;
-        this.roster = peers;
-        this.events.onRosterChange(peers);
         this.applyAdminCommand(peers);
 
         const device = this.device;
@@ -300,12 +355,12 @@ export class MediasoupConnection {
           }
         }
       } catch {
-        // Uma falha de roster não derruba a mídia já estabelecida.
+        // Uma falha de anúncio não derruba a mídia já estabelecida.
       } finally {
-        if (this.alive) this.heartbeatTimer = window.setTimeout(() => void beat(), TICK_MS);
+        if (this.alive) this.announceTimer = window.setTimeout(() => void announce(), ANNOUNCE_TICK_MS);
       }
     };
-    void beat();
+    void announce();
   }
 
   /**
