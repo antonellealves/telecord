@@ -150,6 +150,17 @@ const CFSFU_ENV = [
 ];
 
 /*
+ * mediasoup (SFU self-hosted próprio, na mesma VM do LiveKit). Opcional como
+ * o Cloudflare: sem as duas, a quinta opção nem aparece (ver
+ * `loadMediasoupConfig` em apps/api/src/common/config.ts — presença de
+ * MEDIASOUP_INTERNAL_URL liga o recurso, e as duas vão sempre juntas).
+ * MEDIASOUP_INTERNAL_URL é a URL PÚBLICA do proxy TLS da VM
+ * (https://<MEDIASOUP_PUBLIC_HOST>) — a função da Vercel roda fora da rede
+ * da VM, então não há um endereço interno para chamar.
+ */
+const MEDIASOUP_ENV = ['MEDIASOUP_INTERNAL_URL', 'MEDIASOUP_INTERNAL_SECRET'];
+
+/*
  * O que NÃO chegou é tão informativo quanto o que chegou, e antes disto o
  * silêncio custou caro: faltando `DATABASE_URL` e as chaves do JWT, o serviço
  * recusava subir em produção e aqui não se via nada — o deploy seguia verde e
@@ -159,7 +170,7 @@ const CFSFU_ENV = [
  * deploy, exatamente quais variáveis o ambiente não entregou.
  */
 const ausentes = [];
-for (const key of [...AUTH_ENV, ...CFSFU_ENV]) {
+for (const key of [...AUTH_ENV, ...CFSFU_ENV, ...MEDIASOUP_ENV]) {
   if (process.env[key]) {
     await upsertEnv(key, process.env[key]);
   } else {

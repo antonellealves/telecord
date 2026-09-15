@@ -130,35 +130,49 @@ jobs:
           MASK_TOKEN: ${{ secrets.VERCEL_TOKEN || vars.VERCEL_TOKEN }}
           MASK_SECRET: ${{ secrets.LIVEKIT_API_SECRET || vars.LIVEKIT_API_SECRET }}
           MASK_CF_TOKEN: ${{ secrets.CF_REALTIME_APP_TOKEN || vars.CF_REALTIME_APP_TOKEN }}
+          MASK_MEDIASOUP_SECRET: ${{ secrets.MEDIASOUP_INTERNAL_SECRET || vars.MEDIASOUP_INTERNAL_SECRET }}
         run: |
           if [ -n "${MASK_TOKEN:-}" ]; then echo "::add-mask::$MASK_TOKEN"; fi
           if [ -n "${MASK_SECRET:-}" ]; then echo "::add-mask::$MASK_SECRET"; fi
+          if [ -n "${MASK_CF_TOKEN:-}" ]; then echo "::add-mask::$MASK_CF_TOKEN"; fi
+          if [ -n "${MASK_MEDIASOUP_SECRET:-}" ]; then echo "::add-mask::$MASK_MEDIASOUP_SECRET"; fi
 
-      # LIVEKIT_URL (server-side, usada por api/rooms.ts) e LIVEKIT_PUBLIC_HOST
-      # (o hostname da VM, ver deploy-proxy) são DOIS valores no Environment
-      # que precisam apontar para o MESMO servidor — nada no GitHub garante
-      # isso sozinho. Já divergiram uma vez (LIVEKIT_URL ficou com o host
+      # LIVEKIT_URL (server-side, api/rooms.ts), VITE_LIVEKIT_URL (pública, o
+      # navegador conecta nela via wss://) e LIVEKIT_PUBLIC_HOST (o hostname
+      # da VM, ver deploy-proxy) são TRÊS valores no Environment que precisam
+      # apontar para o MESMO servidor — nada no GitHub garante isso sozinho.
+      # Já divergiram desse jeito uma vez (as duas URLs ficaram com o host
       # antigo depois de trocar LIVEKIT_PUBLIC_HOST para resolver a colisão
-      # com MEDIASOUP_PUBLIC_HOST) e o sintoma foi /api/rooms em 502
-      # permanente, indistinguível de o LiveKit estar fora do ar de verdade.
-      # Falha cedo, ANTES do deploy, com uma mensagem que aponta a causa.
-      - name: Confere que LIVEKIT_URL aponta para LIVEKIT_PUBLIC_HOST
+      # com MEDIASOUP_PUBLIC_HOST): o sintoma foi /api/rooms em 502
+      # permanente E "could not establish signal connection" na sala — os
+      # dois indistinguíveis de o LiveKit estar fora do ar de verdade. Falha
+      # cedo, ANTES do deploy, com uma mensagem que aponta a causa.
+      - name: Confere que LIVEKIT_URL e VITE_LIVEKIT_URL apontam para LIVEKIT_PUBLIC_HOST
         env:
           LIVEKIT_URL: ${{ secrets.LIVEKIT_URL || vars.LIVEKIT_URL }}
+          VITE_LIVEKIT_URL: ${{ secrets.VITE_LIVEKIT_URL || vars.VITE_LIVEKIT_URL }}
           LIVEKIT_PUBLIC_HOST: ${{ secrets.LIVEKIT_PUBLIC_HOST || vars.LIVEKIT_PUBLIC_HOST }}
         run: |
-          if [ -z "${LIVEKIT_URL:-}" ] || [ -z "${LIVEKIT_PUBLIC_HOST:-}" ]; then
-            echo "Um dos dois está vazio — sem LiveKit self-host configurado, nada a conferir."
+          if [ -z "${LIVEKIT_PUBLIC_HOST:-}" ]; then
+            echo "LIVEKIT_PUBLIC_HOST vazio — sem LiveKit self-host configurado, nada a conferir."
             exit 0
           fi
-          case "$LIVEKIT_URL" in
-            *"$LIVEKIT_PUBLIC_HOST"*) ;;
-            *)
-              echo "::error::LIVEKIT_URL ($LIVEKIT_URL) não contém o host de LIVEKIT_PUBLIC_HOST ($LIVEKIT_PUBLIC_HOST) — api/rooms.ts vai falar com o servidor errado (ou nenhum) e /api/rooms vai responder 502. Atualize LIVEKIT_URL no Environment Production para https://$LIVEKIT_PUBLIC_HOST."
-              exit 1
-              ;;
-          esac
-          if [ -n "${MASK_CF_TOKEN:-}" ]; then echo "::add-mask::$MASK_CF_TOKEN"; fi
+          fail=0
+          for pair in "LIVEKIT_URL:$LIVEKIT_URL" "VITE_LIVEKIT_URL:$VITE_LIVEKIT_URL"; do
+            name="${pair%%:*}"
+            value="${pair#*:}"
+            if [ -z "$value" ]; then
+              continue
+            fi
+            case "$value" in
+              *"$LIVEKIT_PUBLIC_HOST"*) ;;
+              *)
+                echo "::error::$name ($value) não contém o host de LIVEKIT_PUBLIC_HOST ($LIVEKIT_PUBLIC_HOST) — vai falar com o servidor errado (ou nenhum). Atualize $name no Environment Production."
+                fail=1
+                ;;
+            esac
+          done
+          exit $fail
 
       - uses: actions/checkout@v5
 
@@ -226,6 +240,16 @@ jobs:
           CF_REALTIME_APP_ID: ${{ secrets.CF_REALTIME_APP_ID || vars.CF_REALTIME_APP_ID }}
           CF_REALTIME_APP_TOKEN: ${{ secrets.CF_REALTIME_APP_TOKEN || vars.CF_REALTIME_APP_TOKEN }}
           CF_REALTIME_MONTHLY_GB_LIMIT: ${{ secrets.CF_REALTIME_MONTHLY_GB_LIMIT || vars.CF_REALTIME_MONTHLY_GB_LIMIT }}
+
+          # mediasoup (quinta opção de transporte). MEDIASOUP_INTERNAL_URL é a
+          # URL PÚBLICA do proxy da VM — a função da Vercel roda fora da rede
+          # da VM, então precisa do mesmo endereço que o navegador usaria,
+          # não de um hostname interno do Docker Compose. Faltava esta
+          # variável aqui: apps/api recebia MEDIASOUP_INTERNAL_URL vazia,
+          # loadMediasoupConfig() tratava como "recurso desligado" e todo
+          # POST em /api/mediasoup/* respondia 403.
+          MEDIASOUP_INTERNAL_URL: ${{ (secrets.MEDIASOUP_PUBLIC_HOST || vars.MEDIASOUP_PUBLIC_HOST) != '' && format('https://{0}', secrets.MEDIASOUP_PUBLIC_HOST || vars.MEDIASOUP_PUBLIC_HOST) || '' }}
+          MEDIASOUP_INTERNAL_SECRET: ${{ secrets.MEDIASOUP_INTERNAL_SECRET || vars.MEDIASOUP_INTERNAL_SECRET }}
         run: node scripts/vercel-deploy.mjs
 
       # Fecha o ciclo: sem isto, um deploy "verde" ainda pode estar sem
