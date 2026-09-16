@@ -187,6 +187,18 @@ export class MediasoupConnection {
        */
       sendTransport.on('connectionstatechange', (connState) => {
         if (!this.alive) return;
+        if (connState === 'failed') {
+          // ICE não achou caminho nenhum até o SFU — o caso mais comum é a
+          // faixa de portas de mídia (MEDIASOUP_RTC_MIN_PORT..MAX_PORT)
+          // bloqueada antes de chegar na VM (firewall da nuvem, NAT
+          // restritivo), não um bug de código: sinalização (HTTP/WSS, porta
+          // 443) continua funcionando normalmente nesse caso, então chat e
+          // lista de participantes parecem OK enquanto mic/câmera/tela nunca
+          // saem do lugar — ver `setup-vm.sh` para as portas exigidas.
+          this.events.onError(
+            'Não foi possível estabelecer a conexão de áudio/vídeo (rede bloqueando a mídia). O chat de texto continua funcionando.',
+          );
+        }
         if (connState === 'failed' || connState === 'disconnected') {
           this.setState(connState);
         }
@@ -196,6 +208,14 @@ export class MediasoupConnection {
         msConnectTransport(this.roomId, recvTransport.id, { peerId: this.peerId, dtlsParameters })
           .then(() => callback())
           .catch((failure: unknown) => errback(failure as Error));
+      });
+      recvTransport.on('connectionstatechange', (connState) => {
+        if (!this.alive) return;
+        if (connState === 'failed') {
+          this.events.onError(
+            'Não foi possível estabelecer a conexão de áudio/vídeo (rede bloqueando a mídia). O chat de texto continua funcionando.',
+          );
+        }
       });
 
       this.sendTransport = sendTransport;

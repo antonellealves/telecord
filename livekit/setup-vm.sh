@@ -77,9 +77,15 @@ Falta ainda, à mão, antes do primeiro deploy:
 
 1. No CONSOLE ORACLE (não nesta VM): o Security List / Network Security Group
    da sub-rede também bloqueia por padrão. Libere as MESMAS portas de cima
-   (80, 443 tcp+udp, 7881 tcp, 40000-40100 udp) nas regras de Ingress —
-   sem isso o firewalld interno não é suficiente, a nuvem barra antes de
-   chegar na VM.
+   (80, 443 tcp+udp, 7881 tcp, 40000-40100 udp) MAIS a faixa do
+   mediasoup-sfu (40101-40200 udp, se esse transporte estiver em uso) nas
+   regras de Ingress — sem isso o firewalld interno não é suficiente, a
+   nuvem barra antes de chegar na VM.
+   SEM essa liberação na nuvem, o sintoma é: sinalização (chat, lista de
+   participantes, "entrar na sala") funciona normalmente porque passa por
+   443/tcp (já liberado), mas nenhum áudio ou vídeo flui — mic/câmera/tela
+   parecem ligar do lado de quem publica, mas ninguém recebe nada, porque
+   o ICE nunca consegue estabelecer o caminho de mídia UDP até a VM.
 
 2. Copie livekit/.env.example para /opt/telecord-livekit/.env e preencha:
    LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_WEBHOOK_URL, LIVEKIT_NODE_IP
