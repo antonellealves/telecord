@@ -28,15 +28,23 @@ const MEDIA_CODECS: mediasoup.types.RouterRtpCodecCapability[] = [
     kind: 'audio',
     mimeType: 'audio/opus',
     clockRate: 48000,
+    // `channels` no RTP do Opus é sempre 2 por definição do RFC 7587 (é o
+    // número de canais do STREAM Opus, não da captura) — o cliente publica
+    // mono via `sprop-stereo=0`/`stereo=0` nos fmtp, então baixar isto para 1
+    // aqui só faz o `canProduce('audio')` do Device falhar em navegadores que
+    // seguem o RFC à risca (o codec deixa de "casar" com o suportado pelo
+    // Router). O mono já é garantido do outro lado (`channelCount: 1` em
+    // `useMediasoupTalkControls`), sem precisar mexer aqui.
     channels: 2,
     parameters: {
-      // `useinbandfec=1` pede ao Opus o mesmo FEC embutido que o `red: true`
-      // do LiveKit busca por outro caminho (RED é RFC 2198; isto é a
-      // resiliência nativa do próprio codec) — sem RED como perfil separado
-      // no mediasoup 3.x, este é o equivalente disponível.
+      // SEM `usedtx`: a combinação DTX+FEC do Opus é um gatilho conhecido de
+      // áudio mudo/cortado em várias versões do Chromium — o encoder para de
+      // mandar pacote nos trechos "silenciosos" que ele mesmo detecta, e a
+      // detecção é agressiva o bastante para cortar início de fala. Era
+      // plausível ser a causa de "mic abre mas não sai som" enquanto vídeo
+      // (sem DTX) funcionava normalmente pelo mesmo transporte. `useinbandfec`
+      // sozinho já dá a resiliência a perda de pacote que se queria.
       useinbandfec: 1,
-      // Opus permite DTX pelo parâmetro de codec, não por flag do Router.
-      usedtx: 1,
     },
   },
   {
