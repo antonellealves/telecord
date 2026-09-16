@@ -59,7 +59,17 @@ export function useMediasoupTalkControls(
     const finish = (): void => {
       busyRef.current = false;
       setIsBusy(false);
-      applyRef.current();
+      // Só reprocessa se ALGUÉM pediu outra coisa enquanto isto rodava
+      // (ex.: apertou e soltou o "aperte para falar" antes do publish
+      // terminar) — `isMicEnabled` só é atualizado quando o React
+      // re-renderiza com o `localTracks` novo, o que ainda não aconteceu
+      // nesta mesma call stack. Chamar `applyRef.current()` incondicionalmente
+      // aqui reentrava em `apply()` com o `isMicEnabled` VELHO (ainda
+      // diferente de `desired`) e reiniciava o publish na hora — uma
+      // recursão síncrona autoalimentada que estourava a pilha
+      // (`Maximum call stack size exceeded`) e travava o botão de mic para
+      // sempre, sem nunca soltar o áudio.
+      if (desiredRef.current !== desired) applyRef.current();
     };
 
     if (desired) {
