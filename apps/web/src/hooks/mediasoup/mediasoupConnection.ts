@@ -15,6 +15,12 @@ import type {
 import { MEDIASOUP_PUBLIC_URL } from '../../lib/config';
 import { peerLeave } from '../../lib/peers';
 import {
+  MIC_CODEC_OPTIONS,
+  MIC_SEND_ENCODING,
+  SCREEN_AUDIO_CODEC_OPTIONS,
+  SCREEN_AUDIO_SEND_ENCODING,
+} from './audioProfile';
+import {
   fetchMediasoupConfig,
   msConnectTransport,
   msConsume,
@@ -292,14 +298,33 @@ export class MediasoupConnection {
     // classe de "mic abre mas não sai áudio nenhum" sem depender de achar a
     // causa exata de `enabled` ter virado `false`.
     track.enabled = true;
+    // Perfis de alta fidelidade por tipo de áudio — ver `audioProfile.ts`
+    // para o porquê de cada número. Voz e áudio de tela têm alvos
+    // diferentes (fala mono vs. conteúdo estéreo); vídeo segue o caminho
+    // padrão, com os perfis próprios dele.
+    const audioProfile =
+      trackKind === 'mic'
+        ? { codecOptions: MIC_CODEC_OPTIONS, encodings: [MIC_SEND_ENCODING] }
+        : trackKind === 'screen-audio'
+          ? { codecOptions: SCREEN_AUDIO_CODEC_OPTIONS, encodings: [SCREEN_AUDIO_SEND_ENCODING] }
+          : null;
     const producer = await transport.produce({
       track,
       appData: { trackKind },
+      ...(audioProfile ?? {}),
     });
     // Salvaguarda incondicional: mesmo que o Producer tenha nascido pausado
     // por algum motivo (ver comentário acima), garante que ele comece a
     // mandar RTP de verdade.
     if (producer.paused) producer.resume();
+    // `encodings` no `produce()` cobre o caso normal, mas o Chrome às vezes
+    // ignora o `maxBitrate` inicial do sender de ÁUDIO e cai no preset dele.
+    // Reaplicar via `setParameters()` logo depois é o caminho que pega nos
+    // dois casos — sem isto, todo o resto do perfil (fmtp do codec, captura
+    // sem processamento) fica preso num teto de ~32 kbps e não adianta nada.
+    if (audioProfile !== null) {
+      void this.forceAudioBitrate(producer.rtpSender ?? null, audioProfile.encodings[0]!);
+    }
     const handle: LocalTrackHandle = {
       producerId: producer.id,
       kind: producer.kind,
@@ -310,6 +335,38 @@ export class MediasoupConnection {
     this.localProducers.set(producer.id, producer);
     this.events.onLocalTrackChange([...this.localTracks.values()]);
     return handle;
+  }
+
+  /**
+   * Reaplica o teto de bitrate no `RTCRtpSender` de uma track de áudio.
+   *
+   * O `encodings` passado ao `produce()` deveria bastar, mas o Chrome
+   * frequentemente ignora `maxBitrate` para senders de ÁUDIO criados por
+   * `addTrack` (o caminho que o mediasoup-client usa) e mantém o preset
+   * interno de ~32 kbps. `setParameters()` depois do sender existir é o que
+   * efetivamente vale — é assim que o próprio livekit-client aplica os
+   * presets de áudio dele.
+   */
+  private async forceAudioBitrate(
+    sender: RTCRtpSender | null,
+    encoding: RTCRtpEncodingParameters,
+  ): Promise<void> {
+    if (sender === null) return;
+    try {
+      const params = sender.getParameters();
+      // `getParameters()` pode vir sem `encodings` antes da negociação
+      // terminar; criar a entrada na mão é o que a própria spec recomenda.
+      if (params.encodings === undefined || params.encodings.length === 0) {
+        params.encodings = [{ ...encoding }];
+      } else {
+        params.encodings = params.encodings.map((current) => ({ ...current, ...encoding }));
+      }
+      await sender.setParameters(params);
+    } catch {
+      // Navegador que recusa `setParameters` para áudio continua no preset
+      // dele — qualidade menor, não quebra nada. Não vale derrubar a
+      // publicação por causa disto.
+    }
   }
 
   /** Encerra uma track local publicada (para de enviar; quem chamou já parou a track de origem). */

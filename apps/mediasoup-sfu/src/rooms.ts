@@ -33,18 +33,54 @@ const MEDIA_CODECS: mediasoup.types.RouterRtpCodecCapability[] = [
     // mono via `sprop-stereo=0`/`stereo=0` nos fmtp, então baixar isto para 1
     // aqui só faz o `canProduce('audio')` do Device falhar em navegadores que
     // seguem o RFC à risca (o codec deixa de "casar" com o suportado pelo
-    // Router). O mono já é garantido do outro lado (`channelCount: 1` em
-    // `useMediasoupTalkControls`), sem precisar mexer aqui.
+    // Router).
     channels: 2,
+    /*
+     * Perfil de voz de ALTA FIDELIDADE, bem acima do padrão de
+     * videoconferência.
+     *
+     * Sem estes fmtp o Chrome negocia o preset dele: ~32 kbps mono, banda
+     * cortada em ~16 kHz. É o que faz voz soar "de telefone" em qualquer
+     * chamada comum. Cada parâmetro abaixo empurra o Opus para o extremo
+     * oposto — o custo é banda de subida por pessoa FALANDO (não por pessoa
+     * na sala), que numa conversa real fica na casa de algumas centenas de
+     * kbps no total.
+     */
     parameters: {
-      // SEM `usedtx`: a combinação DTX+FEC do Opus é um gatilho conhecido de
-      // áudio mudo/cortado em várias versões do Chromium — o encoder para de
-      // mandar pacote nos trechos "silenciosos" que ele mesmo detecta, e a
-      // detecção é agressiva o bastante para cortar início de fala. Era
-      // plausível ser a causa de "mic abre mas não sai som" enquanto vídeo
-      // (sem DTX) funcionava normalmente pelo mesmo transporte. `useinbandfec`
-      // sozinho já dá a resiliência a perda de pacote que se queria.
+      // Resiliência a perda de pacote embutida no próprio codec (RFC 6716
+      // §2.1.7) — repõe quadro perdido sem retransmissão, essencial numa
+      // faixa de bitrate alta onde cada perda custa mais.
       useinbandfec: 1,
+      // SEM `usedtx`: DTX corta o envio nos trechos que o encoder considera
+      // silêncio, e essa detecção é agressiva o bastante para comer o início
+      // de fala. Para "melhor som possível" isso é o avesso do que se quer —
+      // o ganho seria economizar banda de quem está calado, e não é esse o
+      // objetivo aqui.
+      //
+      // 510 kbps é o TETO ABSOLUTO do Opus (RFC 7587 §7.1, `maxaveragebitrate`).
+      // Na prática o encoder só chega perto disso em música/estéreo; para voz
+      // ele se acomoda bem abaixo, mas sem este teto alto ele NUNCA passa do
+      // preset conservador do navegador, por mais banda que sobre.
+      maxaveragebitrate: 510000,
+      // Áudio de banda completa (48 kHz, todo o espectro audível). Sem isto o
+      // Chrome entrega `wideband` (16 kHz) e tudo acima de 8 kHz — o "ar" da
+      // voz, sibilância, presença — simplesmente não existe do outro lado.
+      maxplaybackrate: 48000,
+      'sprop-maxcapturerate': 48000,
+      // Estéreo habilitado na negociação. A captura de voz continua mono (ver
+      // `useMediasoupTalkControls`), mas deixar isto ligado evita que o
+      // caminho estéreo seja descartado na negociação — e é o que permite o
+      // soundboard/áudio de tela chegarem em estéreo de verdade.
+      stereo: 1,
+      'sprop-stereo': 1,
+      // Pacotes de 10 ms em vez dos 20 ms padrão: metade da latência de
+      // empacotamento e menos áudio perdido por pacote descartado. Custa mais
+      // overhead de cabeçalho RTP, que a esta altura de bitrate é ruído.
+      ptime: 10,
+      minptime: 10,
+      // Sem limite de complexidade: o encoder usa o algoritmo mais caro (e
+      // mais fiel) que a CPU permitir, em vez de economizar ciclos.
+      complexity: 10,
     },
   },
   {
@@ -178,12 +214,27 @@ export class RoomRegistry {
       enableUdp: true,
       enableTcp: true,
       preferUdp: true,
-      // Teto de banda por transporte de ENVIO. Câmera+mic de uma pessoa não
-      // deveria passar disto; a tela usa perfil próprio no lado do cliente
-      // (mesmo teto de `screenEncoding` da Parte 1) mas o SFU não distingue
-      // por track — o limite aqui é generoso o bastante para os dois juntos.
-      initialAvailableOutgoingBitrate: 1_000_000,
+      /*
+       * Estimativa INICIAL de banda de saída, não um teto — é de onde o
+       * controle de congestionamento (transport-cc/REMB) parte antes de
+       * medir a rede de verdade.
+       *
+       * Começar baixo custa caro nos primeiros segundos: o encoder se
+       * acomoda à estimativa conservadora e demora a subir, que é
+       * exatamente quando alguém dá "bom dia" e soa comprimido. Com tela em
+       * alta (até 25 Mbps, ver `screenQuality`) e voz em 256 kbps
+       * (`MIC_TARGET_BITRATE`), 1 Mbps era baixo demais para o ponto de
+       * partida. O estimador ainda corrige para baixo sozinho em rede ruim.
+       */
+      initialAvailableOutgoingBitrate: 6_000_000,
     });
+
+    /*
+     * Teto de ENTRADA por transporte, no lado do SFU. Sem isto o mediasoup
+     * aplica o default dele e pode estrangular justamente o que este perfil
+     * de áudio tenta liberar. Best-effort: versão que não suporte só ignora.
+     */
+    await transport.setMaxIncomingBitrate(30_000_000).catch(() => undefined);
 
     /*
      * O mesmo `peerId` pode pedir um transporte novo sem o antigo ter

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { describeMicrophoneError } from '../../lib/errors';
 import { readTalkMode, writeTalkMode, type TalkMode } from '../../lib/storage';
+import { MIC_CONSTRAINTS } from './audioProfile';
 import type { MediasoupEngine } from './useMediasoupEngine';
 import { withPublishTimeout } from './withPublishTimeout';
 
@@ -114,15 +115,7 @@ export function useMediasoupTalkControls(
       // sequer ser chamada. Se a publicação falhar, `setDesired(false)` no
       // `.catch()` abaixo desfaz o otimismo e mostra o erro.
       navigator.mediaDevices
-        .getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            channelCount: 1,
-            sampleRate: 48_000,
-          },
-        })
+        .getUserMedia({ audio: MIC_CONSTRAINTS })
         .then(async (stream) => {
           const track = stream.getAudioTracks()[0];
           if (track === undefined) throw new Error('sem track de áudio');

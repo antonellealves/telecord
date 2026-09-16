@@ -64,7 +64,21 @@ export function useMediasoupPeerVolume(engine: MediasoupEngine): MediasoupPeerVo
       window.AudioContext ??
       (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (Ctor === undefined) return null;
-    const context = new Ctor();
+    /*
+     * 48 kHz explícito, igual à taxa do Opus e da captura.
+     *
+     * Sem isto o `AudioContext` nasce na taxa do DISPOSITIVO DE SAÍDA — que
+     * em muita placa é 44.1 kHz. Aí todo o áudio de 48 kHz que vem da sala é
+     * reamostrado em tempo real para 44.1, e reamostragem em tempo real é
+     * feita com filtro barato: introduz aliasing e come justamente a banda
+     * alta que este perfil todo existe para preservar.
+     *
+     * `latencyHint: 'playback'` dá ao navegador um buffer maior, que troca
+     * alguns milissegundos de atraso por estabilidade — sem isto, buffer
+     * curto demais gera micro-cortes (underrun) que soam como estalo. Numa
+     * conversa, alguns ms a mais não são perceptíveis; estalo é.
+     */
+    const context = new Ctor({ sampleRate: 48_000, latencyHint: 'playback' });
     audioContextRef.current = context;
     return context;
   }, []);
