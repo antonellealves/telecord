@@ -281,10 +281,25 @@ export class MediasoupConnection {
     for (const [existingId, existing] of this.localTracks) {
       if (existing.trackKind === trackKind) this.unpublish(existingId);
     }
+    // `mediasoup-client` nasce o Producer PAUSADO se `track.enabled` for
+    // `false` no instante deste `produce()` (`disableTrackOnPause`, ligado
+    // por padrão) — aí ele nunca manda RTP nenhum, mesmo com o resto da
+    // conexão (ICE/DTLS, o transporte, o outro lado assinando) funcionando
+    // perfeitamente. Uma track recém-saída de `getUserMedia` deveria SEMPRE
+    // vir com `enabled: true`, mas nada garante isso de fato (política de
+    // mudo do SO/navegador para o site, ou uma reentrância que a desabilitou
+    // no meio do caminho) — forçar aqui é barato e elimina de vez essa
+    // classe de "mic abre mas não sai áudio nenhum" sem depender de achar a
+    // causa exata de `enabled` ter virado `false`.
+    track.enabled = true;
     const producer = await transport.produce({
       track,
       appData: { trackKind },
     });
+    // Salvaguarda incondicional: mesmo que o Producer tenha nascido pausado
+    // por algum motivo (ver comentário acima), garante que ele comece a
+    // mandar RTP de verdade.
+    if (producer.paused) producer.resume();
     const handle: LocalTrackHandle = {
       producerId: producer.id,
       kind: producer.kind,
