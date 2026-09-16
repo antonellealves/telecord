@@ -262,11 +262,24 @@ export class MediasoupConnection {
     return this.roster;
   }
 
-  /** Publica uma track local (mic, câmera ou tela) e devolve o handle. */
+  /**
+   * Publica uma track local (mic, câmera ou tela) e devolve o handle.
+   *
+   * Fecha qualquer producer JÁ existente do mesmo `trackKind` antes de criar
+   * o novo — proteção de última linha contra dois cliques rápidos (ligar,
+   * desligar, ligar de novo antes do primeiro `produce()` responder) criarem
+   * DOIS producers de mic vivos ao mesmo tempo. O sintoma observado era um
+   * producer "morto" (0 bytes enviados, nunca avança) ao lado de um vivo — o
+   * outro participante podia acabar consumindo o morto (silêncio) em vez do
+   * vivo, dependendo de qual `track:announced` chegasse primeiro.
+   */
   async publish(track: MediaStreamTrack, trackKind: MediasoupTrackKind): Promise<LocalTrackHandle> {
     const transport = this.sendTransport;
     if (transport === null) {
       throw new Error('Transporte de envio ainda não está pronto.');
+    }
+    for (const [existingId, existing] of this.localTracks) {
+      if (existing.trackKind === trackKind) this.unpublish(existingId);
     }
     const producer = await transport.produce({
       track,

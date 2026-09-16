@@ -386,8 +386,8 @@ export function MediasoupRoomShell({
 
           <ControlBar
             talkMode={talk.mode}
-            isMicrophoneEnabled={isMicrophoneEnabled}
-            isMicrophoneBusy={talk.isBusy || engine.forceMuted}
+            isMicrophoneEnabled={talk.isMicOn}
+            isMicrophoneBusy={engine.forceMuted}
             onToggleMicrophone={talk.toggleOpenMic}
             onPressToTalk={talk.pressToTalk}
             onReleaseToTalk={talk.releaseToTalk}
