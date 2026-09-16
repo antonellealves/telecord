@@ -51,9 +51,9 @@ function isAudioTrack(track: RemoteTrackHandle): boolean {
 export function useMediasoupPeerVolume(engine: MediasoupEngine): MediasoupPeerVolumeState {
   const [audioBlocked, setAudioBlocked] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const nodesByConsumerRef = useRef<Map<string, { source: MediaStreamAudioSourceNode; gain: GainNode }>>(
-    new Map(),
-  );
+  const nodesByConsumerRef = useRef<
+    Map<string, { source: MediaStreamAudioSourceNode; gain: GainNode; anchor: HTMLAudioElement }>
+  >(new Map());
   const [entries, setEntries] = useState<Map<string, MediasoupPeerVolumeEntry>>(() => new Map());
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
@@ -82,7 +82,18 @@ export function useMediasoupPeerVolume(engine: MediasoupEngine): MediasoupPeerVo
   useEffect(() => {
     const context = audioContext();
     if (context === null) return;
-    setAudioBlocked(context.state !== 'running');
+    // Tenta retomar sozinho antes de acusar bloqueio: se a pessoa já clicou
+    // em qualquer lugar da página (entrar na sala, ligar o mic), o navegador
+    // permite o `resume()` sem gesto novo, e o aviso de "ative o áudio" nem
+    // precisa aparecer. Só quando o `resume()` falha é que o gate é mostrado.
+    if (context.state !== 'running') {
+      void context
+        .resume()
+        .then(() => setAudioBlocked(context.state !== 'running'))
+        .catch(() => setAudioBlocked(true));
+    } else {
+      setAudioBlocked(false);
+    }
 
     const audioTracks = engine.remoteTracks.filter(isAudioTrack);
     const liveConsumerIds = new Set(audioTracks.map((track) => track.consumerId));
@@ -90,11 +101,36 @@ export function useMediasoupPeerVolume(engine: MediasoupEngine): MediasoupPeerVo
     for (const track of audioTracks) {
       if (nodesByConsumerRef.current.has(track.consumerId)) continue;
       const stream = new MediaStream([track.track]);
+
+      /*
+       * O `<audio>` ÂNCORA é obrigatório, mesmo mudo e fora da tela.
+       *
+       * No Chrome, uma track de áudio vinda de `RTCPeerConnection` só começa
+       * a entregar amostras de verdade quando a MediaStream tem um
+       * HTMLMediaElement consumindo ela. Só `createMediaStreamSource()` não
+       * basta: o `MediaStreamAudioSourceNode` fica ligado a uma fonte que
+       * nunca produz nada, e o resultado é silêncio ABSOLUTO — sem erro
+       * nenhum, com os pacotes RTP chegando normalmente (bytesReceived
+       * subindo) e `audioLevel` cravado em zero. Era exatamente este o
+       * sintoma: vídeo funcionava (o `<video>` de `ScreenStage`/`CameraStrip`
+       * já é o elemento âncora dele), voz não.
+       *
+       * `muted` é o que evita ouvir tudo DUAS vezes: quem reproduz de fato é
+       * a cadeia WebAudio abaixo (que permite ganho > 1, ao contrário de
+       * `HTMLMediaElement.volume`); este elemento existe só para destravar o
+       * pipeline.
+       */
+      const anchor = new Audio();
+      anchor.srcObject = stream;
+      anchor.muted = true;
+      anchor.autoplay = true;
+      void anchor.play().catch(() => undefined);
+
       const source = context.createMediaStreamSource(stream);
       const gain = context.createGain();
       source.connect(gain);
       gain.connect(context.destination);
-      nodesByConsumerRef.current.set(track.consumerId, { source, gain });
+      nodesByConsumerRef.current.set(track.consumerId, { source, gain, anchor });
 
       const stored = readPeerVolume(track.ownerPeerId);
       const mutedStored = readPeerMuted(track.ownerPeerId);
@@ -114,6 +150,8 @@ export function useMediasoupPeerVolume(engine: MediasoupEngine): MediasoupPeerVo
       if (liveConsumerIds.has(consumerId)) continue;
       nodes.source.disconnect();
       nodes.gain.disconnect();
+      nodes.anchor.pause();
+      nodes.anchor.srcObject = null;
       nodesByConsumerRef.current.delete(consumerId);
     }
   }, [engine.remoteTracks, audioContext]);
@@ -124,6 +162,8 @@ export function useMediasoupPeerVolume(engine: MediasoupEngine): MediasoupPeerVo
       for (const nodes of nodesByConsumerRef.current.values()) {
         nodes.source.disconnect();
         nodes.gain.disconnect();
+        nodes.anchor.pause();
+        nodes.anchor.srcObject = null;
       }
       nodesByConsumerRef.current.clear();
       void audioContextRef.current?.close();
