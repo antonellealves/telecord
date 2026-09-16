@@ -1,5 +1,5 @@
 import { Device } from 'mediasoup-client';
-import type { Producer, Transport } from 'mediasoup-client/types';
+import type { Producer, ProducerCodecOptions, Transport } from 'mediasoup-client/types';
 import { io, type Socket } from 'socket.io-client';
 import type {
   ClientToServerPresenceEvents,
@@ -14,12 +14,21 @@ import type {
 } from '@telecord/shared';
 import { MEDIASOUP_PUBLIC_URL } from '../../lib/config';
 import { peerLeave } from '../../lib/peers';
+import { DEFAULT_SCREEN_QUALITY, type ScreenQualityId } from '../../lib/media';
 import {
   MIC_CODEC_OPTIONS,
   MIC_SEND_ENCODING,
   SCREEN_AUDIO_CODEC_OPTIONS,
   SCREEN_AUDIO_SEND_ENCODING,
 } from './audioProfile';
+import {
+  CAMERA_CONTENT_HINT,
+  CAMERA_DEGRADATION,
+  CAMERA_SEND_ENCODING,
+  SCREEN_CONTENT_HINT,
+  SCREEN_DEGRADATION,
+  screenSendEncoding,
+} from '../../lib/videoProfile';
 import {
   fetchMediasoupConfig,
   msConnectTransport,
@@ -279,7 +288,12 @@ export class MediasoupConnection {
    * outro participante podia acabar consumindo o morto (silêncio) em vez do
    * vivo, dependendo de qual `track:announced` chegasse primeiro.
    */
-  async publish(track: MediaStreamTrack, trackKind: MediasoupTrackKind): Promise<LocalTrackHandle> {
+  async publish(
+    track: MediaStreamTrack,
+    trackKind: MediasoupTrackKind,
+    /** Nível escolhido na UI — só usado por `screen-video`, ver `videoProfile.ts`. */
+    screenQualityId: ScreenQualityId = DEFAULT_SCREEN_QUALITY,
+  ): Promise<LocalTrackHandle> {
     const transport = this.sendTransport;
     if (transport === null) {
       throw new Error('Transporte de envio ainda não está pronto.');
@@ -298,32 +312,53 @@ export class MediasoupConnection {
     // classe de "mic abre mas não sai áudio nenhum" sem depender de achar a
     // causa exata de `enabled` ter virado `false`.
     track.enabled = true;
-    // Perfis de alta fidelidade por tipo de áudio — ver `audioProfile.ts`
-    // para o porquê de cada número. Voz e áudio de tela têm alvos
-    // diferentes (fala mono vs. conteúdo estéreo); vídeo segue o caminho
-    // padrão, com os perfis próprios dele.
-    const audioProfile =
-      trackKind === 'mic'
-        ? { codecOptions: MIC_CODEC_OPTIONS, encodings: [MIC_SEND_ENCODING] }
-        : trackKind === 'screen-audio'
-          ? { codecOptions: SCREEN_AUDIO_CODEC_OPTIONS, encodings: [SCREEN_AUDIO_SEND_ENCODING] }
-          : null;
+
+    /*
+     * Perfil de qualidade por tipo de track — ver `audioProfile.ts` e
+     * `videoProfile.ts` para o porquê de cada número. Sem isto, tudo cai no
+     * preset de videoconferência do navegador (~32 kbps de voz, ~2.5 Mbps de
+     * tela), por mais alto que seja o teto anunciado pelo codec.
+     *
+     * `contentHint` é aplicado na TRACK (não no producer): é o que diz ao
+     * codificador o que sacrificar sob pressão — detalhe ou fluidez.
+     */
+    let profile: {
+      codecOptions?: ProducerCodecOptions;
+      encodings?: RTCRtpEncodingParameters[];
+    } | null = null;
+    let degradation: RTCDegradationPreference | null = null;
+
+    if (trackKind === 'mic') {
+      profile = { codecOptions: MIC_CODEC_OPTIONS, encodings: [MIC_SEND_ENCODING] };
+    } else if (trackKind === 'screen-audio') {
+      profile = { codecOptions: SCREEN_AUDIO_CODEC_OPTIONS, encodings: [SCREEN_AUDIO_SEND_ENCODING] };
+    } else if (trackKind === 'screen-video') {
+      track.contentHint = SCREEN_CONTENT_HINT;
+      profile = { encodings: [screenSendEncoding(screenQualityId)] };
+      degradation = SCREEN_DEGRADATION;
+    } else if (trackKind === 'camera') {
+      track.contentHint = CAMERA_CONTENT_HINT;
+      profile = { encodings: [CAMERA_SEND_ENCODING] };
+      degradation = CAMERA_DEGRADATION;
+    }
+
     const producer = await transport.produce({
       track,
       appData: { trackKind },
-      ...(audioProfile ?? {}),
+      ...(profile ?? {}),
     });
     // Salvaguarda incondicional: mesmo que o Producer tenha nascido pausado
     // por algum motivo (ver comentário acima), garante que ele comece a
     // mandar RTP de verdade.
     if (producer.paused) producer.resume();
     // `encodings` no `produce()` cobre o caso normal, mas o Chrome às vezes
-    // ignora o `maxBitrate` inicial do sender de ÁUDIO e cai no preset dele.
-    // Reaplicar via `setParameters()` logo depois é o caminho que pega nos
-    // dois casos — sem isto, todo o resto do perfil (fmtp do codec, captura
-    // sem processamento) fica preso num teto de ~32 kbps e não adianta nada.
-    if (audioProfile !== null) {
-      void this.forceAudioBitrate(producer.rtpSender ?? null, audioProfile.encodings[0]!);
+    // ignora o `maxBitrate` inicial do sender e cai no preset dele. Reaplicar
+    // via `setParameters()` logo depois é o caminho que pega nos dois casos —
+    // sem isto, todo o resto do perfil (fmtp do codec, captura em alta) fica
+    // preso num teto baixo e não adianta nada.
+    const encoding = profile?.encodings?.[0];
+    if (encoding !== undefined) {
+      void this.forceSendParameters(producer.rtpSender ?? null, encoding, degradation);
     }
     const handle: LocalTrackHandle = {
       producerId: producer.id,
@@ -338,18 +373,19 @@ export class MediasoupConnection {
   }
 
   /**
-   * Reaplica o teto de bitrate no `RTCRtpSender` de uma track de áudio.
+   * Reaplica teto de bitrate (e, para vídeo, a preferência de degradação) no
+   * `RTCRtpSender`.
    *
    * O `encodings` passado ao `produce()` deveria bastar, mas o Chrome
-   * frequentemente ignora `maxBitrate` para senders de ÁUDIO criados por
-   * `addTrack` (o caminho que o mediasoup-client usa) e mantém o preset
-   * interno de ~32 kbps. `setParameters()` depois do sender existir é o que
-   * efetivamente vale — é assim que o próprio livekit-client aplica os
-   * presets de áudio dele.
+   * frequentemente ignora `maxBitrate` em senders criados por `addTrack` (o
+   * caminho que o mediasoup-client usa) e mantém o preset interno dele.
+   * `setParameters()` depois do sender existir é o que efetivamente vale — é
+   * assim que o próprio livekit-client aplica os presets dele.
    */
-  private async forceAudioBitrate(
+  private async forceSendParameters(
     sender: RTCRtpSender | null,
     encoding: RTCRtpEncodingParameters,
+    degradation: RTCDegradationPreference | null,
   ): Promise<void> {
     if (sender === null) return;
     try {
@@ -361,11 +397,12 @@ export class MediasoupConnection {
       } else {
         params.encodings = params.encodings.map((current) => ({ ...current, ...encoding }));
       }
+      if (degradation !== null) params.degradationPreference = degradation;
       await sender.setParameters(params);
     } catch {
-      // Navegador que recusa `setParameters` para áudio continua no preset
-      // dele — qualidade menor, não quebra nada. Não vale derrubar a
-      // publicação por causa disto.
+      // Navegador que recusa `setParameters` continua no preset dele —
+      // qualidade menor, não quebra nada. Não vale derrubar a publicação
+      // por causa disto.
     }
   }
 

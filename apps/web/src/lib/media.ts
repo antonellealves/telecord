@@ -71,20 +71,36 @@ export const SCREEN_QUALITY_OPTIONS: ScreenQualityOption[] = [
   {
     id: 'alta',
     label: '1080p · 60 fps — nítido',
-    hint: 'Padrão. Texto fino legível e movimento fluido; ~12 Mbps.',
+    hint: 'Padrão. Texto fino legível e movimento fluido; ~20 Mbps.',
     width: 1920,
     height: 1080,
     fps: 60,
-    bitrate: 12_000_000,
+    // 20 Mbps em 1080p60 é ~4x o que videoconferência costuma usar. Em tela
+    // cheia de texto (o conteúdo mais caro que existe para um codificador,
+    // porque cada letra é borda de alto contraste) é a diferença entre
+    // legível e nítido.
+    bitrate: 20_000_000,
   },
   {
+    /*
+     * Sem compromisso nenhum.
+     *
+     * 50 Mbps em 4K60 é território de captura profissional, não de
+     * videoconferência — e é o ponto em que texto fino em tela 4K chega do
+     * outro lado sem nenhum artefato visível de compressão. Como o telecord
+     * não grava nada (só retransmite), o único custo é banda de subida de
+     * quem escolhe este nível, e quem escolhe está pedindo exatamente isso.
+     *
+     * O controle de congestionamento continua valendo: em rede que não
+     * aguenta, o encoder desce sozinho. Este número é um TETO, não um piso.
+     */
     id: 'maxima',
-    label: 'Resolução original · 60 fps',
-    hint: 'Sem redimensionar: 1440p ou 4K nativos. Exige ~25 Mbps de subida.',
+    label: 'Resolução original · 60 fps — sem compressão visível',
+    hint: 'Sem redimensionar: 1440p ou 4K nativos, qualidade de masterização. Exige ~50 Mbps de subida.',
     width: 0,
     height: 0,
     fps: 60,
-    bitrate: 25_000_000,
+    bitrate: 50_000_000,
   },
 ];
 

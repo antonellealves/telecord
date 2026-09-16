@@ -1,11 +1,11 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { PeerInfo } from '@telecord/shared';
 import { describeCameraError } from '../../lib/errors';
-import { cameraCaptureOptions } from '../../lib/media';
 import type { ToastKind } from '../useToasts';
 import type { RemoteTrackHandle } from './mediasoupConnection';
 import { wrapMediaStreamTrack, type MediasoupTrackHandle } from './mediasoupTrack';
 import type { MediasoupEngine } from './useMediasoupEngine';
+import { CAMERA_CONSTRAINTS } from '../../lib/videoProfile';
 import { withPublishTimeout } from './withPublishTimeout';
 
 export interface MediasoupCameraEntry {
@@ -63,7 +63,7 @@ export function useMediasoupCameras(
     setIsBusy(true);
     let capturedStream: MediaStream | null = null;
     void navigator.mediaDevices
-      .getUserMedia(cameraCaptureOptions as MediaStreamConstraints)
+      .getUserMedia({ video: CAMERA_CONSTRAINTS })
       .then(async (stream) => {
         capturedStream = stream;
         const track = stream.getVideoTracks()[0];

@@ -83,16 +83,69 @@ const MEDIA_CODECS: mediasoup.types.RouterRtpCodecCapability[] = [
       complexity: 10,
     },
   },
+  /*
+   * ORDEM IMPORTA: o `Device` do navegador escolhe o primeiro codec da lista
+   * que ele sabe codificar. Do melhor para o mais compatível.
+   *
+   * O telecord não grava nada — só retransmite — então não há custo de
+   * armazenamento para justificar compressão agressiva. O único orçamento
+   * real é CPU de quem publica e banda; ambos são gastos de propósito aqui.
+   */
   {
+    /*
+     * AV1: ~30% mais eficiente que VP9 no mesmo bitrate, e a diferença
+     * aparece justamente onde tela compartilhada sofre — borda de letra,
+     * linha fina de interface, gradiente. Chrome/Edge recentes codificam em
+     * software; quem não suportar cai no VP9 logo abaixo, sem quebrar nada.
+     */
     kind: 'video',
-    mimeType: 'video/VP8',
+    mimeType: 'video/AV1',
     clockRate: 90000,
+    parameters: {
+      // Perfil 0 (8-bit 4:2:0) — o universalmente suportado.
+      'profile': 0,
+      // Nível alto o bastante para 4K60 sem o encoder se auto-limitar.
+      'level-idx': 8,
+      'tier': 0,
+    },
   },
   {
+    /*
+     * VP9 perfil 0 (8-bit 4:2:0).
+     *
+     * O `profile-id: 2` que estava aqui antes é 10-BIT: quase nenhum
+     * navegador CODIFICA nesse perfil, então na prática ele nunca era
+     * escolhido e tudo caía para VP8 — jogando fora o ganho de qualidade do
+     * VP9 justamente em texto, que é o conteúdo mais caro de codificar.
+     */
     kind: 'video',
     mimeType: 'video/VP9',
     clockRate: 90000,
-    parameters: { 'profile-id': 2 },
+    parameters: { 'profile-id': 0 },
+  },
+  {
+    /*
+     * H.264 High profile, com aceleração de hardware na maioria das
+     * máquinas — é o que salva notebook fraco publicando 1080p60, onde
+     * VP9/AV1 em software derrubariam o frame rate.
+     *
+     * `packetization-mode: 1` e `level-asymmetry-allowed: 1` são exigidos
+     * pelo WebRTC; `profile-level-id: 640032` é High 5.0 (até 4K).
+     */
+    kind: 'video',
+    mimeType: 'video/H264',
+    clockRate: 90000,
+    parameters: {
+      'packetization-mode': 1,
+      'profile-level-id': '640032',
+      'level-asymmetry-allowed': 1,
+    },
+  },
+  {
+    // Último recurso: VP8 funciona em absolutamente tudo.
+    kind: 'video',
+    mimeType: 'video/VP8',
+    clockRate: 90000,
   },
 ];
 
@@ -231,10 +284,14 @@ export class RoomRegistry {
 
     /*
      * Teto de ENTRADA por transporte, no lado do SFU. Sem isto o mediasoup
-     * aplica o default dele e pode estrangular justamente o que este perfil
-     * de áudio tenta liberar. Best-effort: versão que não suporte só ignora.
+     * aplica o default dele e estrangula justamente o que os perfis de
+     * áudio/vídeo tentam liberar.
+     *
+     * 60 Mbps cobre o pior caso somado de UM publicador: tela no nível
+     * "máxima" (50 Mbps, ver `SCREEN_QUALITY_OPTIONS`) + câmera (8 Mbps) +
+     * voz (256 kbps), com folga. Best-effort: versão que não suporte ignora.
      */
-    await transport.setMaxIncomingBitrate(30_000_000).catch(() => undefined);
+    await transport.setMaxIncomingBitrate(60_000_000).catch(() => undefined);
 
     /*
      * O mesmo `peerId` pode pedir um transporte novo sem o antigo ter

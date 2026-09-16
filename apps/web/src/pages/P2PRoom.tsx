@@ -38,11 +38,11 @@ import { fetchIceServers, DEFAULT_ICE_SERVERS } from '../lib/ice';
 import {
   screenQuality,
   screenSendProfile,
-  screenShareCaptureOptions,
   CAMERA_SEND_PROFILE,
   type ScreenQualityId,
   type VideoSendProfile,
 } from '../lib/media';
+import { screenCaptureConstraints } from '../lib/videoProfile';
 import {
   readParticipantsOpen,
   readScreenQuality,
@@ -520,8 +520,13 @@ export function P2PRoom({ roomId, displayName, peerId, onLeave, onChangeTranspor
         return;
       }
       try {
+        // `screenCaptureConstraints` (e não `screenShareCaptureOptions`): a
+        // segunda devolve o formato do livekit-client, com `resolution`/
+        // `contentHint` no topo — campos que `getDisplayMedia` não conhece e
+        // ignora em silêncio, deixando a captura no padrão do navegador por
+        // mais alto que fosse o nível escolhido. O `as` mascarava isso.
         const s = await navigator.mediaDevices.getDisplayMedia(
-          screenShareCaptureOptions(quality ?? screenQualityId) as DisplayMediaStreamOptions,
+          screenCaptureConstraints(quality ?? screenQualityId),
         );
         const video = s.getVideoTracks();
         // `text`: tela é quase toda texto e linha fina — o codificador deve

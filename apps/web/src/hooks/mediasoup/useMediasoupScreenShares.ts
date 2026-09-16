@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { PeerInfo, ScreenShareOwner } from '@telecord/shared';
 import { describeScreenShareError, isScreenShareSupported } from '../../lib/errors';
-import { DEFAULT_SCREEN_QUALITY, screenShareCaptureOptions, type ScreenQualityId } from '../../lib/media';
+import { DEFAULT_SCREEN_QUALITY, type ScreenQualityId } from '../../lib/media';
+import { screenCaptureConstraints } from '../../lib/videoProfile';
 import type { ToastKind } from '../useToasts';
 import type { RemoteTrackHandle } from './mediasoupConnection';
 import { wrapMediaStreamTrack, type MediasoupTrackHandle } from './mediasoupTrack';
@@ -84,9 +85,10 @@ export function useMediasoupScreenShares(
       if (connection === null || isBusy) return;
       setIsBusy(true);
 
+      const chosenQuality = quality ?? DEFAULT_SCREEN_QUALITY;
       let capturedStream: MediaStream | null = null;
       void navigator.mediaDevices
-        .getDisplayMedia(screenShareCaptureOptions(quality ?? DEFAULT_SCREEN_QUALITY))
+        .getDisplayMedia(screenCaptureConstraints(chosenQuality))
         .then(async (stream) => {
           capturedStream = stream;
           const videoTrack = stream.getVideoTracks()[0];
@@ -96,7 +98,7 @@ export function useMediasoupScreenShares(
           setLocalVideoHandle(wrapMediaStreamTrack(videoTrack));
 
           await withPublishTimeout(
-            connection.publish(videoTrack, 'screen-video'),
+            connection.publish(videoTrack, 'screen-video', chosenQuality),
             'Tempo esgotado ao publicar o vídeo da tela.',
           );
           const audioTrack = stream.getAudioTracks()[0];
