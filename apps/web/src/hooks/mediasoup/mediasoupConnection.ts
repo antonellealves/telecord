@@ -1,5 +1,5 @@
 import { Device } from 'mediasoup-client';
-import type { Transport } from 'mediasoup-client/types';
+import type { Producer, Transport } from 'mediasoup-client/types';
 import { io, type Socket } from 'socket.io-client';
 import type {
   ClientToServerPresenceEvents,
@@ -94,6 +94,7 @@ export class MediasoupConnection {
   private sendTransport: Transport | null = null;
   private recvTransport: Transport | null = null;
   private readonly localTracks = new Map<string, LocalTrackHandle>();
+  private readonly localProducers = new Map<string, Producer>();
   private readonly consumedProducerIds = new Set<string>();
   private roster: PeerInfo[] = [];
   private state: MediasoupConnectionState = 'new';
@@ -223,6 +224,7 @@ export class MediasoupConnection {
     this.recvTransport = null;
     this.device = null;
     this.localTracks.clear();
+    this.localProducers.clear();
     this.consumedProducerIds.clear();
     // `msLeave` fecha os transportes/presença no SFU como fallback de
     // melhor-esforço (o `disconnect` do socket já faz isso do lado dele);
@@ -257,12 +259,20 @@ export class MediasoupConnection {
       track,
     };
     this.localTracks.set(producer.id, handle);
+    this.localProducers.set(producer.id, producer);
     this.events.onLocalTrackChange([...this.localTracks.values()]);
     return handle;
   }
 
   /** Encerra uma track local publicada (para de enviar; quem chamou já parou a track de origem). */
   unpublish(producerId: string): void {
+    // Sem isto, o `Producer` do lado do cliente (e o producer espelhado no
+    // SFU) continuava vivo mesmo depois de "fechar o microfone" — a próxima
+    // vez que alguém publicasse mic, o transporte de envio acumulava mais um
+    // producer de áudio nunca fechado, e o antigo (mudo, já que a track de
+    // origem já tinha sido parada) continuava anunciado para o resto da sala.
+    this.localProducers.get(producerId)?.close();
+    this.localProducers.delete(producerId);
     this.localTracks.delete(producerId);
     this.events.onLocalTrackChange([...this.localTracks.values()]);
   }
@@ -342,6 +352,7 @@ export class MediasoupConnection {
     // (parar/recomeçar rápido) podia perder a janela.
     socket.on('track:announced', (event: PresenceTrackAnnounced) => {
       if (!this.alive || event.roomSlug !== this.roomId || event.peerId === this.peerId) return;
+      this.addRosterTrack(event.peerId, event.producerId, event.kind, event.trackKind);
       if (this.consumedProducerIds.has(event.producerId)) return;
       this.consumedProducerIds.add(event.producerId);
       const device = this.device;
@@ -361,6 +372,7 @@ export class MediasoupConnection {
     socket.on('track:closed', (event: PresenceTrackClosed) => {
       if (!this.alive || event.roomSlug !== this.roomId) return;
       this.consumedProducerIds.delete(event.producerId);
+      this.removeRosterTrack(event.peerId, event.producerId);
     });
 
     // Mute/move do painel admin, ao vivo — substitui a leitura de
@@ -376,6 +388,49 @@ export class MediasoupConnection {
       if (!this.alive || message.roomSlug !== this.roomId) return;
       for (const listener of this.chatListeners) listener(message.fromPeer, message.displayName, message.body);
     });
+  }
+
+  /**
+   * Mantém `PeerInfo.mediasoup.tracks` vivo a partir dos eventos de socket
+   * `track:announced`/`track:closed`, em vez de depender do heartbeat de 4s
+   * que este canal substituiu (ver docstring de `connectPresenceSocket`).
+   * Sem isto, `roster:update` só carrega presença pura — nenhum campo do
+   * protocolo preenche `mediasoup` de novo — e o resto da sala nunca via o
+   * mic/câmera/tela de outro peer acender no `ParticipantSidebar`, mesmo com
+   * o áudio/vídeo chegando de verdade (a reprodução em si usa `remoteTracks`,
+   * que é outra lista, alimentada direto pelos mesmos eventos).
+   */
+  private addRosterTrack(
+    peerId: string,
+    producerId: string,
+    kind: 'audio' | 'video',
+    trackKind: MediasoupTrackKind,
+  ): void {
+    const index = this.roster.findIndex((peer) => peer.peerId === peerId);
+    if (index === -1) return;
+    const peer = this.roster[index]!;
+    const tracks = peer.mediasoup?.tracks ?? [];
+    if (tracks.some((track) => track.producerId === producerId)) return;
+    const nextPeer: PeerInfo = {
+      ...peer,
+      mediasoup: { tracks: [...tracks, { producerId, kind, trackKind }] },
+    };
+    this.roster = [...this.roster.slice(0, index), nextPeer, ...this.roster.slice(index + 1)];
+    this.events.onRosterChange(this.roster);
+  }
+
+  private removeRosterTrack(peerId: string, producerId: string): void {
+    const index = this.roster.findIndex((peer) => peer.peerId === peerId);
+    if (index === -1) return;
+    const peer = this.roster[index]!;
+    const tracks = peer.mediasoup?.tracks ?? [];
+    if (!tracks.some((track) => track.producerId === producerId)) return;
+    const nextPeer: PeerInfo = {
+      ...peer,
+      mediasoup: { tracks: tracks.filter((track) => track.producerId !== producerId) },
+    };
+    this.roster = [...this.roster.slice(0, index), nextPeer, ...this.roster.slice(index + 1)];
+    this.events.onRosterChange(this.roster);
   }
 
   /** Tracks anunciadas antes dos transportes ficarem prontos — drenada assim que `recvTransport`/`device` existem, ver `connect()`. */

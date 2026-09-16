@@ -6,6 +6,7 @@ import type { ToastKind } from '../useToasts';
 import type { RemoteTrackHandle } from './mediasoupConnection';
 import { wrapMediaStreamTrack, type MediasoupTrackHandle } from './mediasoupTrack';
 import type { MediasoupEngine } from './useMediasoupEngine';
+import { withPublishTimeout } from './withPublishTimeout';
 
 export interface MediasoupCameraEntry {
   identity: string;
@@ -60,16 +61,23 @@ export function useMediasoupCameras(
     const connection = engine.connection;
     if (connection === null || isBusy) return;
     setIsBusy(true);
+    let capturedStream: MediaStream | null = null;
     void navigator.mediaDevices
       .getUserMedia(cameraCaptureOptions as MediaStreamConstraints)
       .then(async (stream) => {
+        capturedStream = stream;
         const track = stream.getVideoTracks()[0];
         if (track === undefined) throw new Error('sem track de vídeo');
         setLocalStream(stream);
         setLocalHandle(wrapMediaStreamTrack(track));
-        await connection.publish(track, 'camera');
+        await withPublishTimeout(connection.publish(track, 'camera'), 'Tempo esgotado ao publicar a câmera.');
       })
       .catch((error: unknown) => {
+        // A publicação pode ter ficado presa no meio do handshake — solta a
+        // câmera capturada (ver `withPublishTimeout`).
+        capturedStream?.getTracks().forEach((track) => track.stop());
+        setLocalStream(null);
+        setLocalHandle(null);
         notify('error', describeCameraError(error));
       })
       .finally(() => setIsBusy(false));

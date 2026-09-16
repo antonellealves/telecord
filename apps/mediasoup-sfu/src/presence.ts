@@ -11,6 +11,24 @@ const peerRoom = (roomSlug: string, peerId: string): string => `peer:${roomSlug}
 let ioInstance: SocketIOServer | null = null;
 
 /**
+ * Último socket vivo para cada `roomSlug:peerId` — usado só para o `disconnect`
+ * abaixo saber se ELE ainda é o dono da presença antes de apagá-la.
+ *
+ * Sem isto, um par cujo socket reconecta (rede instável, ou o `reconnection:
+ * true` do cliente depois de uma queda breve) corre risco de: o socket NOVO
+ * conecta e chama `setPresence` primeiro, e só depois o evento `disconnect`
+ * do socket ANTIGO chega ao servidor (a ordem entre "nova conexão" e
+ * "desconexão da antiga" não é garantida) — sem essa guarda, esse
+ * `disconnect` atrasado apagava a presença que o socket novo tinha acabado
+ * de escrever, e junto dela os producers do par (`removePeer` fecha os
+ * transportes). Do lado de quem estava assistindo, o sintoma era o vídeo
+ * (câmera ou tela) desse par sumir sem nenhum erro — o mesmo tipo de "falha
+ * silenciosa" que o commit anterior corrigiu para `assertMember`.
+ */
+const peerSockets = new Map<string, string>();
+const peerSocketKey = (roomSlug: string, peerId: string): string => `${roomSlug}:${peerId}`;
+
+/**
  * Chamado pela rota interna `POST /rooms/:roomSlug/peers/:peerId/command`
  * (ver `http.ts`) para empurrar mute/move ao vivo — substitui a leitura de
  * `adminCommand` no heartbeat de 4s do cliente. Fire-and-forget: se o peer
@@ -119,6 +137,7 @@ function handlePeerConnection(socket: Socket, registry: RoomRegistry, data: Peer
   // Sala PRÓPRIA deste par — é nela que `pushModerationCommand` mira, sem
   // precisar varrer todo mundo em `roomSlug` para achar o socket certo.
   void socket.join(peerRoom(roomSlug, peerId));
+  peerSockets.set(peerSocketKey(roomSlug, peerId), socket.id);
   registry.setPresence(roomSlug, peerId, displayName);
   broadcastRoster(socket, registry, roomSlug);
 
@@ -154,6 +173,11 @@ function handlePeerConnection(socket: Socket, registry: RoomRegistry, data: Peer
   });
 
   socket.on('disconnect', () => {
+    const key = peerSocketKey(roomSlug, peerId);
+    // Só remove a presença se NENHUM socket mais novo já assumiu este par —
+    // ver docstring de `peerSockets` acima.
+    if (peerSockets.get(key) !== socket.id) return;
+    peerSockets.delete(key);
     registry.removePeer(roomSlug, peerId);
     broadcastRoster(socket, registry, roomSlug);
   });

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { describeMicrophoneError } from '../../lib/errors';
 import { readTalkMode, writeTalkMode, type TalkMode } from '../../lib/storage';
 import type { MediasoupEngine } from './useMediasoupEngine';
+import { withPublishTimeout } from './withPublishTimeout';
 
 export interface MediasoupTalkControls {
   mode: TalkMode;
@@ -76,10 +77,18 @@ export function useMediasoupTalkControls(
           const track = stream.getAudioTracks()[0];
           if (track === undefined) throw new Error('sem track de áudio');
           micStreamRef.current = stream;
-          await connection.publish(track, 'mic');
+          await withPublishTimeout(
+            connection.publish(track, 'mic'),
+            'Tempo esgotado ao publicar o microfone.',
+          );
         })
         .catch((error: unknown) => {
           desiredRef.current = false;
+          // A publicação pode ter ficado presa no meio do handshake — solta a
+          // track capturada para não deixar o microfone físico "aceso" sem
+          // nunca ter sido usado.
+          for (const track of micStreamRef.current?.getTracks() ?? []) track.stop();
+          micStreamRef.current = null;
           onErrorRef.current(describeMicrophoneError(error));
         })
         .finally(finish);

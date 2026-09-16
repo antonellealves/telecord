@@ -6,6 +6,7 @@ import type { ToastKind } from '../useToasts';
 import type { RemoteTrackHandle } from './mediasoupConnection';
 import { wrapMediaStreamTrack, type MediasoupTrackHandle } from './mediasoupTrack';
 import type { MediasoupEngine } from './useMediasoupEngine';
+import { withPublishTimeout } from './withPublishTimeout';
 
 export interface MediasoupScreenShareEntry {
   owner: ScreenShareOwner;
@@ -83,22 +84,36 @@ export function useMediasoupScreenShares(
       if (connection === null || isBusy) return;
       setIsBusy(true);
 
+      let capturedStream: MediaStream | null = null;
       void navigator.mediaDevices
         .getDisplayMedia(screenShareCaptureOptions(quality ?? DEFAULT_SCREEN_QUALITY))
         .then(async (stream) => {
+          capturedStream = stream;
           const videoTrack = stream.getVideoTracks()[0];
           if (videoTrack === undefined) throw new Error('sem track de vídeo');
           videoTrack.addEventListener('ended', () => stop());
           setLocalStream(stream);
           setLocalVideoHandle(wrapMediaStreamTrack(videoTrack));
 
-          await connection.publish(videoTrack, 'screen-video');
+          await withPublishTimeout(
+            connection.publish(videoTrack, 'screen-video'),
+            'Tempo esgotado ao publicar o vídeo da tela.',
+          );
           const audioTrack = stream.getAudioTracks()[0];
           if (audioTrack !== undefined) {
-            await connection.publish(audioTrack, 'screen-audio');
+            await withPublishTimeout(
+              connection.publish(audioTrack, 'screen-audio'),
+              'Tempo esgotado ao publicar o áudio da tela.',
+            );
           }
         })
         .catch((error: unknown) => {
+          // A publicação pode ter ficado presa no meio do handshake — solta a
+          // tela capturada para não deixar o navegador "compartilhando" algo
+          // que nunca chegou a ser publicado (ver `withPublishTimeout`).
+          capturedStream?.getTracks().forEach((track) => track.stop());
+          setLocalStream(null);
+          setLocalVideoHandle(null);
           const message = describeScreenShareError(error);
           if (message !== null) notify('error', message);
         })
