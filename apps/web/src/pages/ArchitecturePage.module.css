@@ -7,6 +7,163 @@
   padding: 56px 24px 80px;
 }
 
+/* ---- campo de estrelas -------------------------------------------------- */
+
+/*
+ * Três planos de profundidade, puro CSS.
+ *
+ * `fixed` e não `absolute`: o campo precisa cobrir a viewport e ficar parado
+ * enquanto o conteúdo rola por cima — é o que dá a sensação de olhar para
+ * fora, em vez de rolar um papel de parede junto com o texto.
+ *
+ * `pointer-events: none` porque nada aqui é clicável, e sem isso a camada
+ * engoliria o clique dos links por estar sobre a página.
+ */
+.starfield {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/*
+ * Véu escuro ENTRE o degradê do app e as estrelas.
+ *
+ * Sem ele, a base clara do fundo padrão lava o céu exatamente onde o conteúdo
+ * mora, e as estrelas só aparecem no topo. O véu é mais denso embaixo, que é
+ * onde o degradê é mais forte — o resultado é uma queda de luz do horizonte
+ * para o espaço, em vez de um retângulo escuro por cima de tudo.
+ */
+.starfield::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(4, 6, 20, 0.35) 0%,
+    rgba(4, 6, 20, 0.72) 45%,
+    rgba(3, 5, 16, 0.88) 100%
+  );
+}
+
+/*
+ * As estrelas são gradientes radiais REPETIDOS, não elementos.
+ *
+ * Mil <span> posicionados custariam mil nós no DOM; dois gradientes numa
+ * tile de algumas centenas de pixels dão a mesma impressão por um elemento
+ * só. A tile é propositalmente não-quadrada para o olho não achar o padrão.
+ */
+.stars {
+  position: absolute;
+  inset: -50% 0 0;
+  /* Acima do véu (`::before`), senão o escurecimento apagaria as estrelas
+     junto com o degradê que ele existe para conter. */
+  z-index: 1;
+  background-repeat: repeat;
+  will-change: transform;
+}
+
+.starsFar {
+  background-image:
+    radial-gradient(1px 1px at 20% 30%, rgba(255, 255, 255, 0.5) 50%, transparent 50%),
+    radial-gradient(1px 1px at 70% 60%, rgba(255, 255, 255, 0.38) 50%, transparent 50%),
+    radial-gradient(1px 1px at 45% 85%, rgba(255, 255, 255, 0.44) 50%, transparent 50%);
+  background-size: 260px 190px;
+  animation: drift 150s linear infinite;
+  opacity: 0.55;
+}
+
+.starsMid {
+  background-image:
+    radial-gradient(1.4px 1.4px at 15% 65%, rgba(var(--accent-rgb), 0.55) 50%, transparent 50%),
+    radial-gradient(1.4px 1.4px at 80% 25%, rgba(255, 255, 255, 0.6) 50%, transparent 50%);
+  background-size: 340px 250px;
+  animation: drift 95s linear infinite;
+  opacity: 0.6;
+}
+
+.starsNear {
+  background-image:
+    radial-gradient(2px 2px at 60% 40%, rgba(255, 255, 255, 0.75) 50%, transparent 50%),
+    radial-gradient(2px 2px at 25% 15%, rgba(var(--accent-rgb), 0.5) 50%, transparent 50%);
+  background-size: 480px 360px;
+  animation:
+    drift 58s linear infinite,
+    twinkle 6s ease-in-out infinite;
+  opacity: 0.7;
+}
+
+/* A mancha de nebulosa quebra o preto chapado atrás das estrelas. Fica no
+   topo, onde o título está, e desaparece antes do conteúdo denso começar. */
+.nebula {
+  position: absolute;
+  z-index: 1;
+  top: -20%;
+  left: 50%;
+  width: 120vw;
+  height: 90vh;
+  transform: translateX(-50%);
+  background:
+    radial-gradient(
+      closest-side at 30% 40%,
+      rgba(var(--accent-2-rgb), 0.16) 0%,
+      transparent 100%
+    ),
+    radial-gradient(
+      closest-side at 70% 55%,
+      rgba(var(--accent-rgb), 0.12) 0%,
+      transparent 100%
+    );
+  filter: blur(30px);
+  animation: breathe 24s ease-in-out infinite;
+}
+
+/* Deslocamento vertical lento. A tile se repete, então quando a animação
+   volta ao início ninguém percebe o salto. */
+@keyframes drift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(0, 50%, 0);
+  }
+}
+
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 0.42;
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.85;
+    transform: translateX(-50%) scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: translateX(-50%) scale(1.06);
+  }
+}
+
+/* Movimento reduzido: o céu fica, o movimento sai. Apagar tudo deixaria a
+   página visualmente mais pobre do que o necessário — o pedido é sobre
+   movimento, não sobre contraste. */
+@media (prefers-reduced-motion: reduce) {
+  .starsFar,
+  .starsMid,
+  .starsNear,
+  .nebula {
+    animation: none;
+  }
+}
+
 .shell {
   width: min(880px, 100%);
   display: flex;
@@ -356,6 +513,307 @@
   font-size: 13.5px;
   line-height: 1.65;
   color: var(--text-dim);
+}
+
+/* ---- os cinco transportes ---------------------------------------------- */
+
+.transports {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Mantido leva a cor de destaque do tema; aposentado, a de aviso (abaixo).
+   Não existe variável de "sucesso" no projeto, e inventar uma só para esta
+   página deixaria uma cor órfã fora do sistema de temas. */
+.transport {
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-left: 2px solid rgba(var(--accent-rgb), 0.55);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-lift);
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.transport:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+
+/* Aposentado fica visivelmente mais apagado — a página inteira existe para
+   dizer quais dos cinco continuam, e isso tem que ser legível de relance. */
+.transportRetired {
+  border-left-color: rgba(var(--warn-rgb), 0.45);
+  opacity: 0.82;
+}
+
+.transportHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.transportName {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.transportTech {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.badge {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  white-space: nowrap;
+}
+
+.badgeKeep {
+  background: rgba(var(--accent-rgb), 0.16);
+  color: var(--accent);
+}
+
+.badgeRetire {
+  background: rgba(var(--warn-rgb), 0.14);
+  color: rgb(var(--warn-rgb));
+}
+
+.transportPromise {
+  margin: 0 0 10px;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--text-dim);
+}
+
+/* O rótulo vira uma linha própria acima do texto: separa "o que prometia" de
+   "o que aconteceu" sem precisar de duas colunas, que quebrariam no telefone. */
+.transportLabel {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  opacity: 0.75;
+}
+
+/* ---- a travessia de infraestrutura -------------------------------------- */
+
+/*
+ * Uma linha do tempo vertical: a régua é o `::before` da lista, e cada
+ * estação se pendura nela pelo marcador. Feita com `<ol>` porque a ordem É o
+ * conteúdo — são etapas de uma travessia, não itens soltos.
+ */
+.journey {
+  position: relative;
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.journey::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(var(--accent-rgb), 0.5) 12%,
+    rgba(var(--accent-rgb), 0.5) 88%,
+    transparent 100%
+  );
+}
+
+.station {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-lift);
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.station:hover {
+  border-color: var(--border-strong);
+  transform: translateX(3px);
+}
+
+/* O marcador encosta na régua à esquerda, ligando o cartão à linha. */
+.stationMarker {
+  flex-shrink: 0;
+  min-width: 42px;
+  padding: 4px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  background: rgba(var(--accent-rgb), 0.1);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-align: center;
+  color: var(--accent);
+}
+
+.stationBody {
+  min-width: 0;
+}
+
+.stationMetric {
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-faint);
+}
+
+/* ---- app de desktop ------------------------------------------------------ */
+
+.guarantee {
+  border-left: 2px solid rgba(var(--accent-rgb), 0.4);
+}
+
+/* ---- horizontes ---------------------------------------------------------- */
+
+.horizons {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+
+@media (max-width: 700px) {
+  .horizons {
+    grid-template-columns: 1fr;
+  }
+}
+
+/*
+ * Borda tracejada: é o código visual de "ainda não existe". Um cartão sólido
+ * ao lado dos outros faria promessa que o projeto não fez.
+ */
+.horizon {
+  height: 100%;
+  padding: 20px 22px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: transparent;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+
+.horizon:hover {
+  border-color: rgba(var(--accent-rgb), 0.5);
+  background: rgba(var(--accent-rgb), 0.04);
+  transform: translateY(-2px);
+}
+
+.horizonTag {
+  display: inline-block;
+  margin-bottom: 10px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: rgba(var(--accent-2-rgb), 0.16);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+  color: var(--text-dim);
+}
+
+/* ---- a corrente de qualidade -------------------------------------------- */
+
+.chain {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.link {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 18px 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-lift);
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.link:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+
+/* O número é o que transforma quatro cartões soltos numa SEQUÊNCIA — a ordem
+   é o conteúdo aqui, já que a corrente se rompe no elo mais fraco. */
+.linkStep {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(var(--accent-rgb), 0.16);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.linkNumbers {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+@media (max-width: 560px) {
+  .transportHead {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .link {
+    gap: 12px;
+    padding: 16px 18px;
+  }
 }
 
 /* ---- rodapé ------------------------------------------------------------ */
