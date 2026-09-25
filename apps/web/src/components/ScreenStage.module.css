@@ -329,6 +329,50 @@
 }
 
 /*
+ * Aviso de que a própria tela está oculta, quando há outras telas no palco.
+ * Fixo no canto e fora da grade: não pode roubar uma célula das telas dos
+ * outros, que é justamente o espaço que ocultar a própria quis liberar.
+ */
+.ownHidden {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: rgba(8, 10, 14, 0.82);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: var(--text-dim);
+  font-size: 12px;
+  box-shadow: var(--shadow-soft);
+}
+
+.ownHiddenIcon {
+  width: 14px;
+  height: 14px;
+}
+
+.ownHiddenButton {
+  padding: 4px 10px;
+  border: 1px solid rgba(var(--accent-rgb), 0.45);
+  border-radius: var(--radius-pill);
+  background: rgba(var(--accent-rgb), 0.14);
+  color: var(--accent-soft);
+  font: inherit;
+  font-size: 12px;
+  transition: background 0.16s ease;
+}
+
+.ownHiddenButton:hover {
+  background: rgba(var(--accent-rgb), 0.24);
+}
+
+/*
  * Punho de redimensionar, canto inferior direito: um canto só resolve
  * qualquer tamanho sem competir com o gesto de arrastar o quadro inteiro.
  */

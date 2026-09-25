@@ -5,6 +5,7 @@ import type { ScreenShareEntry } from '../hooks/useScreenShares';
 import type { TileLayoutState } from '../hooks/useTileLayout';
 import { useTileLayout } from '../hooks/useTileLayout';
 import { useZoomPan } from '../hooks/useZoomPan';
+import { readHideOwnScreen, writeHideOwnScreen } from '../lib/storage';
 import { ExpandIcon, EyeIcon, EyeOffIcon, ShrinkIcon } from './icons';
 import styles from './ScreenStage.module.css';
 
@@ -43,9 +44,11 @@ interface ScreenTileProps {
   entry: ScreenShareEntry;
   layout: TileLayoutState;
   peerKey: string;
+  /** Só no quadro da própria tela: tira o quadro inteiro do palco. */
+  onHideOwn?: () => void;
 }
 
-function ScreenTile({ entry, layout, peerKey }: ScreenTileProps): JSX.Element {
+function ScreenTile({ entry, layout, peerKey, onHideOwn }: ScreenTileProps): JSX.Element {
   const tileRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [mode, setMode] = useState<TileMode>('normal');
@@ -272,11 +275,18 @@ function ScreenTile({ entry, layout, peerKey }: ScreenTileProps): JSX.Element {
           {isExpanded ? <ShrinkIcon /> : <ExpandIcon />}
         </button>
 
-        {/*
-          * Só faz sentido na tela dos OUTROS: parar de assistir a própria
-          * seria só esconder o que você mesmo está publicando, e para isso já
-          * existe o botão de parar de compartilhar.
-          */}
+        {onHideOwn !== undefined ? (
+          <button
+            type="button"
+            className={styles.tool}
+            onClick={onHideOwn}
+            title="Ocultar sua tela do palco — os outros continuam vendo"
+            aria-label="Ocultar sua tela"
+          >
+            <EyeOffIcon />
+          </button>
+        ) : null}
+
         {canUnsubscribe ? (
           <button
             type="button"
@@ -315,6 +325,37 @@ export function ScreenStage({ entries, roomId, viewerIdentity }: ScreenStageProp
    * dois palcos. O sufixo separa os dois espaços de armazenamento.
    */
   const layout = useTileLayout(roomId, `${viewerIdentity}:screen`);
+  const [ownHidden, setOwnHidden] = useState(readHideOwnScreen);
+
+  const setHidden = useCallback((hidden: boolean) => {
+    writeHideOwnScreen(hidden);
+    setOwnHidden(hidden);
+  }, []);
+
+  const hasOwn = entries.some((entry) => entry.owner.isLocal);
+  // Tirar o quadro da lista (e não só escondê-lo com CSS) desmonta o <video>:
+  // a track é desanexada e o navegador para de decodificar e desenhar.
+  const visible = ownHidden ? entries.filter((entry) => !entry.owner.isLocal) : entries;
+  const showOwnButton = (
+    <button type="button" className={styles.pausedButton} onClick={() => setHidden(false)}>
+      Mostrar minha tela
+    </button>
+  );
+
+  if (hasOwn && visible.length === 0) {
+    return (
+      <section className={styles.stage} aria-label="Telas compartilhadas">
+        <div className={styles.empty}>
+          <EyeOffIcon className={styles.pausedIcon} />
+          <p className={styles.emptyTitle}>Você está compartilhando a tela</p>
+          <p className={styles.emptyHint}>
+            O quadro está oculto só para você — quem está na sala continua vendo normalmente.
+          </p>
+          {showOwnButton}
+        </div>
+      </section>
+    );
+  }
 
   if (entries.length === 0) {
     return (
@@ -334,17 +375,27 @@ export function ScreenStage({ entries, roomId, viewerIdentity }: ScreenStageProp
   return (
     <section
       className={`${styles.stage} ${styles.grid}`}
-      data-count={Math.min(entries.length, 4)}
+      data-count={Math.min(visible.length, 4)}
       aria-label="Telas compartilhadas"
     >
-      {entries.map((entry) => (
+      {visible.map((entry) => (
         <ScreenTile
           key={entry.owner.trackSid}
           entry={entry}
           layout={layout}
           peerKey={peerKeyOf(entry)}
+          onHideOwn={entry.owner.isLocal ? () => setHidden(true) : undefined}
         />
       ))}
+      {hasOwn && ownHidden ? (
+        <div className={styles.ownHidden}>
+          <EyeOffIcon className={styles.ownHiddenIcon} />
+          <span>Sua tela está oculta para você</span>
+          <button type="button" className={styles.ownHiddenButton} onClick={() => setHidden(false)}>
+            Mostrar
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }

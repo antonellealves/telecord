@@ -82,48 +82,52 @@ function participantLabel(participant: Participant): string {
  *
  * ## O que se faz
  *
- * Rotear a saída da sala para longe da captura é impossível pela API do
- * navegador. O que resta, e resolve de verdade, é cortar o caminho de volta:
- * a track de áudio da tela é publicada MUDA para quem compartilha se o próprio
- * navegador indicar que a fonte é a tela inteira ou a aba do telecord — os
- * dois casos em que o retorno é garantido.
+ * Primeiro caminho, o bom: a captura pede `restrictOwnAudio` (ver
+ * `screenShareCaptureOptions`), e o navegador exclui do mix do sistema o som
+ * tocado por esta página — a voz da sala sai, o resto do áudio do computador
+ * fica. Quando o navegador confirma que aplicou (`getSettings()` devolve
+ * `restrictOwnAudio: true`), não há mais nada a fazer.
  *
- * O caso legítimo (compartilhar uma OUTRA aba com som, que é o que quase todo
- * mundo quer) continua funcionando, porque aí o Chrome captura só o áudio
- * daquela aba e a voz da sala nunca entra.
+ * Reserva, para navegador sem suporte: cortar o caminho de volta. Se a fonte
+ * é a tela inteira — o caso em que o retorno é garantido —, a track de áudio
+ * da tela é mutada. Compartilhar uma aba ou janela específica com som continua
+ * funcionando, porque aí só aquela fonte é capturada.
  */
 function silenceVoicesInSharedAudio(
   room: Room,
   notify: (kind: ToastKind, message: string) => void,
 ): void {
-  for (const publication of room.localParticipant.trackPublications.values()) {
-    if (publication.source !== Track.Source.ScreenShareAudio) {
-      continue;
-    }
-    const track = publication.track;
-    if (!track) {
-      continue;
-    }
+  const publications = [...room.localParticipant.trackPublications.values()];
+  const audio = publications.find((p) => p.source === Track.Source.ScreenShareAudio)?.track;
+  if (!audio) {
+    return;
+  }
 
-    const settings = track.mediaStreamTrack.getSettings() as MediaTrackSettings & {
-      displaySurface?: string;
-    };
-    /*
-     * `displaySurface` diz o que a pessoa escolheu: 'monitor' (tela inteira),
-     * 'window' (uma janela) ou 'browser' (uma aba). Só 'monitor' captura o mix
-     * do sistema inteiro, onde a saída do telecord está garantidamente
-     * presente. 'window' e 'browser' capturam a fonte escolhida.
-     */
-    const capturaSaidaDaSala = settings.displaySurface === 'monitor';
+  const audioSettings = audio.mediaStreamTrack.getSettings() as MediaTrackSettings & {
+    restrictOwnAudio?: boolean;
+  };
+  if (audioSettings.restrictOwnAudio === true) {
+    return;
+  }
 
-    if (capturaSaidaDaSala) {
-      void track.mute();
-      notify(
-        'info',
-        'O som da tela inteira ficou mudo para não devolver a voz da sala como eco. ' +
-          'Para compartilhar som, escolha uma aba ou janela específica.',
-      );
-    }
+  /*
+   * `displaySurface` só existe na track de VÍDEO — a de áudio não o reporta.
+   * Ler da de áudio (como era antes) nunca dava 'monitor', e o corte nunca
+   * acontecia: era a origem do eco. 'monitor' é a tela inteira; 'window' e
+   * 'browser' capturam só a fonte escolhida.
+   */
+  const video = publications.find((p) => p.source === Track.Source.ScreenShare)?.track;
+  const videoSettings = video?.mediaStreamTrack.getSettings() as
+    | (MediaTrackSettings & { displaySurface?: string })
+    | undefined;
+
+  if (videoSettings?.displaySurface === 'monitor') {
+    void audio.mute();
+    notify(
+      'info',
+      'O som da tela inteira ficou mudo para não devolver a voz da sala como eco. ' +
+        'Para compartilhar som, escolha uma aba ou janela específica.',
+    );
   }
 }
 

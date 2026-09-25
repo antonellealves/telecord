@@ -280,6 +280,31 @@ export function writeScreenQuality(id: ScreenQualityId): void {
   }
 }
 
+const HIDE_OWN_SCREEN_KEY = 'telecord.hideOwnScreen';
+
+/**
+ * Esconder do próprio palco a tela que você está transmitindo.
+ *
+ * Só muda o que VOCÊ vê: os outros continuam recebendo a transmissão. Quem
+ * compartilha a tela inteira raramente quer a própria imagem repetida ali
+ * dentro, ocupando espaço e CPU de decodificação.
+ */
+export function readHideOwnScreen(): boolean {
+  try {
+    return window.localStorage.getItem(HIDE_OWN_SCREEN_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function writeHideOwnScreen(hidden: boolean): void {
+  try {
+    window.localStorage.setItem(HIDE_OWN_SCREEN_KEY, hidden ? 'true' : 'false');
+  } catch {
+    // Storage indisponível: a escolha vale só para esta aba.
+  }
+}
+
 const PARTICIPANTS_OPEN_KEY = 'telecord.participantsOpen';
 
 /**

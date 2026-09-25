@@ -230,6 +230,15 @@ export function screenShareCaptureOptions(
             echoCancellation: false,
             noiseSuppression: false,
             autoGainControl: false,
+            /*
+             * Tira da captura o som que a PRÓPRIA página toca — a voz da sala
+             * e o soundboard. Sem isto, "tela inteira com áudio" pega o mix
+             * do sistema com a saída do telecord dentro, e a sala volta como
+             * eco. Diferente de mutar a track, preserva todo o resto do som
+             * do computador. Navegador que não conhece ignora a constraint, e
+             * aí entra a reserva em `useScreenShares`.
+             */
+            ...({ restrictOwnAudio: true } as Record<string, unknown>),
           },
         }
       : {}),
