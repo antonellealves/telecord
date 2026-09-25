@@ -129,13 +129,11 @@ jobs:
         env:
           MASK_TOKEN: ${{ secrets.VERCEL_TOKEN || vars.VERCEL_TOKEN }}
           MASK_SECRET: ${{ secrets.LIVEKIT_API_SECRET || vars.LIVEKIT_API_SECRET }}
-          MASK_CF_TOKEN: ${{ secrets.CF_REALTIME_APP_TOKEN || vars.CF_REALTIME_APP_TOKEN }}
           MASK_MEDIASOUP_SECRET: ${{ secrets.MEDIASOUP_INTERNAL_SECRET || vars.MEDIASOUP_INTERNAL_SECRET }}
           MASK_BYPASS: ${{ secrets.VERCEL_PROTECTION_BYPASS_SECRET || vars.VERCEL_PROTECTION_BYPASS_SECRET }}
         run: |
           if [ -n "${MASK_TOKEN:-}" ]; then echo "::add-mask::$MASK_TOKEN"; fi
           if [ -n "${MASK_SECRET:-}" ]; then echo "::add-mask::$MASK_SECRET"; fi
-          if [ -n "${MASK_CF_TOKEN:-}" ]; then echo "::add-mask::$MASK_CF_TOKEN"; fi
           if [ -n "${MASK_MEDIASOUP_SECRET:-}" ]; then echo "::add-mask::$MASK_MEDIASOUP_SECRET"; fi
           if [ -n "${MASK_BYPASS:-}" ]; then echo "::add-mask::$MASK_BYPASS"; fi
 
@@ -235,15 +233,7 @@ jobs:
           MAIL_FROM: ${{ secrets.MAIL_FROM || vars.MAIL_FROM }}
           AUTH_COOKIE_SAMESITE: ${{ secrets.AUTH_COOKIE_SAMESITE || vars.AUTH_COOKIE_SAMESITE }}
 
-          # Cloudflare (Cloudflare Realtime SFU). Opcionais: sem elas o cartão
-          # nem aparece. O APP_TOKEN é segredo de verdade — o lugar dele é em
-          # secrets, e `vars` entra só como reserva (mascarado na etapa acima).
-          CF_REALTIME_ENABLED: ${{ secrets.CF_REALTIME_ENABLED || vars.CF_REALTIME_ENABLED }}
-          CF_REALTIME_APP_ID: ${{ secrets.CF_REALTIME_APP_ID || vars.CF_REALTIME_APP_ID }}
-          CF_REALTIME_APP_TOKEN: ${{ secrets.CF_REALTIME_APP_TOKEN || vars.CF_REALTIME_APP_TOKEN }}
-          CF_REALTIME_MONTHLY_GB_LIMIT: ${{ secrets.CF_REALTIME_MONTHLY_GB_LIMIT || vars.CF_REALTIME_MONTHLY_GB_LIMIT }}
-
-          # mediasoup (quinta opção de transporte). MEDIASOUP_INTERNAL_URL é a
+          # mediasoup (opção de transporte). MEDIASOUP_INTERNAL_URL é a
           # URL PÚBLICA do proxy da VM — a função da Vercel roda fora da rede
           # da VM, então precisa do mesmo endereço que o navegador usaria,
           # não de um hostname interno do Docker Compose. Faltava esta

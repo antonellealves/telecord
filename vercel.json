@@ -23,10 +23,6 @@
       "destination": "/api/rooms"
     },
     {
-      "source": "/api/relay",
-      "destination": "/api/relay"
-    },
-    {
       "source": "/api/:path*",
       "destination": "/api/[...nest]"
     },

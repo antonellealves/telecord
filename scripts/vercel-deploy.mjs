@@ -137,21 +137,8 @@ const AUTH_ENV = [
 ];
 
 /*
- * Edge global (Cloudflare Realtime SFU). Opcionais como as de autenticação: sem
- * elas a terceira opção fica desligada e o produto segue igual. `APP_TOKEN` é
- * segredo e é gravado como `encrypted` na Vercel, como todo o resto. `APP_ID`
- * não chega ao navegador — o cliente fala com o SFU pelo proxy /api/cfsfu/*.
- */
-const CFSFU_ENV = [
-  'CF_REALTIME_ENABLED',
-  'CF_REALTIME_APP_ID',
-  'CF_REALTIME_APP_TOKEN',
-  'CF_REALTIME_MONTHLY_GB_LIMIT',
-];
-
-/*
  * mediasoup (SFU self-hosted próprio, na mesma VM do LiveKit). Opcional como
- * o Cloudflare: sem as duas, a quinta opção nem aparece (ver
+ * as de autenticação: sem as duas, a opção nem aparece (ver
  * `loadMediasoupConfig` em apps/api/src/common/config.ts — presença de
  * MEDIASOUP_INTERNAL_URL liga o recurso, e as duas vão sempre juntas).
  * MEDIASOUP_INTERNAL_URL é a URL PÚBLICA do proxy TLS da VM
@@ -176,7 +163,7 @@ const MEDIASOUP_ENV = ['MEDIASOUP_INTERNAL_URL', 'MEDIASOUP_INTERNAL_SECRET', 'V
  * deploy, exatamente quais variáveis o ambiente não entregou.
  */
 const ausentes = [];
-for (const key of [...AUTH_ENV, ...CFSFU_ENV, ...MEDIASOUP_ENV]) {
+for (const key of [...AUTH_ENV, ...MEDIASOUP_ENV]) {
   if (process.env[key]) {
     await upsertEnv(key, process.env[key]);
   } else {

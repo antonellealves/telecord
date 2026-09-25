@@ -6,10 +6,6 @@
  * Nada aqui depende de DOM nem de Node: é código de contrato puro.
  */
 
-// O protocolo do Vercel Relay mora à parte porque é grande e tem cara própria
-// (binário + controle), mas é contrato compartilhado igual ao resto — o web
-// codifica, a função de relay lê o cabeçalho.
-
 // Presença por Socket.IO do transporte `mediasoup` (ver ambos os arquivos):
 // `presenceToken` assina/verifica com `node:crypto`, então quem importar
 // estas duas funções pelo lado do navegador puxa Node — hoje só
