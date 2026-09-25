@@ -14,8 +14,8 @@ interface ScreenStageProps {
   /**
    * Identidade de quem está OLHANDO — a arrumação do palco é de quem
    * organiza, não de quem é organizado (ver `useTileLayout`). É a mesma
-   * chave que o modo P2P usa (lá, `readPeerId()`; aqui, a identity estável
-   * do LiveKit).
+   * chave que o modo mediasoup usa (lá, `readPeerId()`; aqui, a identity
+   * estável do LiveKit).
    */
   viewerIdentity: string;
 }
@@ -26,7 +26,7 @@ interface ScreenStageProps {
  * "Maximizado" aqui é só o FALLBACK de tela cheia (iOS e afins não
  * implementam `requestFullscreen` em `<div>`) — não é mais o mesmo estado
  * que `useTileLayout.maximized` (arrastar/redimensionar, o mesmo mecanismo
- * do modo P2P). Os dois "maximizar" agora são coisas diferentes: um é tela
+ * do modo mediasoup). Os dois "maximizar" agora são coisas diferentes: um é tela
  * cheia de reserva, o outro é "ocupar o palco sem sair da página".
  */
 type TileMode = 'normal' | 'fullscreen';
@@ -143,7 +143,7 @@ function ScreenTile({ entry, layout, peerKey }: ScreenTileProps): JSX.Element {
 
   /*
    * Posição salva vira `position: absolute` em porcentagem — mesmo esquema
-   * do modo P2P (`useTileLayout`). Sem posição, o quadro fica no fluxo da
+   * do modo mediasoup (`useTileLayout`). Sem posição, o quadro fica no fluxo da
    * grade automática; quem nunca arrastou nunca percebe a diferença.
    */
   const tileStyle =

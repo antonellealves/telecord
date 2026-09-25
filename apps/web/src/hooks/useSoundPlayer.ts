@@ -55,7 +55,7 @@ function hardStop(audio: HTMLAudioElement): void {
  *
  * Vive fora de qualquer transporte de propósito: o áudio não trafega pela sala
  * (SPEC §6.7) — chega um aviso e cada cliente toca o arquivo que já tem. Quem
- * decide QUANDO tocar é o dono do canal (o SFU do LiveKit ou a malha P2P);
+ * decide QUANDO tocar é o dono do canal (o SFU do LiveKit ou o mediasoup);
  * este hook só cuida do elemento `<audio>`, do "um som por vez" e do estado que
  * alimenta o anel de progresso e o botão de parar. Assim os dois modos
  * compartilham a mesma lógica em vez de manterem duas cópias.

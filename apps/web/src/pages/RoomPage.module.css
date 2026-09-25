@@ -283,9 +283,8 @@
 }
 
 /*
- * Conexão direta (âmbar): cabeçalho compacto alinhado à esquerda, controles
- * também à esquerda — ritmo mais denso, de "console", coerente com a
- * identidade que a sala P2P já tem.
+ * Tema âmbar: cabeçalho compacto alinhado à esquerda, controles também à
+ * esquerda — ritmo mais denso, de "console".
  */
 [data-theme='direta'] .header {
   justify-content: flex-start;

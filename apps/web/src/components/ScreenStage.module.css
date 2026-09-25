@@ -60,8 +60,7 @@
   border-radius: 0;
 }
 
-/* Quadro sendo arrastado: destaque visual e por cima dos outros, mesmo
-   tratamento do modo P2P (ver P2PRoom.module.css .tileDragging). */
+/* Quadro sendo arrastado: destaque visual e por cima dos outros. */
 .tileDragging {
   cursor: grabbing;
   z-index: 5;
@@ -330,8 +329,7 @@
 }
 
 /*
- * Punho de redimensionar, canto inferior direito — mesmo mecanismo e visual
- * do modo P2P (ver P2PRoom.module.css .tileResize): um canto só resolve
+ * Punho de redimensionar, canto inferior direito: um canto só resolve
  * qualquer tamanho sem competir com o gesto de arrastar o quadro inteiro.
  */
 .resizeHandle {

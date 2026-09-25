@@ -8,8 +8,6 @@ interface Props {
   onChange: (mode: TransportMode) => void;
   /** Só o ícone, sem o nome ao lado (dentro da sala). */
   compact?: boolean;
-  /** Opções a esconder — ex.: `['cfsfu']` quando o Cloudflare está desligado. */
-  hidden?: TransportMode[];
 }
 
 /**
@@ -23,9 +21,8 @@ interface Props {
  * O conteúdo vem todo do `TRANSPORTS` (registry): esta é só a apresentação, e
  * um quinto modo entra sem tocar aqui.
  */
-export function TransportPicker({ value, onChange, compact = false, hidden }: Props): JSX.Element {
+export function TransportPicker({ value, onChange, compact = false }: Props): JSX.Element {
   const baseId = useId();
-  const visible = TRANSPORTS.filter((transport) => !(hidden ?? []).includes(transport.id));
 
   return (
     <div
@@ -33,7 +30,7 @@ export function TransportPicker({ value, onChange, compact = false, hidden }: Pr
       role="radiogroup"
       aria-label="Como a transmissão viaja"
     >
-      {visible.map((transport) => {
+      {TRANSPORTS.map((transport) => {
         const selected = value === transport.id;
         const tipId = `${baseId}-${transport.id}`;
         const { Icon } = transport;

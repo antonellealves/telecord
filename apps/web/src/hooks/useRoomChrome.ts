@@ -23,11 +23,8 @@ export interface RoomChrome extends ToastApi {
 
 /**
  * A "moldura" comum a qualquer sala: avisos, tema, painel de configurações e a
- * gamificação. É o que faz config e progresso funcionarem IGUAL nos quatro
+ * gamificação. É o que faz config e progresso funcionarem IGUAL nos dois
  * modos — o que muda entre eles é só o tipo de stream, não estas peças.
- *
- * O LiveKit e o P2P já traziam tudo isto embutido; este hook é para as salas
- * novas (Cloudflare, Vercel Relay) ganharem o mesmo sem copiar código.
  */
 export function useRoomChrome(options: Options): RoomChrome {
   const { transport, roomId, isMicOn, isCameraOn, isSharing, participantCount } = options;

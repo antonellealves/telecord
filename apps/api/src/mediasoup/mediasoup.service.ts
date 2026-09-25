@@ -23,7 +23,7 @@ import { MediasoupSfuClient } from './mediasoup-sfu.client';
 /** Vida do token de presença — curta de propósito, ver docstring de `presenceToken.ts`. */
 const PRESENCE_TOKEN_TTL_MS = 120_000;
 
-/** Mesma janela do cfsfu e do P2P: só quem renovou presença recentemente conta como na sala. */
+/** Só quem renovou presença recentemente conta como na sala. */
 const PRESENCE_TTL_MS = 20_000;
 
 /** Mensagem sem quem busque vira lixo depois disso — mesma folga do TTL da tabela. */
@@ -35,10 +35,9 @@ const BROADCAST_POLL_LIMIT = 100;
 /**
  * Orquestra o processo mediasoup-sfu para o telecord.
  *
- * Mesmo papel do `CfsfuService`: fica entre o controller e o cliente HTTP,
- * confere que quem chama pertence à sala (o SFU não tem noção de sala nem de
- * quem tem permissão de entrar — só quem tem `peerId` e fala o protocolo) e
- * repassa a chamada.
+ * Fica entre o controller e o cliente HTTP, confere que quem chama pertence
+ * à sala (o SFU não tem noção de sala nem de quem tem permissão de entrar —
+ * só quem tem `peerId` e fala o protocolo) e repassa a chamada.
  */
 @Injectable()
 export class MediasoupService {
@@ -89,7 +88,7 @@ export class MediasoupService {
     if (!this.client.enabled || this.appConfig.mediasoup === null) {
       return { enabled: false, routerRtpCapabilities: null, presenceToken: null };
     }
-    await this.peers.heartbeat(roomSlug, peerId, displayName, userId, null, null);
+    await this.peers.heartbeat(roomSlug, peerId, displayName, userId, null);
     const routerRtpCapabilities = await this.client.routerRtpCapabilities(roomSlug);
     const presenceToken = await signPresenceToken({
       peerId,

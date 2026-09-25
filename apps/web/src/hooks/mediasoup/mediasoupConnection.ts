@@ -429,7 +429,7 @@ export class MediasoupConnection {
    * Sem persistência aqui: quem entra depois não recebe histórico, mesma
    * regra que já valia (ver `pollBroadcast` em `mediasoup.service.ts`).
    * Fire-and-forget: se o socket ainda não abriu, a mensagem se perde — não
-   * há fila, do mesmo jeito que `useP2PMesh.broadcast` já não enfileira.
+   * há fila.
    */
   sendChat(body: string): void {
     this.presenceSocket?.emit('chat:send', { displayName: this.displayName, body });

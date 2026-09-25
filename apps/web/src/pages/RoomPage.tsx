@@ -5,9 +5,6 @@ import { normalizeRoomId, validateRoomId, type TransportMode } from '@telecord/s
 import { StatusScreen } from '../components/StatusScreen';
 import { useDisplayName } from '../hooks/useDisplayName';
 import { readPeerId, readTransport, writeTransport } from '../lib/storage';
-import { P2PRoom } from './P2PRoom';
-import { CloudflareRoom } from './CloudflareRoom';
-import { VercelRelayRoom } from './VercelRelayRoom';
 import { MediasoupRoomShell } from './mediasoup/MediasoupRoomShell';
 import { useToken } from '../hooks/useToken';
 import { LIVEKIT_URL, getConfigError } from '../lib/config';
@@ -67,42 +64,6 @@ export function RoomPage(): JSX.Element {
    * `changeTransport` remonta a sala no mesmo endereço, e cada componente só
    * precisa saber pedir a troca, não em qual modo está.
    */
-  if (transport === 'p2p') {
-    return (
-      <P2PRoom
-        roomId={roomId}
-        displayName={displayName}
-        peerId={peerId}
-        onLeave={() => navigate('/')}
-        onChangeTransport={changeTransport}
-      />
-    );
-  }
-
-  if (transport === 'cfsfu') {
-    return (
-      <CloudflareRoom
-        roomId={roomId}
-        displayName={displayName}
-        peerId={peerId}
-        onLeave={() => navigate('/')}
-        onChangeTransport={changeTransport}
-      />
-    );
-  }
-
-  if (transport === 'vercel-relay') {
-    return (
-      <VercelRelayRoom
-        roomId={roomId}
-        displayName={displayName}
-        peerId={peerId}
-        onLeave={() => navigate('/')}
-        onChangeTransport={changeTransport}
-      />
-    );
-  }
-
   if (transport === 'mediasoup') {
     return (
       <MediasoupRoomShell

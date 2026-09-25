@@ -427,10 +427,6 @@ export function MediasoupRoomShell({
         <ParticipantOverlay
           container={overlay.container}
           roomId={roomId}
-          // 'livekit' aqui é o nome do estilo (grade completa), não uma
-          // checagem de transporte — o outro valor, 'p2p', é o layout mais
-          // enxuto do modo direto. mediasoup usa o mesmo grid do LiveKit.
-          variant="livekit"
           people={participantsWithSoundboard.map((p) => ({
             id: p.identity,
             displayName: p.displayName,

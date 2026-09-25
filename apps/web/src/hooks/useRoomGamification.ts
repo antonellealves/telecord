@@ -23,7 +23,7 @@ interface RoomGamificationInput {
  * tocar som — não passam por aqui; quem as executa chama o `trackEvent` no ato,
  * que é onde a intenção de fato acontece.
  *
- * Serve aos DOIS modos (LiveKit e P2P) sem duas cópias: só muda o `transport`.
+ * Serve aos DOIS modos (LiveKit e mediasoup) sem duas cópias: só muda o `transport`.
  */
 export function useRoomGamification(input: RoomGamificationInput): void {
   const {

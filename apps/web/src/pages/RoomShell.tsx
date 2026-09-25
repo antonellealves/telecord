@@ -497,7 +497,6 @@ export function RoomShell({
         <ParticipantOverlay
           container={overlay.container}
           roomId={roomId}
-          variant="livekit"
           people={participantsWithSoundboard.map((p) => ({
             id: p.identity,
             displayName: p.displayName,

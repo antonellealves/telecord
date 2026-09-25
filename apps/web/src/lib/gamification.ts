@@ -282,7 +282,7 @@ export const MISSIONS: Mission[] = [
   {
     id: 'both-worlds',
     title: 'Os dois mundos',
-    desc: 'Use o modo LiveKit e o modo direto (P2P).',
+    desc: 'Use o modo LiveKit e o modo mediasoup.',
     emoji: '🌐',
     goal: 2,
     progress: { set: 'transports' },

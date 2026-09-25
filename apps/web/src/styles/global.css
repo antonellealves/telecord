@@ -138,10 +138,9 @@ a {
    =========================================================================== */
 
 /*
- * Conexão direta: a paleta âmbar da sala P2P aplicada ao app inteiro.
+ * Tema âmbar, alternativa opcional ao padrão.
  *
- * Para quem vive no modo direto e quer que o resto do produto combine com a
- * sala. Fundo mais fechado que o padrão, porque âmbar sobre carvão frio fica
+ * Fundo mais fechado que o padrão, porque âmbar sobre carvão frio fica
  * sujo — precisa de um preto mais neutro para o amarelo não esverdear.
  */
 [data-theme='direta'] {

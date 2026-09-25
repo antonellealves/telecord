@@ -36,53 +36,6 @@ export interface LiveKitConfig {
 }
 
 /**
- * TURN para o modo direto, quando houver.
- *
- * Duas formas de credencial: ESTÁTICA (`username` + `credential` fixos) ou
- * TEMPORÁRIA (`secret` compartilhado com o TURN, e cada requisição a `/api/ice`
- * gera um usuário que expira em `ttlSeconds`). A temporária é a boa prática —
- * uma credencial que vaza do devtools de alguém morre sozinha em horas — e é o
- * formato REST do coturn e dos TURN gerenciados (Cloudflare, metered).
- */
-export interface TurnConfig {
-  urls: string[];
-  username?: string;
-  credential?: string;
-  secret?: string;
-  ttlSeconds: number;
-}
-
-/**
- * Servidores de gelo do modo direto.
- *
- * STUN tem default no código (o público do Google) — o modo direto funciona
- * sem configurar nada. TURN é opcional: sem serviço para hospedá-lo (a Vercel é
- * serverless e não segura UDP de longa duração), fica de fora por padrão, e a
- * malha usa só o caminho direto. Quem tiver um TURN à mão — self-host ou
- * gerenciado — aponta pelas variáveis e a travessia de NAT difícil passa a
- * funcionar, sem tocar no código.
- */
-export interface IceConfig {
-  stunUrls: string[];
-  turn: TurnConfig | null;
-}
-
-/**
- * Cloudflare Realtime SFU (transporte 'cfsfu').
- *
- * `appId` e `appToken` NUNCA chegam ao navegador — o cliente fala com o SFU
- * através do proxy `/api/cfsfu/*`, que é quem assina as chamadas. `null` = a
- * terceira opção fica desligada (o cartão some da tela), o que é o padrão até
- * alguém configurar o app no dashboard da Cloudflare.
- */
-export interface CfSfuConfig {
-  appId: string;
-  appToken: string;
-  /** Cota mensal de egress do free tier, para o aviso e o bloqueio na UI. */
-  monthlyLimitGb: number;
-}
-
-/**
  * Processo mediasoup-sfu próprio, na VM Oracle (transporte 'mediasoup').
  *
  * `internalUrl` nunca é exposta ao navegador: o proxy `/api/mediasoup/*` é
@@ -116,8 +69,6 @@ export interface AppConfig {
 
   google: GoogleConfig | null;
   livekit: LiveKitConfig | null;
-  ice: IceConfig;
-  cfsfu: CfSfuConfig | null;
   mediasoup: MediasoupConfig | null;
 
   mailDriver: MailDriver;
@@ -148,94 +99,6 @@ function integer(env: NodeJS.ProcessEnv, name: string, fallback: number): number
 
 function trimTrailingSlash(url: string): string {
   return url.endsWith('/') ? url.slice(0, -1) : url;
-}
-
-/** Lista separada por vírgula, sem itens vazios. */
-function csvList(value: string | undefined): string[] {
-  return (value ?? '')
-    .split(',')
-    .map((item) => item.trim())
-    .filter((item) => item !== '');
-}
-
-/**
- * STUN público do Google, o padrão quando nada é configurado.
- *
- * Mais de um endereço porque STUN é barato e ter alternativas reduz a chance de
- * um deles fora do ar atrasar a descoberta do endereço externo.
- */
-const DEFAULT_STUN_URLS = [
-  'stun:stun.l.google.com:19302',
-  'stun:stun1.l.google.com:19302',
-  'stun:stun2.l.google.com:19302',
-];
-
-function loadIceConfig(env: NodeJS.ProcessEnv): IceConfig {
-  const stunUrls = csvList(env.P2P_STUN_URLS);
-  const turnUrls = csvList(env.P2P_TURN_URLS);
-
-  let turn: TurnConfig | null = null;
-  if (turnUrls.length > 0) {
-    const username = env.P2P_TURN_USERNAME?.trim() ?? '';
-    const credential = env.P2P_TURN_CREDENTIAL?.trim() ?? '';
-    const secret = env.P2P_TURN_SECRET?.trim() ?? '';
-    // Credencial temporária OU estática, nunca nenhuma: um TURN sem credencial
-    // não autentica ninguém, e o sintoma seria conexão que nunca sobe.
-    if (secret === '' && (username === '' || credential === '')) {
-      throw new ConfigError(
-        'P2P_TURN_URLS exige P2P_TURN_SECRET (credencial temporária) ou ' +
-          'P2P_TURN_USERNAME + P2P_TURN_CREDENTIAL (estática).',
-      );
-    }
-    turn = {
-      urls: turnUrls,
-      username: username === '' ? undefined : username,
-      credential: credential === '' ? undefined : credential,
-      secret: secret === '' ? undefined : secret,
-      ttlSeconds: integer(env, 'P2P_TURN_TTL_SECONDS', 86_400),
-    };
-  }
-
-  return {
-    stunUrls: stunUrls.length > 0 ? stunUrls : DEFAULT_STUN_URLS,
-    turn,
-  };
-}
-
-/**
- * Lê a configuração do Cloudflare Realtime SFU.
- *
- * Ligado quando HÁ credencial — mesmo critério do LiveKit e do TURN logo acima:
- * a presença da chave é o interruptor, sem uma flag `_ENABLED` à parte para
- * lembrar de sincronizar junto. Um flag separado é exatamente o tipo de
- * configuração que fica pela metade: as credenciais chegam ao ambiente, a flag
- * não, e o recurso fica desligado em silêncio sem nenhum log dizendo por quê.
- *
- * `CF_REALTIME_ENABLED=false` ainda DESLIGA explicitamente, para quem quiser
- * manter a credencial no ambiente mas tirar a opção da tela sem apagar nada.
- * Aceita os nomes `CLOUDFLARE_REALTIME_*` como reserva dos `CF_REALTIME_*`.
- */
-function loadCfSfuConfig(env: NodeJS.ProcessEnv): CfSfuConfig | null {
-  const appId = (env.CF_REALTIME_APP_ID ?? env.CLOUDFLARE_REALTIME_APP_ID)?.trim() ?? '';
-  const appToken =
-    (env.CF_REALTIME_APP_TOKEN ?? env.CLOUDFLARE_REALTIME_APP_SECRET)?.trim() ?? '';
-
-  const disabledRaw = (env.CF_REALTIME_ENABLED?.trim() ?? '').toLowerCase();
-  const explicitlyDisabled = disabledRaw === 'false' || disabledRaw === '0' || disabledRaw === 'off';
-  if (explicitlyDisabled) return null;
-
-  if (appId === '' && appToken === '') return null;
-  if (appId === '' || appToken === '') {
-    throw new ConfigError(
-      'CF_REALTIME_APP_ID e CF_REALTIME_APP_TOKEN vão juntos ou nenhum dos dois.',
-    );
-  }
-
-  return {
-    appId,
-    appToken,
-    monthlyLimitGb: integer(env, 'CF_REALTIME_MONTHLY_GB_LIMIT', 1000),
-  };
 }
 
 /**
@@ -355,8 +218,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
         ? null
         : { clientId: googleClientId, clientSecret: googleClientSecret },
     livekit: livekitKey === '' ? null : { apiKey: livekitKey, apiSecret: livekitSecret },
-    ice: loadIceConfig(env),
-    cfsfu: loadCfSfuConfig(env),
     mediasoup: loadMediasoupConfig(env),
     mailDriver: mailDriverRaw,
     mailFrom: env.MAIL_FROM?.trim() || 'Telecord <nao-responda@localhost>',

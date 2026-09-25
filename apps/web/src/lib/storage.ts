@@ -308,19 +308,15 @@ export function writeParticipantsOpen(open: boolean): void {
 const TRANSPORT_KEY = 'telecord.transport';
 
 /**
- * Qual pilha de transmissão usar: o SFU (LiveKit) ou a malha direta (P2P).
+ * Qual pilha de transmissão usar: o SFU LiveKit ou o SFU próprio mediasoup.
  *
- * `livekit` é o padrão e continua sendo: é o que aguenta sala cheia, o que
- * funciona atrás de NAT difícil e o que tem soundboard, chat e gravação de
- * sessão. O P2P é escolha consciente de quem quer latência menor ou não quer a
- * mídia passando por servidor nenhum — e aceita o teto de gente.
+ * `livekit` é o padrão: é o que aguenta sala cheia, o que funciona atrás de
+ * NAT difícil e o que tem soundboard, chat e gravação de sessão.
  */
 export function readTransport(): TransportMode {
   try {
     const raw = window.localStorage.getItem(TRANSPORT_KEY);
-    return raw === 'p2p' || raw === 'cfsfu' || raw === 'vercel-relay' || raw === 'mediasoup'
-      ? raw
-      : 'livekit';
+    return raw === 'mediasoup' ? raw : 'livekit';
   } catch {
     return 'livekit';
   }
@@ -334,59 +330,10 @@ export function writeTransport(mode: TransportMode): void {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Cloudflare (Cloudflare Realtime SFU)
-// ---------------------------------------------------------------------------
-
-const CFSFU_BITRATE_KEY = 'telecord.cfsfu.bitrate';
-const CFSFU_QUALITY_KEY = 'telecord.cfsfu.quality';
-
-const CFSFU_BITRATES = ['6', '12', '20'] as const;
-export type CfSfuBitrateId = (typeof CFSFU_BITRATES)[number];
-
-const CFSFU_QUALITIES = ['HD', 'FHD', 'QHD', 'UHD'] as const;
-export type CfSfuQualityId = (typeof CFSFU_QUALITIES)[number];
-
-/** Teto de bitrate do vídeo no Cloudflare. Escolhido na entrada, vale na sala. */
-export function readCfSfuBitrate(): CfSfuBitrateId {
-  try {
-    const raw = window.localStorage.getItem(CFSFU_BITRATE_KEY);
-    return CFSFU_BITRATES.includes(raw as CfSfuBitrateId) ? (raw as CfSfuBitrateId) : '12';
-  } catch {
-    return '12';
-  }
-}
-
-export function writeCfSfuBitrate(id: CfSfuBitrateId): void {
-  try {
-    window.localStorage.setItem(CFSFU_BITRATE_KEY, id);
-  } catch {
-    // Storage indisponível: vale só para esta aba.
-  }
-}
-
-/** Resolução alvo do compartilhamento de tela no Cloudflare. Padrão FHD. */
-export function readCfSfuQuality(): CfSfuQualityId {
-  try {
-    const raw = window.localStorage.getItem(CFSFU_QUALITY_KEY);
-    return CFSFU_QUALITIES.includes(raw as CfSfuQualityId) ? (raw as CfSfuQualityId) : 'FHD';
-  } catch {
-    return 'FHD';
-  }
-}
-
-export function writeCfSfuQuality(id: CfSfuQualityId): void {
-  try {
-    window.localStorage.setItem(CFSFU_QUALITY_KEY, id);
-  } catch {
-    // Storage indisponível: vale só para esta aba.
-  }
-}
-
 const PEER_ID_KEY = 'telecord.peerId';
 
 /**
- * Identidade deste navegador na malha P2P.
+ * Identidade deste navegador na sala.
  *
  * Estável entre recargas de propósito: se mudasse a cada carga, recarregar a
  * página deixaria a presença antiga pendurada por ~20 s e os outros tentariam

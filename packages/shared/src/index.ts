@@ -9,7 +9,6 @@
 // O protocolo do Vercel Relay mora à parte porque é grande e tem cara própria
 // (binário + controle), mas é contrato compartilhado igual ao resto — o web
 // codifica, a função de relay lê o cabeçalho.
-export * from './vercel-relay.js';
 
 // Presença por Socket.IO do transporte `mediasoup` (ver ambos os arquivos):
 // `presenceToken` assina/verifica com `node:crypto`, então quem importar
@@ -988,38 +987,20 @@ export interface AdminSessionTokenRow {
   revoked: boolean;
 }
 
-// ---------------------------------------------------------------------------
-// Modo P2P — o segundo paradigma de transmissão
-//
-// No modo LiveKit, um SFU recebe de todos e reenvia para todos. No modo P2P,
-// cada navegador fala DIRETO com cada outro, e o servidor só apresenta os dois.
-// A troca abaixo é o aperto de mão; depois dele, nenhum byte de mídia passa
-// pelo telecord.
-// ---------------------------------------------------------------------------
-
 /**
  * Qual pilha de transmissão a sala está usando.
  *
- * `cfsfu` é o Cloudflare Realtime SFU — a terceira opção, "Cloudflare": um SFU
- * de borda que NÃO recodifica a mídia (passthrough), então a qualidade final é
- * a que o navegador de quem compartilha conseguir codificar. Existe para
- * compartilhamento de tela em alta resolução com latência baixa e escala melhor
- * que a malha P2P.
- *
- * `mediasoup` é a quinta opção: um SFU self-hosted próprio (biblioteca Node,
- * não serviço gerenciado), rodando na mesma VM que hospeda o LiveKit. Ao
- * contrário do LiveKit, o servidor é código do próprio telecord — dá controle
- * total sobre o roteamento de mídia, ao custo de manter a sinalização (SPEC do
- * transporte `mediasoup`, `/api/mediasoup/*`) escrita à mão em vez de usar o
- * protocolo de um SFU de terceiros.
+ * `mediasoup` é um SFU self-hosted próprio (biblioteca Node, não serviço
+ * gerenciado), rodando na mesma VM que hospeda o LiveKit. Ao contrário do
+ * LiveKit, o servidor é código do próprio telecord — dá controle total sobre
+ * o roteamento de mídia, ao custo de manter a sinalização (SPEC do transporte
+ * `mediasoup`, `/api/mediasoup/*`) escrita à mão em vez de usar o protocolo de
+ * um SFU de terceiros.
  */
-export type TransportMode = 'livekit' | 'p2p' | 'cfsfu' | 'vercel-relay' | 'mediasoup';
+export type TransportMode = 'livekit' | 'mediasoup';
 
 export const TRANSPORT_MODES: TransportMode[] = [
   'livekit',
-  'p2p',
-  'cfsfu',
-  'vercel-relay',
   'mediasoup',
 ];
 
@@ -1028,18 +1009,11 @@ export interface PeerInfo {
   displayName: string;
   isAnonymous: boolean;
   joinedAt: string;
-  /**
-   * O que este par publicou no SFU cfsfu, quando a sala está nesse modo. É como
-   * os outros descobrem qual `sessionId`/`trackName` puxar — o roster do
-   * heartbeat carrega o anúncio, sem precisar de um segundo canal de sinal.
-   * `null`/ausente nos modos LiveKit e P2P.
-   */
-  cfsfu?: CfSfuAnnounce | null;
-  /** Mesmo papel de `cfsfu`, para o transporte `mediasoup`: quais producerId puxar. */
+  /** Quais producerId puxar, para o transporte `mediasoup`. */
   mediasoup?: MediasoupAnnounce | null;
   /**
    * Comando de moderação pendente para ESTE par, escrito só pelo painel admin
-   * (nunca pelo próprio cliente, ao contrário de `mediasoup`/`cfsfu` acima).
+   * (nunca pelo próprio cliente, ao contrário de `mediasoup` acima).
    * Só existe no transporte `mediasoup`, que não tem um servidor de controle
    * central como o LiveKit — mutar/mover dependem do cliente obedecer isto a
    * cada heartbeat. `null`/ausente quando não há nada pendente.
@@ -1067,189 +1041,17 @@ export interface PeerRoster {
   peers: PeerInfo[];
 }
 
-/** `offer` e `answer` carregam SDP; `ice` carrega um candidato. */
-export type PeerSignalKind = 'offer' | 'answer' | 'ice';
-
-export interface PeerEnvelope {
-  fromPeer: string;
-  kind: PeerSignalKind;
-  /** Opaco para o servidor: ele carrega, não interpreta. */
-  payload: string;
-}
-
-export interface PeerInbox {
-  signals: PeerEnvelope[];
-}
-
-/**
- * Um servidor de gelo (ICE) para o modo direto: STUN ou TURN.
- *
- * Espelha o `RTCIceServer` do navegador de propósito — o cliente repassa o que
- * chega direto para o `RTCPeerConnection`, sem tradução. STUN só leva `urls`;
- * TURN leva também `username` e `credential`, que quando temporários (padrão
- * coturn) vêm assinados pelo servidor e expiram.
- */
-export interface IceServerConfig {
-  urls: string | string[];
-  username?: string;
-  credential?: string;
-}
-
-/**
- * Configuração de ICE entregue por `GET /api/ice`.
- *
- * Vem do servidor, e não fixada no bundle, por dois motivos: dá para acrescentar
- * ou trocar um TURN sem publicar o front de novo, e credencial de TURN
- * temporária NÃO pode viver em JavaScript público — ela é gerada por requisição
- * e válida só por `ttlSeconds`. Sem TURN configurado, vem só o STUN, que já
- * resolve a maioria das redes.
- */
-export interface IceConfig {
-  iceServers: IceServerConfig[];
-  /** Por quanto tempo o cliente pode reusar esta lista antes de buscar de novo. */
-  ttlSeconds: number;
-}
-
-// ---------------------------------------------------------------------------
-// Cloudflare Realtime SFU (transporte 'cfsfu' — "Cloudflare")
-//
-// O SFU da Cloudflare é pub/sub de Sessions e Tracks, SEM conceito de sala: o
-// roster e a descoberta de tracks são do telecord (carregados pelo heartbeat).
-// O App Secret vive só no backend; o cliente conversa com o SFU através do
-// proxy /api/cfsfu/*, que assina as chamadas. Os tipos abaixo descrevem o corpo
-// desse proxy — que espelha a API HTTPS do SFU — e são validados na borda.
-// ---------------------------------------------------------------------------
-
-/** SDP trocado com o SFU. Mesma forma de `RTCSessionDescriptionInit`. */
-export interface CfSdp {
-  type: 'offer' | 'answer';
-  sdp: string;
-}
-
-/** Uma track ao pedir push (local) ou pull (remoto) ao SFU. */
-export type CfTrackRequest =
-  | { location: 'local'; mid: string; trackName: string }
-  | { location: 'remote'; sessionId: string; trackName: string };
-
-/** Track como o SFU a devolve. */
-export interface CfTrackResult {
-  mid?: string;
-  trackName?: string;
-  sessionId?: string;
-  errorCode?: string;
-  errorDescription?: string;
-}
-
-/** Resposta de `POST /sessions/new`. */
-export interface CfSessionResult {
-  sessionId: string;
-  errorCode?: string;
-  errorDescription?: string;
-}
-
-/** Corpo aceito pelo proxy `POST /api/cfsfu/sessions/:id/tracks`. */
-export interface CfTracksBody {
-  sessionDescription?: CfSdp;
-  tracks: CfTrackRequest[];
-}
-
-/** Resposta de `tracks/new`. */
-export interface CfTracksResult {
-  requiresImmediateRenegotiation: boolean;
-  sessionDescription?: CfSdp;
-  tracks: CfTrackResult[];
-  errorCode?: string;
-  errorDescription?: string;
-}
-
-/** Corpo de `PUT /renegotiate`. */
-export interface CfRenegotiateBody {
-  sessionDescription: CfSdp;
-}
-
-/** Resposta de `renegotiate` e `tracks/close` (vazia em sucesso). */
-export interface CfSimpleResult {
-  errorCode?: string;
-  errorDescription?: string;
-}
-
-/** Corpo de `PUT /tracks/close`. */
-export interface CfCloseBody {
-  tracks: { mid: string }[];
-  sessionDescription: CfSdp;
-  force: boolean;
-}
-
-/**
- * DataChannel no SFU — endpoint PRÓPRIO, diferente de `tracks/new`.
- *
- * Mesma forma pub/sub (publicador cria `location: 'local'`, assinante puxa com
- * `location: 'remote'` + `sessionId` do publicador), mas é o canal por onde
- * chat e soundboard viajam — nunca áudio/vídeo, que continuam em tracks.
- */
-export type CfDataChannelRequest =
-  | { location: 'local'; dataChannelName: string; ordered?: boolean; maxRetransmits?: number }
-  | { location: 'remote'; sessionId: string; dataChannelName: string };
-
-export interface CfDataChannelResult {
-  dataChannelName?: string;
-  sessionId?: string;
-  id?: number;
-  errorCode?: string;
-  errorDescription?: string;
-}
-
-/** Corpo de `POST /datachannels/new`. */
-export interface CfDataChannelsBody {
-  dataChannels: CfDataChannelRequest[];
-}
-
-export interface CfDataChannelsResult {
-  dataChannels: CfDataChannelResult[];
-  errorCode?: string;
-  errorDescription?: string;
-}
-
-/** Anúncio do que um par publicou no SFU, carregado pelo roster. */
-export interface CfSfuAnnounce {
-  sessionId: string;
-  tracks: CfSfuPublishedTrack[];
-}
-
-export interface CfSfuPublishedTrack {
-  kind: 'audio' | 'video';
-  trackName: string;
-  /** Rótulo para a UI: 'screen-video', 'mic-audio', 'system-audio'. */
-  label: string;
-}
-
-/** Consumo estimado de egress do mês, para o aviso e o bloqueio na UI. */
-export interface CfSfuUsage {
-  monthlyLimitGb: number;
-  usedGb: number;
-  /** 0..1. A UI avisa em 0,8 e bloqueia a criação em 1. */
-  fraction: number;
-  blocked: boolean;
-}
-
-/** Config pública do transporte cfsfu, servida por `GET /api/cfsfu/config`. */
-export interface CfSfuClientConfig {
-  enabled: boolean;
-  iceServers: IceServerConfig[];
-  usage: CfSfuUsage;
-}
-
 // ---------------------------------------------------------------------------
 // mediasoup (transporte 'mediasoup' — SFU self-hosted próprio)
 //
 // O processo mediasoup mora na VM Oracle, ao lado do LiveKit, e NÃO é exposto
-// direto ao navegador: quem fala com ele é o proxy `/api/mediasoup/*` (mesmo
-// desenho do cfsfu — a `apps/api` valida a participação na sala e repassa a
-// chamada). A diferença para o cfsfu é que aqui o "SFU" é processo NOSSO: o
-// proxy fala HTTP com ele em vez de com uma API de terceiros, mas o formato de
-// mensagem é opaco (`unknown`) do lado de cá — são os tipos do próprio
-// mediasoup (RtpCapabilities, DtlsParameters, etc.), que este pacote não
-// declara para não amarrar `@telecord/shared` à versão exata da lib.
+// direto ao navegador: quem fala com ele é o proxy `/api/mediasoup/*` — a
+// `apps/api` valida a participação na sala e repassa a chamada. O "SFU" é
+// processo NOSSO: o proxy fala HTTP com ele em vez de com uma API de
+// terceiros, mas o formato de mensagem é opaco (`unknown`) do lado de cá —
+// são os tipos do próprio mediasoup (RtpCapabilities, DtlsParameters, etc.),
+// que este pacote não declara para não amarrar `@telecord/shared` à versão
+// exata da lib.
 // ---------------------------------------------------------------------------
 
 /** Que tipo de mídia esta track carrega — decide o rótulo e o roteamento na UI. */
@@ -1316,7 +1118,7 @@ export interface MediasoupPublishedTrack {
   trackKind: MediasoupTrackKind;
 }
 
-/** Anúncio carregado pelo heartbeat, mesmo mecanismo do `cfsfu` em `PeerInfo`. */
+/** Anúncio carregado pelo heartbeat, em `PeerInfo`. */
 export interface MediasoupAnnounce {
   tracks: MediasoupPublishedTrack[];
 }
@@ -1384,21 +1186,6 @@ export interface QualityMetrics {
   availableIncomingBitrateKbps: number | null;
   availableOutgoingBitrateKbps: number | null;
 }
-
-/**
- * A partir de quantas pessoas o modo direto começa a doer.
- *
- * NÃO é um teto: a sala aceita quem chegar. É o ponto em que a conta da malha
- * completa deixa de ser confortável e a interface passa a avisar.
- *
- * A conta: cada par mantém uma conexão com cada outro, então as conexões
- * crescem com o QUADRADO das pessoas, e cada navegador codifica o próprio
- * vídeo uma vez PARA CADA par. Com 6 são 15 conexões e 5 codificações por
- * máquina; com 10, são 45 e 9. Quem tem máquina e banda para isso deve poder
- * tentar — o aviso existe para a lentidão não virar surpresa, e a saída
- * (trocar para o servidor de mídia) fica a um clique.
- */
-export const P2P_COMFORT_PEERS = 6;
 
 /**
  * Posição de um quadro na tela, em FRAÇÃO da área (0..1).

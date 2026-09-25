@@ -3,7 +3,7 @@
  *
  * O cliente nunca fala com o processo na VM direto — o segredo interno vive só
  * no backend. Estas funções batem no proxy `/api/mediasoup/*`, que confere a
- * participação na sala antes de repassar. Mesmo desenho de `cfsfu.ts`.
+ * participação na sala antes de repassar.
  */
 import type {
   MediasoupClientConfig,

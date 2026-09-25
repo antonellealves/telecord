@@ -28,13 +28,6 @@
   overflow: hidden;
 }
 
-/* No modo direto, a mesma marcação âmbar da sala: a janela flutuante também
-   precisa dizer em qual paradigma ela está. */
-.p2p {
-  --acento: var(--warn, #e7c07a);
-  --acento-rgb: var(--warn-rgb, 231, 192, 122);
-}
-
 .head {
   display: flex;
   align-items: baseline;

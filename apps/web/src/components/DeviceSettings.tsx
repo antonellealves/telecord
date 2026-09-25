@@ -60,7 +60,7 @@ const TEMAS: { id: ThemeId; label: string; hint: string }[] = [
   { id: 'escuro', label: 'Escuro', hint: 'O padrão: carvão frio com azul e roxo.' },
   { id: 'claro', label: 'Claro', hint: 'Fundo claro, acento azul escurecido para contraste.' },
   { id: 'livekit', label: 'LiveKit', hint: 'O azul do padrão mais saturado e mais frio.' },
-  { id: 'direta', label: 'Conexão direta', hint: 'A paleta âmbar da sala P2P no app inteiro.' },
+  { id: 'direta', label: 'Âmbar', hint: 'Paleta âmbar aplicada ao app inteiro.' },
 ];
 
 const TEST_LABEL: Record<'idle' | 'recording' | 'playing', string> = {

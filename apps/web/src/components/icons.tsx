@@ -350,45 +350,6 @@ export function ServerIcon(props: IconProps): JSX.Element {
   );
 }
 
-/** Malha: o modo P2P (cada navegador ligado a cada outro). */
-export function MeshIcon(props: IconProps): JSX.Element {
-  return (
-    <Icon {...props}>
-      <g>
-        <circle cx="12" cy="4" r="2" />
-        <circle cx="4.5" cy="18" r="2" />
-        <circle cx="19.5" cy="18" r="2" />
-        <path d="M12 6v0M10.6 5.4 6 16.4M13.4 5.4 18 16.4M6.5 18h11" />
-      </g>
-    </Icon>
-  );
-}
-
-/** Nuvem de borda: o modo Cloudflare (SFU global passthrough). */
-export function CloudIcon(props: IconProps): JSX.Element {
-  return (
-    <Icon {...props}>
-      <g>
-        <path d="M7 18a4 4 0 0 1-.5-7.97A5.5 5.5 0 0 1 17 9.5a3.5 3.5 0 0 1 .3 6.98" />
-        <path d="M7 18h10" />
-      </g>
-    </Icon>
-  );
-}
-
-/** Antena de broadcast: o modo Vercel Relay (chunks retransmitidos). */
-export function RelayIcon(props: IconProps): JSX.Element {
-  return (
-    <Icon {...props}>
-      <g>
-        <circle cx="12" cy="12" r="2" />
-        <path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7" />
-        <path d="M5.8 5.8a9 9 0 0 0 0 12.4M18.2 5.8a9 9 0 0 1 0 12.4" />
-      </g>
-    </Icon>
-  );
-}
-
 /** Camadas empilhadas: o modo mediasoup (SFU self-hosted próprio, ao lado do LiveKit). */
 export function LayersIcon(props: IconProps): JSX.Element {
   return (

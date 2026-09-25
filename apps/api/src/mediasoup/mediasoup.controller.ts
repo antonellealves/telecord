@@ -17,12 +17,12 @@ import { badRequest } from '../common/errors';
 import { MediasoupService } from './mediasoup.service';
 
 /**
- * Proxy do processo mediasoup-sfu — o "control plane" do quinto transporte.
+ * Proxy do processo mediasoup-sfu.
  *
- * Mesmo desenho do `CfsfuController`: o navegador nunca fala com o processo
- * mediasoup direto, só com estas rotas, que confirmam a participação na sala e
- * assinam a chamada ao SFU com o segredo interno. `@OptionalAuth` porque a
- * portaria aqui também é presença na sala, não login.
+ * O navegador nunca fala com o processo mediasoup direto, só com estas
+ * rotas, que confirmam a participação na sala e assinam a chamada ao SFU com
+ * o segredo interno. `@OptionalAuth` porque a portaria aqui também é
+ * presença na sala, não login.
  */
 @Controller('mediasoup')
 export class MediasoupController {

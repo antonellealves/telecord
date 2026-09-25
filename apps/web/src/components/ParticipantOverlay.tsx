@@ -7,7 +7,6 @@ export interface OverlayPerson {
   isSpeaking: boolean;
   isMuted: boolean;
   isLocal: boolean;
-  /** Marcou-se como ausente; no modo direto ninguém marca, e fica falso. */
   isAway: boolean;
 }
 
@@ -16,8 +15,6 @@ interface Props {
   container: HTMLElement | null;
   people: OverlayPerson[];
   roomId: string;
-  /** Âmbar no modo direto, azul no modo servidor — a mesma cor da sala. */
-  variant: 'livekit' | 'p2p';
 }
 
 /**
@@ -43,14 +40,13 @@ export function ParticipantOverlay({
   container,
   people,
   roomId,
-  variant,
 }: Props): JSX.Element | null {
   if (container === null) return null;
 
   const falando = people.filter((p) => p.isSpeaking).length;
 
   return createPortal(
-    <div className={`${styles.overlay} ${variant === 'p2p' ? styles.p2p : ''}`}>
+    <div className={styles.overlay}>
       <header className={styles.head}>
         <span className={styles.room}>{roomId}</span>
         <span className={styles.count}>
