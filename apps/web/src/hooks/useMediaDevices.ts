@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMaybeRoomContext } from '@livekit/components-react';
-import { LocalAudioTrack, Room, RoomEvent, Track, supportsAudioOutputSelection } from 'livekit-client';
+import { Room, RoomEvent, supportsAudioOutputSelection } from 'livekit-client';
 import { describeMicrophoneError } from '../lib/errors';
 import {
   readNoiseSuppression,
@@ -215,38 +215,15 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
     }
   }, [audioInputs, audioOutputs, activeAudioInput, activeAudioOutput, outputSelectionSupported, select]);
 
-  /**
-   * Supressão de ruído.
-   *
-   * Duas frentes, porque o ajuste precisa valer nos dois momentos: os defaults
-   * do Room governam a PRÓXIMA publicação (o app entra mutado, então quase
-   * sempre é esse o caso), e `restartTrack` reabre a captura quando já existe
-   * microfone no ar. Só o primeiro deixaria a mudança sem efeito para quem já
-   * está falando.
+  /*
+   * Só grava a preferência. Quem aplica no microfone é `useNoiseFilter`, na
+   * sala LiveKit — ele decide entre Krisp e o filtro do navegador, e ter um
+   * dono só evita os dois brigando pela mesma constraint.
    */
-  const setNoiseSuppression = useCallback(
-    (enabled: boolean) => {
-      setNoiseSuppressionState(enabled);
-      writeNoiseSuppression(enabled);
-
-      // Sem sala, a preferência fica guardada e vale na próxima captura.
-      if (room === undefined) return;
-
-      const defaults = {
-        ...room.options.audioCaptureDefaults,
-        noiseSuppression: enabled,
-      };
-      room.options.audioCaptureDefaults = defaults;
-
-      const track = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.audioTrack;
-      if (track instanceof LocalAudioTrack) {
-        void track.restartTrack(defaults).catch((error: unknown) => {
-          onErrorRef.current(describeMicrophoneError(error));
-        });
-      }
-    },
-    [room],
-  );
+  const setNoiseSuppression = useCallback((enabled: boolean) => {
+    setNoiseSuppressionState(enabled);
+    writeNoiseSuppression(enabled);
+  }, []);
 
   const revealLabels = useCallback(() => {
     void Room.getLocalDevices('audioinput', true)

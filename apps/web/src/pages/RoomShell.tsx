@@ -34,6 +34,7 @@ import { useScreenShares } from '../hooks/useScreenShares';
 import { useSoundboardSpeakers } from '../hooks/useSoundboardSpeakers';
 import { useSoundVolume } from '../hooks/useSoundVolume';
 import { useTalkControls } from '../hooks/useTalkControls';
+import { useNoiseFilter } from '../hooks/useNoiseFilter';
 import { useForcedMove } from '../hooks/useForcedMove';
 import { useOverlay } from '../hooks/useOverlay';
 import { useRoomGamification } from '../hooks/useRoomGamification';
@@ -96,6 +97,7 @@ export function RoomShell({
   const shares = useScreenShares(push);
   const cameras = useCameras(push);
   const talk = useTalkControls((message) => push('error', message));
+  const noiseFilter = useNoiseFilter();
   const sound = useSoundVolume();
   const { status: authStatus, user } = useAuth();
   /*
@@ -411,6 +413,7 @@ export function RoomShell({
               isOverlaySupported={overlay.isSupported}
               isOverlayOpen={overlay.isOpen}
               onToggleOverlay={overlay.toggle}
+              noiseFilter={noiseFilter}
               onChangeScreenQuality={(id) => {
                 setScreenQualityId(id);
                 writeScreenQuality(id);

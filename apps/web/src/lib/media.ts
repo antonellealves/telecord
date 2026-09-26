@@ -1,6 +1,6 @@
 import {
-  AudioPresets,
   VideoPresets,
+  type AudioPreset,
   type RoomOptions,
   type ScreenShareCaptureOptions,
   type TrackPublishOptions,
@@ -124,6 +124,18 @@ export function screenEncoding(id: ScreenQualityId): VideoEncoding {
   };
 }
 
+/**
+ * Voz a 256 kbps — o teto que faz o Opus nunca apertar.
+ *
+ * O Opus fica transparente para fala bem abaixo disso; o ponto do teto
+ * folgado é o encoder gastar o que precisa nos transientes (consoante,
+ * sibilância, risada) em vez de borrar para caber no orçamento. O servidor
+ * LiveKit responde `maxaveragebitrate=510000` no SDP, então é este
+ * `maxBitrate` do sender que manda de fato. Mesmo valor do mediasoup
+ * (`MIC_TARGET_BITRATE`).
+ */
+export const VOICE_PRESET: AudioPreset = { maxBitrate: 256_000, priority: 'high' };
+
 /** SPEC §6.1. */
 export const roomOptions: RoomOptions = {
   /*
@@ -143,24 +155,17 @@ export const roomOptions: RoomOptions = {
   adaptiveStream: { pixelDensity: 'screen' },
   dynacast: true,
   publishDefaults: {
-    dtx: true,
-    red: true,
     /*
-     * `musicHighQuality` (96 kbps) no lugar de `speech` (24 kbps).
-     *
-     * O preset `speech` é afinado para inteligibilidade em banda estreita, e
-     * a 24 kbps o Opus já corta a parte de cima do espectro — é o que faz voz
-     * soar "de telefone". A 96 kbps ela chega com o brilho que o microfone
-     * captou, e a diferença é audível em qualquer fone meia-boca.
-     *
-     * O custo é de 72 kbps por pessoa FALANDO, e não por pessoa na sala: com
-     * `dtx` ligado, quem está calado não manda praticamente nada. Numa sala de
-     * 20 com 3 pessoas conversando, são ~220 kbps a mais no total.
-     *
-     * Mono continua (ver `channelCount` abaixo): voz não tem o que estereofonar,
-     * e o estéreo só dobraria a conta.
+     * DTX desligado: ele corta o envio em trecho que o encoder julga
+     * silencioso, e o custo aparece no começo de cada frase (ataque de
+     * consoante engolido) e em fala baixa tratada como silêncio. Mesma decisão
+     * do mediasoup (`audioProfile.ts`).
      */
-    audioPreset: AudioPresets.musicHighQuality,
+    dtx: false,
+    // Redundância de pacote (RED): uma perda vira áudio íntegro em vez de um
+    // "tec" no meio da palavra. Dobra o custo de rede da voz.
+    red: true,
+    audioPreset: VOICE_PRESET,
     stopMicTrackOnMute: false,
     /*
      * VP9, com VP8 de reserva.

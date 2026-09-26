@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { useMediaDevices } from '../hooks/useMediaDevices';
 import { useMicrophoneTest } from '../hooks/useMicrophoneTest';
+import type { NoiseFilterStatus } from '../hooks/useNoiseFilter';
 import type { ToastKind } from '../hooks/useToasts';
 import {
   screenQuality,
@@ -38,7 +39,16 @@ interface DeviceSettingsProps {
   isOverlaySupported?: boolean;
   isOverlayOpen?: boolean;
   onToggleOverlay?: () => void;
+  /** Qual filtro está de fato no microfone (só a sala LiveKit sabe dizer). */
+  noiseFilter?: NoiseFilterStatus;
 }
+
+const NOISE_FILTER_NOTE: Record<NoiseFilterStatus, string | null> = {
+  krisp: 'Ativo: Krisp, filtro de IA.',
+  browser: 'Ativo: filtro do navegador — o Krisp não está disponível neste servidor.',
+  idle: 'Aplicado quando o microfone ligar.',
+  off: null,
+};
 
 /*
  * Três seções, e a divisão segue o MOTIVO de alguém abrir o painel: ajustar
@@ -84,6 +94,7 @@ export function DeviceSettings({
   isOverlaySupported,
   isOverlayOpen,
   onToggleOverlay,
+  noiseFilter,
 }: DeviceSettingsProps): JSX.Element {
   const [section, setSection] = useState<Section>('audio');
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -223,6 +234,9 @@ export function DeviceSettings({
         <span className={styles.hint}>
           Corta ventilador, teclado e barulho de fundo. Desligue se estiver tocando ou cantando —
           o filtro trata música como ruído.
+          {noiseFilter !== undefined && NOISE_FILTER_NOTE[noiseFilter] !== null ? (
+            <> {NOISE_FILTER_NOTE[noiseFilter]}</>
+          ) : null}
         </span>
       </div>
 

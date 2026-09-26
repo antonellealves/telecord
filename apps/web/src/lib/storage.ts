@@ -58,12 +58,16 @@ export function readNoiseSuppression(): boolean {
   }
 }
 
+/** Disparado a cada troca; a sala escuta para aplicar no microfone já no ar. */
+export const NOISE_SUPPRESSION_EVENT = 'telecord:noise-suppression';
+
 export function writeNoiseSuppression(enabled: boolean): void {
   try {
     window.localStorage.setItem(NOISE_SUPPRESSION_KEY, enabled ? 'on' : 'off');
   } catch {
     // Storage indisponível: vale só para esta aba.
   }
+  window.dispatchEvent(new CustomEvent<boolean>(NOISE_SUPPRESSION_EVENT, { detail: enabled }));
 }
 
 // ---------------------------------------------------------------------------
