@@ -41,9 +41,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # `cache: npm` explícito: sem ele, o setup-node v5 lê o
+      # `packageManager: pnpm@…` do package.json da RAIZ, liga sozinho o cache
+      # de pnpm e falha com "Unable to locate executable file: pnpm" — o
+      # desktop é um projeto npm à parte, fora do workspace.
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
 
       # A tag manda no número que aparece para a pessoa e no que o
       # electron-updater compara. Tag e package.json divergentes publicariam
