@@ -46,17 +46,28 @@ manualmente (clique direito → Abrir, ou `xattr -d com.apple.quarantine`).
    git tag desktop-v1.0.0
    git push origin desktop-v1.0.0
    ```
-3. O workflow `.github/workflows/desktop-release.yml` builda nas três
-   plataformas (matriz windows/macos/ubuntu) e publica os artefatos como
-   assets do GitHub Release correspondente à tag — é esse release que o
-   `electron-updater` já instalado consulta para checar atualização.
+3. O workflow `.github/workflows/desktop-release.yml` confere que a tag e
+   o `package.json` estão na mesma versão, builda nas três plataformas
+   (matriz windows/macos/ubuntu) e, no fim, cria **um** GitHub Release
+   público na tag, com todos os instaladores e os `latest*.yml` — é esse
+   release que o `electron-updater` já instalado consulta para checar
+   atualização.
 
-Publicação manual (fora do CI), a partir de uma máquina com as credenciais
-do GitHub configuradas (`GH_TOKEN` no ambiente):
+Os arquivos têm nome fixo, sem versão (`telecord-windows-x64-setup.exe`,
+`telecord-macos-arm64.dmg`…), definido em `electron-builder.yml`. É o que
+mantém os links de download do README da raiz
+(`releases/latest/download/<arquivo>`) sempre na versão mais nova. Mudar
+um desses nomes quebra os links.
 
-```
-npm run release
-```
+`npm run release` publica direto da máquina local (precisa de `GH_TOKEN`),
+mas o electron-builder cria o release como **rascunho** e com a tag
+`v<versão>`: ele só fica visível depois de publicado à mão no GitHub.
+Prefira a tag.
+
+> Rodando `npm run dev` ou o executável empacotado de dentro do terminal do
+> VS Code, apague antes a variável `ELECTRON_RUN_AS_NODE`, que o VS Code
+> define: com ela, o Electron roda como Node puro e fecha na hora
+> (`bad option`).
 
 ## O que precisa ser assinado, por plataforma
 

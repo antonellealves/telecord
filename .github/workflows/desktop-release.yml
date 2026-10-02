@@ -3,6 +3,15 @@ name: Desktop Release
 # Dispara só em tag "desktop-vX.Y.Z" — separado do deploy do app web
 # (deploy.yml), que roda a cada push em main. O shell Electron tem seu
 # próprio ciclo de versão, independente do front.
+#
+# ## Por que o electron-builder não publica sozinho
+#
+# Com `--publish always`, o electron-builder cria o release como RASCUNHO
+# (invisível para quem não é dono do repositório — o link de download do
+# README dá 404), com a tag `v<versão>` em vez da tag que disparou o
+# workflow, e os três jobs da matriz correm para criar o mesmo release ao
+# mesmo tempo. Aqui cada plataforma só builda (`--publish never`) e guarda
+# os arquivos; um job final cria UM release público na tag certa, com tudo.
 on:
   push:
     tags:
@@ -17,11 +26,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        include:
+          - os: windows-latest
+            platform: --win
+          - os: macos-latest
+            platform: --mac
+          - os: ubuntu-latest
+            platform: --linux
     runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: desktop
+        shell: bash
     steps:
       - uses: actions/checkout@v5
 
@@ -29,8 +45,20 @@ jobs:
         with:
           node-version: 22
 
+      # A tag manda no número que aparece para a pessoa e no que o
+      # electron-updater compara. Tag e package.json divergentes publicariam
+      # um instalador que se anuncia com outra versão.
+      - name: Confere a versão da tag
+        run: |
+          tag="${GITHUB_REF_NAME#desktop-v}"
+          version=$(node -p "require('./package.json').version")
+          if [ "$tag" != "$version" ]; then
+            echo "::error::A tag é desktop-v$tag, mas desktop/package.json está em $version."
+            exit 1
+          fi
+
       - name: Instala dependências
-        run: npm install
+        run: npm ci
 
       - name: Compila o TypeScript
         run: npm run build
@@ -39,27 +67,63 @@ jobs:
       # electron-builder produz um artefato não assinado normalmente — é o
       # que permite este workflow funcionar antes de haver certificado
       # configurado, e continuar funcionando se algum secret faltar depois.
-      - name: Publica (Windows)
-        if: runner.os == 'Windows'
-        run: npx electron-builder --win --publish always
+      # Sem certificado, a busca automática de identidade no macOS também é
+      # desligada, para o build não tentar assinar com o que achar no runner.
+      - name: Gera os instaladores
+        run: |
+          if [ -z "${CSC_LINK:-}" ]; then
+            unset CSC_LINK CSC_KEY_PASSWORD
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
+          npx electron-builder ${{ matrix.platform }} --publish never
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-
-      - name: Publica (macOS)
-        if: runner.os == 'macOS'
-        run: npx electron-builder --mac --publish always
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      - name: Publica (Linux)
-        if: runner.os == 'Linux'
-        run: npx electron-builder --linux --publish always
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Instaladores + latest*.yml + .blockmap: os dois últimos são o que o
+      # electron-updater baixa para descobrir e aplicar a versão nova.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.dmg
+            desktop/release/*.zip
+            desktop/release/*.AppImage
+            desktop/release/*.deb
+            desktop/release/*.yml
+            desktop/release/*.blockmap
+            !desktop/release/builder-debug.yml
+          if-no-files-found: error
+
+  release:
+    name: Publica o release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Cria o release com os instaladores
+        uses: softprops/action-gh-release@v2
+        with:
+          name: telecord desktop ${{ github.ref_name }}
+          make_latest: 'true'
+          files: artifacts/*
+          body: |
+            Instaladores do telecord para computador. O app carrega a versão web em produção, então ele já abre sempre atualizado; este instalador só muda quando o próprio shell muda.
+
+            | Sistema | Arquivo |
+            |---|---|
+            | Windows 10/11 (64 bits) | `telecord-windows-x64-setup.exe` |
+            | macOS, Apple Silicon (M1 em diante) | `telecord-macos-arm64.dmg` |
+            | macOS, Intel | `telecord-macos-x64.dmg` |
+            | Linux (qualquer distro) | `telecord-linux-x64.AppImage` |
+            | Linux (Debian/Ubuntu) | `telecord-linux-x64.deb` |
+
+            Os instaladores não são assinados ainda. No Windows, o SmartScreen avisa de "editor desconhecido": clique em **Mais informações → Executar assim mesmo**. No macOS, se aparecer que o app "está danificado" ou "não pode ser aberto", rode `xattr -cr /Applications/telecord.app` no Terminal e abra de novo.

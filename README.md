@@ -1,16 +1,42 @@
 # Telecord
 
-Sala de reunião web, efêmera e sem cadastro: **até 20 participantes falam, ouvem, compartilham tela e conversam por texto**. Sem banco de dados, sem estado no servidor além do próprio SFU.
+Sala de voz e transmissão para assistir junto com os amigos: **até 20 pessoas falam, ouvem, compartilham tela com áudio e conversam por texto**, com soundboard na sala. Entrar não exige cadastro — digitar um nome basta; conta com Google ou e-mail é opcional.
+
+**Abrir no navegador:** <https://telecord.vercel.app>
+
+## Baixar o app para computador
+
+| Sistema | Instalador |
+|---|---|
+| **Windows** 10/11 (64 bits) | [telecord-windows-x64-setup.exe](https://github.com/antonellealves/telecord/releases/latest/download/telecord-windows-x64-setup.exe) |
+| **macOS** Apple Silicon (M1 em diante) | [telecord-macos-arm64.dmg](https://github.com/antonellealves/telecord/releases/latest/download/telecord-macos-arm64.dmg) |
+| **macOS** Intel | [telecord-macos-x64.dmg](https://github.com/antonellealves/telecord/releases/latest/download/telecord-macos-x64.dmg) |
+| **Linux** (qualquer distro) | [telecord-linux-x64.AppImage](https://github.com/antonellealves/telecord/releases/latest/download/telecord-linux-x64.AppImage) |
+| **Linux** Debian/Ubuntu | [telecord-linux-x64.deb](https://github.com/antonellealves/telecord/releases/latest/download/telecord-linux-x64.deb) |
+
+Os links apontam sempre para a versão mais recente. Todas as versões ficam em [Releases](https://github.com/antonellealves/telecord/releases).
+
+O app é o mesmo telecord do navegador dentro de uma janela própria, com o que o navegador não dá: atalho global de push-to-talk, áudio do sistema na transmissão de tela (Windows), ícone na bandeja e atualização automática. Ele carrega a versão web publicada, então qualquer novidade do site já aparece nele sem reinstalar.
+
+> **Os instaladores ainda não são assinados.** No Windows, o SmartScreen avisa de "editor desconhecido": clique em **Mais informações → Executar assim mesmo**. No macOS, se aparecer que o app "está danificado" ou "não pode ser aberto", rode `xattr -cr /Applications/telecord.app` no Terminal e abra de novo. No Linux, o AppImage precisa de permissão de execução (`chmod +x telecord-linux-x64.AppImage`).
+
+Como gerar e publicar uma versão nova do app: [desktop/README.md](./desktop/README.md).
+
+## Para quem desenvolve
 
 A especificação técnica completa — incluindo as decisões e os limites conhecidos — está em [SPEC.md](./SPEC.md).
 
 ```
 /
-├── apps/web/          Vite + React + TS (SPA)
-├── packages/shared/   contrato e validação usados pelos dois lados
-├── api/token.ts       função serverless da Vercel: emite o JWT do LiveKit
-├── api/rooms.ts       lista as salas ativas para a página de entrada
-├── scripts/           guard-rail que barra credencial no bundle
+├── apps/web/            Vite + React + TS (SPA)
+├── apps/api/            serviço de contas, salas e administração (Nest + Prisma)
+├── apps/mediasoup-sfu/  SFU próprio, a segunda opção de transporte de mídia
+├── packages/shared/     contrato e validação usados pelos dois lados
+├── desktop/             shell Electron: os instaladores para computador
+├── api/                 funções serverless da Vercel (token do LiveKit, salas ativas)
+├── livekit/ mediasoup/  configuração e compose de produção dos dois servidores de mídia
+├── infra/               proxy (Caddy) na frente dos dois
+├── scripts/             guard-rail que barra credencial no bundle
 ├── vercel.json
 └── pnpm-workspace.yaml
 ```

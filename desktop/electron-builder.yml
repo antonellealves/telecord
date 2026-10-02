@@ -13,16 +13,25 @@ files:
   - "!**/*.ts"
   - "!**/*.map"
 
+# Quem cria o GitHub Release é o workflow (desktop-release.yml), não o
+# electron-builder: ele roda com `--publish never`. Este bloco continua aqui
+# porque é dele que sai o `app-update.yml` embutido no app, que diz ao
+# electron-updater onde procurar a versão nova.
 publish:
   provider: github
   owner: antonellealves
   repo: telecord
+
+# Nomes SEM versão: é o que deixa o README apontar para
+# releases/latest/download/<arquivo> e o link nunca envelhecer. O
+# electron-updater não depende do nome (lê o latest*.yml de cada release).
 
 win:
   target:
     - target: nsis
       arch: [x64]
   icon: build/icon.ico
+  artifactName: telecord-windows-x64-setup.${ext}
 
 nsis:
   oneClick: false
@@ -35,6 +44,11 @@ mac:
   target:
     - target: dmg
       arch: [x64, arm64]
+    # O auto-update no macOS só funciona a partir do .zip; o .dmg é para a
+    # primeira instalação.
+    - target: zip
+      arch: [x64, arm64]
+  artifactName: telecord-macos-${arch}.${ext}
   icon: build/icon.icns
   category: public.app-category.social
   hardenedRuntime: true
@@ -53,6 +67,12 @@ linux:
   icon: build/icon.png
   category: Network
   maintainer: telecord
+
+appImage:
+  artifactName: telecord-linux-x64.AppImage
+
+deb:
+  artifactName: telecord-linux-x64.deb
 
 dmg:
   sign: false
