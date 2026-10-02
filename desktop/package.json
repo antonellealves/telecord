@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "description": "Shell Electron do telecord — carrega o app web em produção, não o reescreve.",
+  "homepage": "https://telecord.vercel.app",
+  "author": "telecord",
   "main": "dist/main/index.js",
   "scripts": {
     "copy-assets": "node -e \"const fs=require('fs');fs.mkdirSync('dist/renderer',{recursive:true});for(const f of ['offline.html','picker.html'])fs.copyFileSync('src/renderer/'+f,'dist/renderer/'+f)\"",
