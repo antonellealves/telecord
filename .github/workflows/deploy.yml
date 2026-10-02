@@ -717,6 +717,9 @@ jobs:
             cd /opt/telecord-mediasoup-src/mediasoup
             docker compose -f docker-compose.prod.yml --env-file .env build
             docker compose -f docker-compose.prod.yml --env-file .env up -d --remove-orphans
+            # Cada build deixa a imagem anterior órfã (<none>); no disco
+            # pequeno da VM elas se acumulam a cada deploy.
+            docker image prune -f
 
       - name: Verifica o deploy
         env:
