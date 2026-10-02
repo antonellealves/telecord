@@ -11,14 +11,18 @@
  * a cor mais escura da composição já é roxo, e a mais clara já é azul. Sem
  * isso, qualquer brilho aplicado por cima volta a se destacar como mancha.
  *
- * Camadas: bed → tint → sheen → grid → grain
+ * A exceção é o brilho (`.sheen`): pequeno, no centro inferior. Ele tem
+ * borda dentro da tela por pedido de desenho, e a queda dele é longa e em
+ * muitas paradas justamente para essa borda nunca virar contorno.
+ *
+ * Camadas: bed → tint → shade → sheen → grid → grain
  */
 
 .root {
-  --glow: 0.5;
+  /* 0.3 em repouso, perto de 1 enquanto o ponteiro se move. */
+  --glow: 0.3;
+  /* Posição horizontal do ponteiro, -1 a 1: só o brilho acompanha. */
   --sway: 0;
-  /* Quanto o ponteiro puxa o campo no eixo vertical. -1 (topo) a 1 (base). */
-  --lift: 0;
   /* 0 = roxo (cursor no topo) · 1 = azul (cursor na base). */
   --tone: 0.5;
   /* Multiplicador global de força, reduzido na variante da sala. */
@@ -36,22 +40,28 @@
 }
 
 /*
- * O campo. Roxo escuro em cima, azul claro embaixo, atravessando a tela
- * inteira. É esta camada que responde por "preencher a tela toda".
+ * O campo. Quase preto em cima, descendo por roxos e azuis profundos até um
+ * azul escuro na base. Escuro de propósito: é o contraste com ele que faz o
+ * brilho do centro inferior aparecer. As paradas são muitas e próximas para
+ * a transição entre tons escuros não formar faixa.
  */
 .bed {
   position: absolute;
   inset: 0;
   background: linear-gradient(
-    177deg,
-    #171331 0%,
-    #1e1943 15%,
-    #262055 30%,
-    #2c2a66 45%,
-    #2f4177 60%,
-    #34649a 75%,
-    #3c86bb 89%,
-    #479ccf 100%
+    180deg,
+    #040409 0%,
+    #06060f 12%,
+    #090816 24%,
+    #0c0b1e 36%,
+    #100e27 47%,
+    #131230 57%,
+    #15173a 67%,
+    #171e45 76%,
+    #192650 84%,
+    #1c2f5c 91%,
+    #203866 96%,
+    #233f6e 100%
   );
 }
 
@@ -67,71 +77,81 @@
  * contorno nenhum.
  */
 /*
- * O campo ACOMPANHA o ponteiro, e com folga: 1,4vw era um deslocamento que
- * quase ninguém percebia. Agora são 7vw na horizontal e 4vh na vertical, com
- * um leve zoom junto — o degradê parece puxado pelo cursor em vez de apenas
- * clarear.
- *
- * Continua só `transform`, que fica no compositor: mover o campo inteiro da
- * tela não custa repintura.
+ * O campo fica PARADO: o ponteiro só troca a cor (roxo em cima, azul
+ * embaixo) e acende a camada. Quem se mexe com o cursor é o brilho.
  */
 .tint {
-  /*
-   * A camada precisa ser MAIOR que a viewport nas quatro direções: ela se
-   * desloca até 10vw/6vh quando o cursor chega ao canto, e com `inset: 0`
-   * (exatamente do tamanho da tela) esse deslocamento arrasta a borda da
-   * camada para dentro da área visível — a "linha cortando do lado
-   * contrário" relatada. -18%/-14% de folga cobre o deslocamento máximo com
-   * margem, então a borda nunca entra em cena.
-   */
   position: absolute;
   inset: -14% -18%;
-  transform: translate3d(calc(var(--sway) * 10vw), calc(var(--lift) * 6vh), 0)
-    scale(calc(1 + var(--glow) * 0.06));
 }
 
 /* Cursor embaixo: campo azul. */
 .tintCool {
-  opacity: calc((0.2 + var(--tone) * 0.8) * (0.72 + var(--glow) * 0.28) * var(--strength));
+  opacity: calc((0.2 + var(--tone) * 0.8) * (0.45 + var(--glow) * 0.55) * var(--strength));
   background:
-    radial-gradient(135% 95% at 50% 124%, rgba(var(--accent-rgb), 0.42), transparent 76%),
-    radial-gradient(145% 95% at 50% -16%, rgba(var(--accent-rgb), 0.16), transparent 74%),
-    radial-gradient(90% 70% at 4% 12%, rgba(var(--accent-rgb), 0.14), transparent 70%),
-    radial-gradient(90% 70% at 96% 8%, rgba(var(--accent-2-rgb), 0.12), transparent 70%);
+    radial-gradient(120% 80% at 50% 124%, rgba(var(--accent-rgb), 0.26), transparent 76%),
+    radial-gradient(145% 95% at 50% -16%, rgba(var(--accent-rgb), 0.07), transparent 74%),
+    radial-gradient(90% 70% at 4% 12%, rgba(var(--accent-rgb), 0.06), transparent 70%),
+    radial-gradient(90% 70% at 96% 8%, rgba(var(--accent-2-rgb), 0.06), transparent 70%);
 }
 
 /* Cursor em cima: campo roxo. */
 .tintWarm {
-  opacity: calc((1 - var(--tone)) * (0.72 + var(--glow) * 0.28) * var(--strength));
+  opacity: calc((1 - var(--tone)) * (0.45 + var(--glow) * 0.55) * var(--strength));
   background:
-    radial-gradient(145% 95% at 50% -24%, rgba(var(--accent-2-rgb), 0.46), transparent 74%),
-    radial-gradient(120% 85% at 50% 118%, rgba(var(--accent-2-rgb), 0.2), transparent 76%),
-    radial-gradient(90% 70% at 4% 8%, rgba(var(--accent-2-rgb), 0.22), transparent 70%),
-    radial-gradient(90% 70% at 96% 4%, rgba(var(--accent-2-rgb), 0.18), transparent 70%);
+    radial-gradient(145% 95% at 50% -24%, rgba(var(--accent-2-rgb), 0.22), transparent 74%),
+    radial-gradient(110% 75% at 50% 118%, rgba(var(--accent-2-rgb), 0.14), transparent 76%),
+    radial-gradient(90% 70% at 4% 8%, rgba(var(--accent-2-rgb), 0.1), transparent 70%),
+    radial-gradient(90% 70% at 96% 4%, rgba(var(--accent-2-rgb), 0.08), transparent 70%);
 }
 
 /*
- * A camada que mais responde ao ponteiro. Extensão muito maior que a tela e
- * centro abaixo dela: o que aparece é só o topo da curva, uma subida suave de
- * luz — sem miolo brilhante nem contorno.
+ * Os tons escuros que entram com o movimento.
+ *
+ * Uma vinheta que escurece tudo o que está LONGE do centro inferior. Em
+ * repouso ela mal aparece; com o ponteiro se movendo ela fecha junto com o
+ * brilho que acende — o fundo afunda enquanto a luz sobe, e é esse contraste
+ * que faz o brilho se destacar sem precisar ficar maior.
  */
-/* A luz de baixo anda MAIS que o campo: o descompasso entre as duas camadas
-   é o que dá sensação de profundidade em vez de imagem escorregando. */
-.sheen {
-  /* Mesma razão do .tint acima: desloca até 18vw/9vh, então precisa de
-     folga maior que isso para a borda nunca aparecer. */
+.shade {
   position: absolute;
-  inset: -20% -24%;
-  transform: translate3d(calc(var(--sway) * 18vw), calc(var(--lift) * 9vh), 0);
-  opacity: calc((0.4 + var(--glow) * 0.72) * var(--strength));
+  inset: 0;
+  opacity: calc((var(--glow) - 0.1) * 0.95 * var(--strength));
   background: radial-gradient(
-    115% 78% at 50% 132%,
-    rgba(226, 242, 255, 0.26) 0%,
-    rgba(210, 234, 253, 0.2) 22%,
-    rgba(194, 226, 250, 0.14) 40%,
-    rgba(175, 210, 242, 0.088) 57%,
-    rgba(var(--accent-mid-rgb), 0.044) 72%,
-    rgba(var(--accent-2-rgb), 0.017) 86%,
+    95% 85% at 50% 104%,
+    transparent 0%,
+    transparent 26%,
+    rgba(3, 3, 9, 0.18) 42%,
+    rgba(3, 3, 9, 0.38) 58%,
+    rgba(2, 2, 7, 0.58) 74%,
+    rgba(2, 2, 6, 0.74) 88%,
+    rgba(1, 1, 5, 0.82) 100%
+  );
+}
+
+/*
+ * O brilho: pequeno, no centro inferior, e o que de fato acompanha o cursor.
+ *
+ * O centro fica um pouco abaixo da borda da tela (a camada passa 8% da base),
+ * então o que aparece é uma meia cúpula de luz subindo do rodapé. Anda só na
+ * horizontal — subir e descer arrancaria a luz da base — e cresce um pouco
+ * enquanto o ponteiro se move, a partir da própria base (`transform-origin`).
+ */
+.sheen {
+  position: absolute;
+  inset: 0 -12% -8%;
+  transform-origin: 50% 100%;
+  transform: translate3d(calc(var(--sway) * 7vw), 0, 0) scale(calc(0.88 + var(--glow) * 0.18));
+  opacity: calc((0.2 + var(--glow) * 0.85) * var(--strength));
+  background: radial-gradient(
+    30% 34% at 50% 100%,
+    rgba(226, 242, 255, 0.36) 0%,
+    rgba(210, 234, 253, 0.27) 14%,
+    rgba(194, 226, 250, 0.19) 28%,
+    rgba(175, 210, 242, 0.12) 43%,
+    rgba(var(--accent-rgb), 0.07) 58%,
+    rgba(var(--accent-mid-rgb), 0.035) 73%,
+    rgba(var(--accent-2-rgb), 0.012) 87%,
     transparent 100%
   );
 }

@@ -6,8 +6,10 @@ interface AmbientGradientProps {
   variant?: 'full' | 'subtle';
 }
 
-/** Estado de repouso: nem apagado, nem no máximo. */
-const REST_GLOW = 0.5;
+/** Estado de repouso: brilho baixo, fundo sem a vinheta escura. */
+const REST_GLOW = 0.3;
+/** Quanto tempo depois do último movimento o brilho começa a apagar. */
+const IDLE_MS = 1_200;
 
 /**
  * Fundo da aplicação.
@@ -17,10 +19,13 @@ const REST_GLOW = 0.5;
  * Nenhuma camada tem borda dentro da viewport: as âncoras ficam fora dela, de
  * modo que não existe contorno de círculo para o olho encontrar.
  *
- * A posição é fixa; o que responde ao ponteiro é a INTENSIDADE. Quanto mais
- * perto o cursor chega da base, mais o degradê acende.
+ * O campo fica parado. O que responde ao ponteiro é o MOVIMENTO: enquanto o
+ * cursor se mexe, o brilho pequeno do centro inferior acende (mais quanto
+ * mais perto da base) e os tons escuros fecham em volta dele; parado por
+ * `IDLE_MS`, tudo volta ao repouso. O brilho ainda acompanha o cursor na
+ * horizontal, e o campo troca de cor com a altura dele.
  *
- * `--glow` e `--sway` são suavizados por rAF e movem só `opacity` e
+ * `--glow`, `--sway` e `--tone` são suavizados por rAF e movem só `opacity` e
  * `transform`, que ficam no compositor. O loop para sozinho ao alcançar o alvo.
  */
 export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX.Element {
@@ -34,19 +39,17 @@ export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX
 
     let glow = REST_GLOW;
     let sway = 0;
-    let lift = 0;
     let tone = 0.5;
     let targetGlow = REST_GLOW;
     let targetSway = 0;
-    let targetLift = 0;
     let targetTone = 0.5;
     let frame = 0;
     let running = false;
+    let idleTimer = 0;
 
     const apply = (): void => {
       root.style.setProperty('--glow', glow.toFixed(3));
       root.style.setProperty('--sway', sway.toFixed(3));
-      root.style.setProperty('--lift', lift.toFixed(3));
       root.style.setProperty('--tone', tone.toFixed(3));
     };
 
@@ -59,17 +62,12 @@ export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX
     const tick = (): void => {
       const deltaGlow = targetGlow - glow;
       const deltaSway = targetSway - sway;
-      const deltaLift = targetLift - lift;
       const deltaTone = targetTone - tone;
-      if (
-        Math.abs(deltaGlow) > 0.0015 ||
-        Math.abs(deltaSway) > 0.0015 ||
-        Math.abs(deltaLift) > 0.0015 ||
-        Math.abs(deltaTone) > 0.0015
-      ) {
-        glow += deltaGlow * 0.11;
-        sway += deltaSway * 0.16;
-        lift += deltaLift * 0.16;
+      if (Math.abs(deltaGlow) > 0.0015 || Math.abs(deltaSway) > 0.0015 || Math.abs(deltaTone) > 0.0015) {
+        // Acende rápido e apaga devagar: o destaque responde ao gesto na
+        // hora, e a volta ao repouso não parece um corte.
+        glow += deltaGlow * (deltaGlow > 0 ? 0.16 : 0.045);
+        sway += deltaSway * 0.14;
         tone += deltaTone * 0.09;
         apply();
         frame = requestAnimationFrame(tick);
@@ -85,6 +83,11 @@ export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX
       }
     };
 
+    const rest = (): void => {
+      targetGlow = REST_GLOW;
+      start();
+    };
+
     const handlePointerMove = (event: PointerEvent): void => {
       const width = window.innerWidth;
       const height = window.innerHeight;
@@ -93,26 +96,22 @@ export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX
       const vertical = (height - event.clientY) / height;
       const distance = Math.min(1, Math.hypot(horizontal * 0.55, vertical));
 
-      targetGlow = 1 - distance * 0.55;
-      // Clamp em vez de deixar `horizontal` correr de -1 a 1: multiplicar por
-      // 1.15 dá mais alcance ao sway sem também esticar `--tone` (que reusa a
-      // posição vertical crua, não este valor).
-      targetSway = Math.max(-1, Math.min(1, horizontal * 1.15));
-      // O eixo vertical passa a mover o campo também, e não só trocar a cor.
-      targetLift = (event.clientY - height / 2) / (height / 2);
-      // O que mais se percebe não é o brilho, é a COR: subir o cursor puxa o
-      // campo para o roxo, descer puxa para o azul. Intensidade sozinha, num
-      // degradê que cobre a tela inteira, é mudança fácil de não notar.
+      // Mexer sempre acende bem; perto do centro inferior, acende tudo.
+      targetGlow = 1 - distance * 0.25;
+      targetSway = Math.max(-1, Math.min(1, horizontal));
+      // Subir o cursor puxa o campo para o roxo, descer puxa para o azul.
       targetTone = Math.max(0, Math.min(1, event.clientY / height));
       start();
+
+      window.clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(rest, IDLE_MS);
     };
 
     const handlePointerLeave = (): void => {
-      targetGlow = REST_GLOW;
+      window.clearTimeout(idleTimer);
       targetSway = 0;
-      targetLift = 0;
       targetTone = 0.5;
-      start();
+      rest();
     };
 
     window.addEventListener('pointermove', handlePointerMove, { passive: true });
@@ -120,6 +119,7 @@ export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX
 
     return () => {
       cancelAnimationFrame(frame);
+      window.clearTimeout(idleTimer);
       window.removeEventListener('pointermove', handlePointerMove);
       document.removeEventListener('pointerleave', handlePointerLeave);
     };
@@ -136,6 +136,7 @@ export function AmbientGradient({ variant = 'full' }: AmbientGradientProps): JSX
         <div className={`${styles.tint} ${styles.tintCool}`} />
         <div className={`${styles.tint} ${styles.tintWarm}`} />
       </div>
+      <div className={styles.shade} />
       <div className={styles.sheen} />
       <div className={styles.grid} />
       <div className={styles.grain} />
