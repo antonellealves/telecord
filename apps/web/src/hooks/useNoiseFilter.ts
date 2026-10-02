@@ -14,6 +14,20 @@ export type NoiseFilterStatus = 'krisp' | 'browser' | 'idle' | 'off';
 /** `name` fixo do processador em `@livekit/krisp-noise-filter`. */
 const KRISP_PROCESSOR_NAME = 'livekit-noise-filter';
 
+/** `ServerInfo_Edition.Cloud` em `@livekit/protocol`, que o SDK não reexporta. */
+const LIVEKIT_CLOUD_EDITION = 1;
+
+/**
+ * O Krisp só é licenciado no LiveKit Cloud, e o servidor diz qual é a edição
+ * dele ao entrar na sala. Num self-hosted (o caso de `livekit/livekit.yaml`)
+ * não adianta tentar: o processador entra, desliga a supressão do navegador,
+ * passa a voz por um AudioWorklet — e a licença é recusada depois, sem filtrar
+ * nada. Era um desvio que só custava qualidade e latência.
+ */
+function isLiveKitCloud(room: Room): boolean {
+  return room.serverInfo?.edition === LIVEKIT_CLOUD_EDITION;
+}
+
 async function setBrowserNoiseSuppression(
   room: Room,
   track: LocalAudioTrack | null,
@@ -48,6 +62,8 @@ async function reconcile(
     return krispRejected.current ? 'browser' : 'idle';
   }
   if (hasKrisp) return 'krisp';
+
+  if (!isLiveKitCloud(room)) krispRejected.current = true;
 
   if (!krispRejected.current) {
     // Import dinâmico: o pacote carrega um modelo de IA pesado, que só deve

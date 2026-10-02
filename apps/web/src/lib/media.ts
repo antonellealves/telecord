@@ -7,6 +7,7 @@ import {
   type VideoCaptureOptions,
   type VideoEncoding,
 } from 'livekit-client';
+import { SCREEN_AUDIO_PROFILE, VOICE_PROFILE, type AudioSendProfile } from './audioSendProfile';
 import { canCaptureSystemAudio } from './shell';
 
 /**
@@ -124,17 +125,36 @@ export function screenEncoding(id: ScreenQualityId): VideoEncoding {
   };
 }
 
+function audioPreset(profile: AudioSendProfile): AudioPreset {
+  return { maxBitrate: profile.maxBitrate, priority: 'high' };
+}
+
 /**
- * Voz a 256 kbps — o teto que faz o Opus nunca apertar.
+ * Voz. Bitrate, RED e DTX vêm de `VOICE_PROFILE` (`audioSendProfile.ts`), que
+ * explica a escolha e é o que a auditoria do sender confere.
  *
- * O Opus fica transparente para fala bem abaixo disso; o ponto do teto
- * folgado é o encoder gastar o que precisa nos transientes (consoante,
- * sibilância, risada) em vez de borrar para caber no orçamento. O servidor
- * LiveKit responde `maxaveragebitrate=510000` no SDP, então é este
- * `maxBitrate` do sender que manda de fato. Mesmo valor do mediasoup
- * (`MIC_TARGET_BITRATE`).
+ * O servidor LiveKit responde `maxaveragebitrate=510000` no SDP, então é o
+ * `maxBitrate` do sender que manda de fato no encoder.
  */
-export const VOICE_PRESET: AudioPreset = { maxBitrate: 256_000, priority: 'high' };
+export const VOICE_PRESET: AudioPreset = audioPreset(VOICE_PROFILE);
+
+/**
+ * Opções de publicação da TELA, que o SDK aplica também ao áudio dela.
+ *
+ * Sem `audioPreset` e `red` aqui, o áudio da tela herdava o perfil da voz dos
+ * `publishDefaults` — RED incluído, porque `red: true` explícito vence o
+ * padrão do SDK de desligar RED em estéreo.
+ */
+export function screenSharePublishOptions(quality: ScreenQualityId = DEFAULT_SCREEN_QUALITY): TrackPublishOptions {
+  return {
+    screenShareEncoding: screenEncoding(quality),
+    degradationPreference: 'maintain-resolution',
+    audioPreset: audioPreset(SCREEN_AUDIO_PROFILE),
+    red: SCREEN_AUDIO_PROFILE.red,
+    dtx: SCREEN_AUDIO_PROFILE.dtx,
+    forceStereo: SCREEN_AUDIO_PROFILE.stereo,
+  };
+}
 
 /** SPEC §6.1. */
 export const roomOptions: RoomOptions = {
@@ -159,12 +179,12 @@ export const roomOptions: RoomOptions = {
      * DTX desligado: ele corta o envio em trecho que o encoder julga
      * silencioso, e o custo aparece no começo de cada frase (ataque de
      * consoante engolido) e em fala baixa tratada como silêncio. Mesma decisão
-     * do mediasoup (`audioProfile.ts`).
+     * do mediasoup (`hooks/mediasoup/audioProfile.ts`).
      */
-    dtx: false,
+    dtx: VOICE_PROFILE.dtx,
     // Redundância de pacote (RED): uma perda vira áudio íntegro em vez de um
     // "tec" no meio da palavra. Dobra o custo de rede da voz.
-    red: true,
+    red: VOICE_PROFILE.red,
     audioPreset: VOICE_PRESET,
     stopMicTrackOnMute: false,
     /*

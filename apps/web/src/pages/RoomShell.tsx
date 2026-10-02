@@ -35,6 +35,7 @@ import { useSoundboardSpeakers } from '../hooks/useSoundboardSpeakers';
 import { useSoundVolume } from '../hooks/useSoundVolume';
 import { useTalkControls } from '../hooks/useTalkControls';
 import { useNoiseFilter } from '../hooks/useNoiseFilter';
+import { useAudioSendAudit } from '../hooks/useAudioSendAudit';
 import { useForcedMove } from '../hooks/useForcedMove';
 import { useOverlay } from '../hooks/useOverlay';
 import { useRoomGamification } from '../hooks/useRoomGamification';
@@ -98,6 +99,7 @@ export function RoomShell({
   const cameras = useCameras(push);
   const talk = useTalkControls((message) => push('error', message));
   const noiseFilter = useNoiseFilter();
+  useAudioSendAudit();
   const sound = useSoundVolume();
   const { status: authStatus, user } = useAuth();
   /*

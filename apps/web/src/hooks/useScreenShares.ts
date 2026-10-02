@@ -4,12 +4,7 @@ import { type Participant, type Room, RoomEvent, Track } from 'livekit-client';
 import type { ScreenShareOwner } from '@telecord/shared';
 import type { AttachablePublication } from '../lib/attachableTrack';
 import { describeScreenShareError, isScreenShareSupported } from '../lib/errors';
-import {
-  DEFAULT_SCREEN_QUALITY,
-  screenEncoding,
-  screenShareCaptureOptions,
-  type ScreenQualityId,
-} from '../lib/media';
+import { screenShareCaptureOptions, screenSharePublishOptions, type ScreenQualityId } from '../lib/media';
 import type { ToastKind } from './useToasts';
 
 export interface ScreenShareEntry {
@@ -234,10 +229,7 @@ export function useScreenShares(notify: (kind: ToastKind, message: string) => vo
       setIsBusy(true);
       const options = screenShareCaptureOptions(quality);
       void room.localParticipant
-        .setScreenShareEnabled(true, options, {
-          screenShareEncoding: screenEncoding(quality ?? DEFAULT_SCREEN_QUALITY),
-          degradationPreference: 'maintain-resolution',
-        })
+        .setScreenShareEnabled(true, options, screenSharePublishOptions(quality))
         .then(() => {
           silenceVoicesInSharedAudio(room, notifyRef.current);
         })
@@ -299,10 +291,11 @@ export function useScreenShares(notify: (kind: ToastKind, message: string) => vo
       void room.localParticipant
         .setScreenShareEnabled(false)
         .then(() =>
-          room.localParticipant.setScreenShareEnabled(true, screenShareCaptureOptions(quality), {
-            screenShareEncoding: screenEncoding(quality),
-            degradationPreference: 'maintain-resolution',
-          }),
+          room.localParticipant.setScreenShareEnabled(
+            true,
+            screenShareCaptureOptions(quality),
+            screenSharePublishOptions(quality),
+          ),
         )
         .then(() => {
           silenceVoicesInSharedAudio(room, notifyRef.current);
