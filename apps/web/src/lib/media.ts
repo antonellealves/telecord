@@ -1,6 +1,8 @@
 import {
+  TrackEvent,
   VideoPresets,
   type AudioPreset,
+  type RemoteTrack,
   type RoomOptions,
   type ScreenShareCaptureOptions,
   type TrackPublishOptions,
@@ -25,15 +27,22 @@ import { canCaptureSystemAudio } from './shell';
  *
  * ## O que mais estava contra a nitidez
  *
- * 1. `contentHint: 'motion'` mandava o codificador SACRIFICAR detalhe para
- *    manter quadro. Para tela, é exatamente o contrário do que se quer.
- * 2. Sem `degradationPreference`, o WebRTC escolhe `balanced` e, no primeiro
+ * 1. Sem `degradationPreference`, o WebRTC escolhe `balanced` e, no primeiro
  *    aperto de CPU ou banda, derruba a RESOLUÇÃO — e ela não volta sozinha
  *    com a mesma pressa. É a causa mais comum de "abri em 1080 e virou 720".
- * 3. `resolution` vira `ideal` nas constraints, que é um pedido, não um piso.
+ * 2. `resolution` vira `ideal` nas constraints, que é um pedido, não um piso.
  *
- * Os três são tratados em `screenShareCaptureOptions` e nas opções de
+ * Os dois são tratados em `screenShareCaptureOptions` e nas opções de
  * publicação.
+ *
+ * ## E a fluidez
+ *
+ * Bitrate alto compra nitidez e COBRA fluidez: o tamanho de um quadro-chave
+ * cresce junto com o teto, e é o quadro-chave que engasga a imagem quando
+ * demora a atravessar a rede. Os tetos abaixo ficam perto do ponto em que
+ * mais bitrate já não se vê, para caber com folga no SFU e na descida de quem
+ * assiste. A outra metade está do lado de quem recebe — ver
+ * `SCREEN_PLAYOUT_DELAY_SECONDS`.
  */
 export type ScreenQualityId = 'suave' | 'equilibrada' | 'alta' | 'maxima';
 
@@ -72,36 +81,40 @@ export const SCREEN_QUALITY_OPTIONS: ScreenQualityOption[] = [
   {
     id: 'alta',
     label: '1080p · 60 fps — nítido',
-    hint: 'Padrão. Texto fino legível e movimento fluido; ~20 Mbps.',
+    hint: 'Padrão. Texto fino legível e movimento fluido; ~12 Mbps de subida.',
     width: 1920,
     height: 1080,
     fps: 60,
-    // 20 Mbps em 1080p60 é ~4x o que videoconferência costuma usar. Em tela
-    // cheia de texto (o conteúdo mais caro que existe para um codificador,
-    // porque cada letra é borda de alto contraste) é a diferença entre
-    // legível e nítido.
-    bitrate: 20_000_000,
+    /*
+     * 12 Mbps, e não os 20 que já estiveram aqui.
+     *
+     * Em 1080p60 com VP9, 12 Mbps é ~2x o que uma transmissão de jogo usa:
+     * acima disso o ganho de imagem some e o custo não. Cada Mbps a mais
+     * engorda o quadro-chave, que é o que trava a imagem quando demora a
+     * chegar, e é multiplicado por cada pessoa assistindo na saída do SFU.
+     * A 20 Mbps, três espectadores já pediam 60 Mbps de uma VM pequena.
+     */
+    bitrate: 12_000_000,
   },
   {
     /*
-     * Sem compromisso nenhum.
+     * O teto mais alto que ainda atravessa a rede em ritmo constante.
      *
-     * 50 Mbps em 4K60 é território de captura profissional, não de
-     * videoconferência — e é o ponto em que texto fino em tela 4K chega do
-     * outro lado sem nenhum artefato visível de compressão. Como o telecord
-     * não grava nada (só retransmite), o único custo é banda de subida de
-     * quem escolhe este nível, e quem escolhe está pedindo exatamente isso.
+     * Já foi 50 Mbps. Esse número só fazia sentido no papel: por espectador,
+     * é mais do que uma VM pequena repassa em ritmo constante e mais do que
+     * muita conexão doméstica desce — nitidez de sobra com a imagem
+     * engasgando. 25 Mbps em 1440p60 continua sem artefato visível.
      *
      * O controle de congestionamento continua valendo: em rede que não
      * aguenta, o encoder desce sozinho. Este número é um TETO, não um piso.
      */
     id: 'maxima',
     label: 'Resolução original · 60 fps — sem compressão visível',
-    hint: 'Sem redimensionar: 1440p ou 4K nativos, qualidade de masterização. Exige ~50 Mbps de subida.',
+    hint: 'Sem redimensionar: 1440p ou 4K nativos. Exige ~25 Mbps de subida, e o mesmo de descida de quem assiste.',
     width: 0,
     height: 0,
     fps: 60,
-    bitrate: 50_000_000,
+    bitrate: 25_000_000,
   },
 ];
 
@@ -268,19 +281,21 @@ export function screenShareCaptureOptions(
         }
       : {}),
     /*
-     * `text`, e não `motion`.
+     * `motion` — porque é o que roda de qualquer jeito.
      *
-     * A dica diz ao codificador o que sacrificar quando aperta. `motion` —
-     * que eu tinha posto aqui antes — manda jogar DETALHE fora para segurar o
-     * quadro, e numa tela cheia de texto isso é exatamente o avesso do que se
-     * quer: é o que fazia o 1080p chegar com cara de 720p esticado.
+     * Aqui já esteve `text`, e nunca valeu: ao publicar tela com codec SVC
+     * (o VP9 dos `publishDefaults`), o livekit-client troca a dica para
+     * `motion` e fixa três camadas temporais (L1T3), por cima do que foi
+     * pedido. O motivo é dele: no caminho de "tela" do Chrome, VP9 com
+     * camadas temporais não passa de 5 quadros por segundo. Ver
+     * `publishTrack` em LocalParticipant.ts do SDK.
      *
-     * `text` é a dica específica para captura de tela, e `detail` é o nome
-     * antigo dela. Nenhuma das duas congela a imagem em movimento: o que elas
-     * mudam é a ORDEM do sacrifício, e com o bitrate destes níveis não há
-     * sacrifício a fazer na maior parte do tempo.
+     * Declarar `motion` não muda o que sai no fio; muda que este arquivo
+     * para de afirmar uma configuração que não existe. O que segura a
+     * nitidez é o `degradationPreference: 'maintain-resolution'` das opções
+     * de publicação (que o SDK respeita) e o bitrate do nível — não a dica.
      */
-    contentHint: 'text',
+    contentHint: 'motion',
     /*
      * `resolution` é o pedido de captura, e o LiveKit o traduz para `ideal`.
      *
@@ -289,7 +304,7 @@ export function screenShareCaptureOptions(
      * degrada, FALHA. A pessoa clicaria em compartilhar e não sairia nada.
      *
      * O que garante a nitidez não é forçar a captura, e sim o que vem depois:
-     * `contentHint: 'text'`, o bitrate alto de `screenEncoding` e o
+     * o bitrate de `screenEncoding` e o
      * `degradationPreference: 'maintain-resolution'`. Juntos, o que o
      * navegador entregar chega inteiro do outro lado.
      *
@@ -312,6 +327,55 @@ export function screenShareCaptureOptions(
     // programa entram junto na sala.
     systemAudio: 'exclude',
   };
+}
+
+/**
+ * Folga do buffer de recepção da TELA, em segundos.
+ *
+ * ## O sintoma
+ *
+ * A transmissão corre e, de tempos em tempos, dá uma travadinha e segue.
+ *
+ * ## De onde vem
+ *
+ * O navegador reproduz vídeo WebRTC com o MENOR atraso que consegue — o certo
+ * para uma conversa. Só que um stream de tela não chega em ritmo constante:
+ * um quadro-chave (o codificador emite periodicamente, e mais um a cada perda
+ * que a retransmissão não cobre) pesa dezenas de vezes um quadro comum e leva
+ * vários intervalos de quadro para atravessar a rede; o SFU, numa VM pequena,
+ * também entrega em rajadas. Sem folga, cada atraso desses vira imagem parada
+ * até o quadro chegar inteiro.
+ *
+ * ## O que isto faz
+ *
+ * Pede ao receptor que segure sempre ~250 ms de vídeo. O atraso extra é
+ * constante, e para quem ASSISTE uma tela não se percebe; em troca, o que
+ * chegar até 250 ms atrasado é exibido na hora certa em vez de engasgar.
+ *
+ * Vale só para a tela e o áudio DELA, que saem no mesmo fluxo e precisam andar
+ * juntos. A voz fica de fora: numa conversa, 250 ms a mais é gente falando por
+ * cima uma da outra.
+ */
+export const SCREEN_PLAYOUT_DELAY_SECONDS = 0.25;
+
+/** Aplica a folga acima a uma track remota de tela (vídeo ou áudio dela). */
+export function applyScreenPlayoutDelay(track: RemoteTrack): void {
+  const receiver = track.receiver;
+  if (receiver === undefined) {
+    return;
+  }
+  if ('playoutDelayHint' in receiver) {
+    // Chromium. O SDK zera a dica sozinho quando a track acaba.
+    track.setPlayoutDelay(SCREEN_PLAYOUT_DELAY_SECONDS);
+    return;
+  }
+  // Firefox e Safari só têm o nome padronizado, em milissegundos — e aqui a
+  // limpeza é nossa: o receptor é reaproveitado pela próxima track que chegar
+  // na mesma linha do SDP, e sem zerar a folga iria junto para uma câmera.
+  receiver.jitterBufferTarget = SCREEN_PLAYOUT_DELAY_SECONDS * 1000;
+  track.once(TrackEvent.Ended, () => {
+    receiver.jitterBufferTarget = null;
+  });
 }
 
 /** SPEC §6.9. */

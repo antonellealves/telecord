@@ -1,10 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRoomContext } from '@livekit/components-react';
-import { type Participant, type Room, RoomEvent, Track } from 'livekit-client';
+import {
+  type Participant,
+  type RemoteTrack,
+  type RemoteTrackPublication,
+  type Room,
+  RoomEvent,
+  Track,
+} from 'livekit-client';
 import type { ScreenShareOwner } from '@telecord/shared';
 import type { AttachablePublication } from '../lib/attachableTrack';
 import { describeScreenShareError, isScreenShareSupported } from '../lib/errors';
-import { screenShareCaptureOptions, screenSharePublishOptions, type ScreenQualityId } from '../lib/media';
+import {
+  applyScreenPlayoutDelay,
+  screenShareCaptureOptions,
+  screenSharePublishOptions,
+  type ScreenQualityId,
+} from '../lib/media';
 import type { ToastKind } from './useToasts';
 
 export interface ScreenShareEntry {
@@ -215,6 +227,35 @@ export function useScreenShares(notify: (kind: ToastKind, message: string) => vo
       for (const event of SHARE_EVENTS) {
         room.off(event, refresh);
       }
+    };
+  }, [room]);
+
+  /*
+   * Folga de recepção nas telas dos OUTROS (ver `SCREEN_PLAYOUT_DELAY_SECONDS`).
+   *
+   * Aqui, e não no quadro de vídeo: o áudio da tela não tem quadro — toca pelo
+   * RoomAudioRenderer — e precisa da mesma folga que a imagem, senão o som
+   * sairia 250 ms adiantado. O evento dispara de novo a cada reassinatura, e é
+   * por isso que a folga sobrevive a uma reconexão.
+   */
+  useEffect(() => {
+    const cushion = (track: RemoteTrack | undefined, publication: RemoteTrackPublication): void => {
+      const isScreen =
+        publication.source === Track.Source.ScreenShare ||
+        publication.source === Track.Source.ScreenShareAudio;
+      if (track !== undefined && isScreen) {
+        applyScreenPlayoutDelay(track);
+      }
+    };
+
+    for (const participant of room.remoteParticipants.values()) {
+      for (const publication of participant.trackPublications.values()) {
+        cushion(publication.track, publication);
+      }
+    }
+    room.on(RoomEvent.TrackSubscribed, cushion);
+    return () => {
+      room.off(RoomEvent.TrackSubscribed, cushion);
     };
   }, [room]);
 

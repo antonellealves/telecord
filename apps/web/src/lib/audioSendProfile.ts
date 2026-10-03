@@ -108,7 +108,7 @@ export function roomAudioDownlink(
  * Teto do áudio de uma sala cheia (10 pessoas, uma tela com áudio) na descida
  * de cada ouvinte.
  *
- * A tela no nível padrão pede 20 Mbps. Numa conexão doméstica de 25 Mbps
+ * A tela no nível máximo pede 25 Mbps. Numa conexão doméstica de 30 Mbps
  * sobram ~5, e o áudio — que tem prioridade sobre o vídeo — não pode comer
  * mais que metade dessa folga, senão é a tela que cede.
  */

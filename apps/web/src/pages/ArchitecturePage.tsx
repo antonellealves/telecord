@@ -422,7 +422,7 @@ const QUALITY_CHAIN: QualityLink[] = [
       'reaplicado depois que a conexão existe, senão não pega. É aqui também que se escolhe o ' +
       'que sacrificar sob pressão — tela prefere perder quadro a perder nitidez; câmera, o ' +
       'contrário.',
-    numbers: 'voz 256 kbps · tela 20–50 Mbps · câmera 8 Mbps',
+    numbers: 'voz 256 kbps · tela 12–25 Mbps · câmera 8 Mbps',
   },
   {
     stage: 'Reprodução',

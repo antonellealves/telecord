@@ -410,7 +410,7 @@ Mono continua: voz não tem o que estereofonar, e estéreo só dobraria a conta.
 ```ts
 await localParticipant.setScreenShareEnabled(true, {
   audio: true,                                   // áudio da aba/sistema, quando o browser oferecer
-  contentHint: 'text',                           // preserva detalhe — ver 6.2.1
+  contentHint: 'motion',                         // o SDK força isto com VP9 — ver 6.2.1
   resolution: <nível escolhido>.resolution,      // omitido no nível "original"
   selfBrowserSurface: 'exclude',                 // evita o efeito túnel de compartilhar a própria aba
   surfaceSwitching: 'include',                   // trocar de janela sem republicar
@@ -433,18 +433,21 @@ Quatro níveis, escolhidos no painel de áudio e vídeo e guardados por **máqui
 
 **Os presets do LiveKit não servem aqui.** `ScreenSharePresets.h1080fps30` pede 1080p a 5 Mbps, que é a conta para vídeo COMUM — onde o olho perdoa borrão em textura. Tela é quase toda texto e linha fina, o conteúdo mais caro que existe para um codificador, porque cada letra é borda de alto contraste. A 5 Mbps o codec desiste do detalhe e entrega um 1080p com cara de 720p esticado. Daí os níveis acima terem bitrate próprio.
 
-Quatro coisas atuavam juntas contra a nitidez, e todas foram corrigidas:
+Três coisas atuavam juntas contra a nitidez, e todas foram corrigidas:
 
-1. **`contentHint`** era `'motion'`, que manda sacrificar DETALHE para segurar o quadro — o avesso do que uma tela de texto precisa. Agora é `'text'`.
-2. **`degradationPreference`** não era declarado, então o WebRTC usava `balanced` e derrubava a RESOLUÇÃO ao primeiro aperto de CPU ou banda, sem voltar com a mesma pressa. Agora é `maintain-resolution`: perde quadro antes de perder pixel.
-3. **`adaptiveStream: true`** pedia um fluxo do tamanho do ELEMENTO, assumindo densidade de pixel 1 — num monitor de alta densidade, metade dos pixels que a tela desenha. Agora é `{ pixelDensity: 'screen' }`, e o pedido acompanha o monitor de quem assiste. Este era o único que agia do lado de QUEM RECEBE, e sozinho já explicava boa parte da queixa.
-4. **VP8** borra borda de letra que o VP9 resolve no mesmo bitrate. Agora `videoCodec: 'vp9'` com `backupCodec: { codec: 'vp8' }` — quem não tem VP9 recebe a versão VP8 em vez de nada.
+1. **`degradationPreference`** não era declarado, então o WebRTC usava `balanced` e derrubava a RESOLUÇÃO ao primeiro aperto de CPU ou banda, sem voltar com a mesma pressa. Agora é `maintain-resolution`: perde quadro antes de perder pixel.
+2. **`adaptiveStream: true`** pedia um fluxo do tamanho do ELEMENTO, assumindo densidade de pixel 1 — num monitor de alta densidade, metade dos pixels que a tela desenha. Agora é `{ pixelDensity: 'screen' }`, e o pedido acompanha o monitor de quem assiste. Este era o único que agia do lado de QUEM RECEBE, e sozinho já explicava boa parte da queixa.
+3. **VP8** borra borda de letra que o VP9 resolve no mesmo bitrate. Agora `videoCodec: 'vp9'` com `backupCodec: { codec: 'vp8' }` — quem não tem VP9 recebe a versão VP8 em vez de nada.
 
-`resolution` continua virando `ideal` nas constraints, e isso é deliberado: com `exact`, um monitor 1600×900 não degradaria para o que cabe, **falharia** — a pessoa clicaria em compartilhar e não sairia nada. Quem garante a qualidade é o que vem depois da captura, nos quatro pontos acima.
+`resolution` continua virando `ideal` nas constraints, e isso é deliberado: com `exact`, um monitor 1600×900 não degradaria para o que cabe, **falharia** — a pessoa clicaria em compartilhar e não sairia nada. Quem garante a qualidade é o que vem depois da captura, nos três pontos acima.
 
 **Trocar o nível durante uma transmissão republica a tela.** O `screenShareEncoding` só é lido na publicação, então mexer nele depois não alcança a track no ar — era por isso que o seletor parecia não funcionar. `useScreenShares.restart` desliga e liga: o navegador não volta a perguntar qual tela (a permissão já foi dada), e o custo é uma piscada no quadro de quem assiste. O texto do seletor muda para dizer isso quando há transmissão ativa.
 
 O nível "máxima" tem largura 0, que quer dizer "não redimensione". Esse valor **não** pode ser passado como `resolution`: nesse nível o campo é omitido.
+
+**`contentHint` não é escolha nossa com VP9.** Ao publicar tela com codec SVC, o livekit-client troca a dica para `'motion'` e fixa `scalabilityMode: 'L1T3'`, por cima do que a captura pediu — no caminho de "tela" do Chrome, VP9 com camadas temporais não passa de 5 quadros por segundo. O código já teve `'text'` aqui e ela nunca chegou ao fio; hoje declara `'motion'`, que é o que roda. A nitidez fica por conta do bitrate e do `maintain-resolution`, que o SDK respeita.
+
+**Fluidez é a outra metade, e ela tem dois lados.** Do lado de quem transmite, o teto de bitrate: um quadro-chave cresce junto com ele, e é o quadro-chave que trava a imagem quando demora a atravessar a rede — além de cada Mbps ser multiplicado por espectador na saída do SFU. Por isso os tetos da tabela param em 12 e 25 Mbps (já estiveram em 20 e 50, e a transmissão engasgava de tempos em tempos). Do lado de quem assiste, `SCREEN_PLAYOUT_DELAY_SECONDS`: o receptor segura sempre ~250 ms da tela e do áudio dela, e o que chega até 250 ms atrasado é exibido na hora certa em vez de virar travadinha. A voz não entra nessa folga.
 
 
 #### 6.2.2 O eco do áudio de tela
