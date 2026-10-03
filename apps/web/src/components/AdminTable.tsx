@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import type { Page } from '@telecord/shared';
 import { useKeysetList } from '../hooks/useKeysetList';
+import { ApiError } from '../lib/apiClient';
 import { SearchIcon } from './icons';
 import styles from './Admin.module.css';
 
@@ -10,8 +11,21 @@ export interface Column<T> {
   cell: (row: T) => ReactNode;
 }
 
+/**
+ * Ação destrutiva por linha: um botão que pede confirmação na própria linha e,
+ * dando certo, tira a linha da lista.
+ */
+export interface RowAction<T> {
+  label: string;
+  busyLabel: string;
+  title?: string;
+  run: (row: T) => Promise<void>;
+}
+
 interface Props<T> {
   columns: Column<T>[];
+  /** Sem isto, a tabela é só leitura. */
+  rowAction?: RowAction<T>;
   fetchPage: (
     options: { cursor: string | null; q: string | null },
     signal: AbortSignal,
@@ -34,9 +48,13 @@ interface Props<T> {
  * `AdminUsers` e `AdminLogs` NÃO usam isto de propósito: as duas têm célula
  * que age — trocar papel, filtrar por nível —, e generalizar a ponto de caber
  * ação por célula transformaria este arquivo numa linguagem de tabela.
+ *
+ * `rowAction` é a exceção que cabe: UMA ação por linha, sempre no mesmo
+ * formato (apagar, com confirmação), sem a célula precisar conhecer a lista.
  */
 export function AdminTable<T>({
   columns,
+  rowAction,
   fetchPage,
   rowKey,
   searchPlaceholder,
@@ -59,6 +77,28 @@ export function AdminTable<T>({
   );
   const list = useKeysetList<T>({ key: debounced, fetchPage: load });
 
+  // Dois cliques, na própria linha: o primeiro arma, o segundo apaga. Um
+  // clique só, numa tabela densa, apagaria a linha vizinha por engano.
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  const runAction = async (row: T): Promise<void> => {
+    if (rowAction === undefined) return;
+    const key = rowKey(row);
+    setBusy(key);
+    setFailure(null);
+    try {
+      await rowAction.run(row);
+      list.remove((item) => rowKey(item) === key);
+    } catch (error) {
+      setFailure(error instanceof ApiError ? error.message : 'A ação não funcionou.');
+    } finally {
+      setBusy(null);
+      setConfirming(null);
+    }
+  };
+
   return (
     <div className={styles.card}>
       <div className={styles.filters}>
@@ -79,6 +119,7 @@ export function AdminTable<T>({
         </button>
       </div>
 
+      {failure !== null ? <p className={styles.error}>{failure}</p> : null}
       {list.error !== null ? <p className={styles.error}>{list.error}</p> : null}
 
       {list.isLoading ? (
@@ -93,16 +134,54 @@ export function AdminTable<T>({
                 {columns.map((column) => (
                   <th key={column.header}>{column.header}</th>
                 ))}
+                {rowAction === undefined ? null : <th />}
               </tr>
             </thead>
             <tbody>
-              {list.items.map((row) => (
-                <tr key={rowKey(row)}>
-                  {columns.map((column) => (
-                    <td key={column.header}>{column.cell(row) ?? '—'}</td>
-                  ))}
-                </tr>
-              ))}
+              {list.items.map((row) => {
+                const key = rowKey(row);
+                return (
+                  <tr key={key}>
+                    {columns.map((column) => (
+                      <td key={column.header}>{column.cell(row) ?? '—'}</td>
+                    ))}
+                    {rowAction === undefined ? null : (
+                      <td className={styles.actions}>
+                        {confirming === key ? (
+                          <>
+                            <button
+                              type="button"
+                              className={styles.danger}
+                              disabled={busy === key}
+                              onClick={() => void runAction(row)}
+                            >
+                              {busy === key ? rowAction.busyLabel : 'Confirmar'}
+                            </button>
+                            <button
+                              type="button"
+                              className={styles.ghost}
+                              disabled={busy === key}
+                              onClick={() => setConfirming(null)}
+                            >
+                              Cancelar
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            className={styles.danger}
+                            disabled={busy !== null}
+                            title={rowAction.title}
+                            onClick={() => setConfirming(key)}
+                          >
+                            {rowAction.label}
+                          </button>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

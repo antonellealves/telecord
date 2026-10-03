@@ -13,6 +13,8 @@ export interface KeysetList<T> {
   reload: () => void;
   /** Troca uma linha no lugar, depois de editá-la. Evita recarregar a página. */
   replace: (matches: (item: T) => boolean, next: T) => void;
+  /** Tira uma linha do lugar, depois de apagá-la. Mesmo motivo de `replace`. */
+  remove: (matches: (item: T) => boolean) => void;
 }
 
 interface Options<T> {
@@ -102,6 +104,10 @@ export function useKeysetList<T>({ key, fetchPage }: Options<T>): KeysetList<T> 
     setItems((current) => current.map((item) => (matches(item) ? next : item)));
   }, []);
 
+  const remove = useCallback((matches: (item: T) => boolean) => {
+    setItems((current) => current.filter((item) => !matches(item)));
+  }, []);
+
   return {
     items,
     isLoading,
@@ -111,5 +117,6 @@ export function useKeysetList<T>({ key, fetchPage }: Options<T>): KeysetList<T> 
     loadMore,
     reload: () => setReloadToken((value) => value + 1),
     replace,
+    remove,
   };
 }

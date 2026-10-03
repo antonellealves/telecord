@@ -19,6 +19,7 @@ import { StatusScreen } from '../components/StatusScreen';
 import { AreaChart, BarChart, BarList } from '../components/charts';
 import { useAuth } from '../hooks/useAuth';
 import { fetchMetrics } from '../lib/admin';
+import { deleteRoom } from '../lib/rooms';
 import { ApiError } from '../lib/apiClient';
 import styles from '../components/Admin.module.css';
 import statusStyles from '../components/StatusScreen.module.css';
@@ -172,6 +173,13 @@ export function AdminPage(): JSX.Element {
               rowKey={(row) => row.id}
               searchPlaceholder="Buscar por slug ou nome"
               emptyLabel="Nenhuma sala registrada."
+              rowAction={{
+                label: 'Apagar',
+                busyLabel: 'Apagando…',
+                title:
+                  'Tira a sala do diretório. Quem estiver conversando nela não é desconectado — o slug volta a ser avulso.',
+                run: (row) => deleteRoom(row.slug),
+              }}
               columns={[
                 { header: 'Slug', cell: (row) => row.slug },
                 { header: 'Nome', cell: (row) => row.name },
