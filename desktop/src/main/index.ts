@@ -130,6 +130,11 @@ function createMainWindow(): BrowserWindow {
     minHeight: MIN_HEIGHT,
     show: false,
     title: 'telecord',
+    // Só no Linux: lá a janela não herda ícone de lugar nenhum. No Windows e
+    // no macOS quem manda é o ícone do executável, posto pelo electron-builder.
+    ...(process.platform === 'linux'
+      ? { icon: join(__dirname, '..', '..', 'assets', 'icon.png') }
+      : {}),
     webPreferences: {
       preload: join(__dirname, '..', 'preload', 'index.js'),
       contextIsolation: true,

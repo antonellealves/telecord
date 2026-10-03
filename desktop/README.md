@@ -95,12 +95,20 @@ um artefato não assinado (útil enquanto não há certificado configurado).
 
 ## Ícones
 
-`build/icon.png` (512×512), `build/icon.ico` e `build/icon.icns` neste
-repositório são **placeholders gerados programaticamente** (um quadrado
-sólido na cor de acento do app) — substitua pelos ícones finais antes de
-publicar para o público. Ferramentas comuns para gerar o conjunto completo
-a partir de uma arte única: [electron-icon-builder](https://www.npmjs.com/package/electron-icon-builder)
-ou, no macOS, `iconutil` (nativo) a partir de um `.iconset`.
+Todos saem de uma arte só, `scripts/icon-source.jpg`, pelo
+`scripts/gen-icons.py` (precisa de Pillow). Para trocar o ícone, troque o
+`.jpg` e rode, da raiz do repositório:
+
+```
+python scripts/gen-icons.py
+```
+
+| Pasta | O que tem | Quem usa |
+|---|---|---|
+| `build/` | `icon.ico`, `icon.icns`, `icon.png` | O electron-builder, ao montar o instalador. **Não** entra no pacote. |
+| `assets/` | `tray.ico`, `tray.png`, `tray@2x.png`, `icon.png` | O app em execução: bandeja e ícone da janela. Entra no pacote. |
+
+O mesmo script gera o favicon do site em `apps/web/public/`.
 
 ## Como o front detecta o shell
 

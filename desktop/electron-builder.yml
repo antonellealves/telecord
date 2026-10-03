@@ -9,6 +9,9 @@ directories:
 # runtime. `files` restringe o asar ao que o próprio shell precisa.
 files:
   - dist/**/*
+  # Ícones usados EM EXECUÇÃO (bandeja, janela). Os de `build/` são só para
+  # montar o instalador e não entram no pacote.
+  - assets/**/*
   - package.json
   - "!**/*.ts"
   - "!**/*.map"

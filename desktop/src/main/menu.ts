@@ -4,31 +4,40 @@ export interface MenuCallbacks {
   onCheckForUpdates: () => void;
 }
 
-/** Menu de aplicativo mínimo — o produto é o app web; este menu só cobre o essencial de um app nativo (Sair, Cmd+Q no macOS, checagem manual de atualização). */
-export function buildMenu(callbacks: MenuCallbacks): Menu {
-  const isMac = process.platform === 'darwin';
+/**
+ * Menu de aplicativo — só existe no macOS.
+ *
+ * No Windows e no Linux o menu é uma barra DENTRO da janela (Editar, Janela,
+ * Ajuda), que rouba uma faixa do app para três itens que ninguém abre. Lá a
+ * função devolve `null` e a barra some: copiar, colar e desfazer continuam
+ * funcionando porque são atalhos do próprio Chromium, não do menu, e
+ * "Verificar atualizações" já está no menu da bandeja.
+ *
+ * No macOS o menu fica na barra do sistema, fora da janela, e é OBRIGATÓRIO:
+ * sem ele, Cmd+C, Cmd+V e Cmd+Q deixam de funcionar.
+ */
+export function buildMenu(callbacks: MenuCallbacks): Menu | null {
+  if (process.platform !== 'darwin') {
+    return null;
+  }
 
   const template: MenuItemConstructorOptions[] = [
-    ...(isMac
-      ? [
-          {
-            label: app.name,
-            submenu: [
-              { role: 'about' as const, label: 'Sobre o telecord' },
-              { type: 'separator' as const },
-              {
-                label: 'Verificar atualizações',
-                click: () => callbacks.onCheckForUpdates(),
-              },
-              { type: 'separator' as const },
-              { role: 'hide' as const, label: 'Ocultar telecord' },
-              { role: 'hideOthers' as const, label: 'Ocultar outros' },
-              { type: 'separator' as const },
-              { role: 'quit' as const, label: 'Sair do telecord' },
-            ],
-          },
-        ]
-      : []),
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about', label: 'Sobre o telecord' },
+        { type: 'separator' },
+        {
+          label: 'Verificar atualizações',
+          click: () => callbacks.onCheckForUpdates(),
+        },
+        { type: 'separator' },
+        { role: 'hide', label: 'Ocultar telecord' },
+        { role: 'hideOthers', label: 'Ocultar outros' },
+        { type: 'separator' },
+        { role: 'quit', label: 'Sair do telecord' },
+      ],
+    },
     {
       label: 'Editar',
       submenu: [
@@ -45,22 +54,9 @@ export function buildMenu(callbacks: MenuCallbacks): Menu {
       submenu: [
         { role: 'minimize', label: 'Minimizar' },
         { role: 'zoom', label: 'Zoom' },
-        ...(isMac ? [{ role: 'front' as const, label: 'Trazer tudo para frente' }] : []),
+        { role: 'front', label: 'Trazer tudo para frente' },
       ],
     },
-    ...(isMac
-      ? []
-      : [
-          {
-            label: 'Ajuda',
-            submenu: [
-              {
-                label: 'Verificar atualizações',
-                click: () => callbacks.onCheckForUpdates(),
-              },
-            ],
-          },
-        ]),
   ];
 
   return Menu.buildFromTemplate(template);
