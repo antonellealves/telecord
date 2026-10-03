@@ -1,6 +1,6 @@
 {
   "name": "@telecord/desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Shell Electron do telecord — carrega o app web em produção, não o reescreve.",
   "homepage": "https://telecord.vercel.app",
