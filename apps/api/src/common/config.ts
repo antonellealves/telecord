@@ -33,6 +33,13 @@ export interface GoogleConfig {
 export interface LiveKitConfig {
   apiKey: string;
   apiSecret: string;
+  /**
+   * `LIVEKIT_URL` — HTTP(S) do servidor, para o `RoomServiceClient` da
+   * moderação. `null` cai no host versionado do LiveKit Cloud, mesmo fallback
+   * de `api/rooms.ts`. Em self-host PRECISA estar definida: sem ela o painel
+   * "Ao vivo" pergunta ao servidor errado e mostra zero salas sem erro nenhum.
+   */
+  url: string | null;
 }
 
 /**
@@ -217,7 +224,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       googleClientId === ''
         ? null
         : { clientId: googleClientId, clientSecret: googleClientSecret },
-    livekit: livekitKey === '' ? null : { apiKey: livekitKey, apiSecret: livekitSecret },
+    livekit:
+      livekitKey === ''
+        ? null
+        : {
+            apiKey: livekitKey,
+            apiSecret: livekitSecret,
+            url: trimTrailingSlash(env.LIVEKIT_URL?.trim() ?? '') || null,
+          },
     mediasoup: loadMediasoupConfig(env),
     mailDriver: mailDriverRaw,
     mailFrom: env.MAIL_FROM?.trim() || 'Telecord <nao-responda@localhost>',

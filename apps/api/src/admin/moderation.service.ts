@@ -57,8 +57,10 @@ export class ModerationService {
         'Sem LIVEKIT_API_KEY e LIVEKIT_API_SECRET não dá para moderar a sala ao vivo.',
       );
     }
+    // Mesmo host que `api/rooms.ts` consulta — com o LiveKit na VM, o host
+    // versionado do Cloud responde "nenhuma sala" em vez de falhar.
     this.client ??= new RoomServiceClient(
-      `https://${LIVEKIT_HOST}`,
+      this.config.livekit.url ?? `https://${LIVEKIT_HOST}`,
       this.config.livekit.apiKey,
       this.config.livekit.apiSecret,
     );

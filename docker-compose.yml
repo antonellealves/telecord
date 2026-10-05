@@ -134,6 +134,9 @@ services:
       # painel diz que não há dado de conversa. É o modo de desenvolvimento.
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      # Onde a moderação do painel ("Ao vivo") pergunta quem está em sala —
+      # o serviço `livekit` deste compose, pelo nome na rede interna.
+      LIVEKIT_URL: ${LIVEKIT_URL:-http://livekit:7880}
       # Quinto transporte, opcional: sem estas duas o proxy /api/mediasoup/*
       # responde 503 e a opção mostra a tela de "não configurado" — mesmo
       # critério do LiveKit acima. Aponta para o serviço `mediasoup-sfu`
