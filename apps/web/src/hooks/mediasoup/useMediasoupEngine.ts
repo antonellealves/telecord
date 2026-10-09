@@ -31,6 +31,11 @@ export interface MediasoupEngine {
   remoteTracks: RemoteTrackHandle[];
   error: string | null;
   connection: MediasoupConnection | null;
+  /**
+   * Quem está falando agora (`peerId`), medido pelo SFU — inclui o próprio
+   * participante. Vazio no caminho HTTP antigo, que não tem essa medição.
+   */
+  speakingPeerIds: ReadonlySet<string>;
   /** `true` quando o painel admin pediu mudo forçado no mic local — ver `onForceMuted`. */
   forceMuted: boolean;
   clearError: () => void;
@@ -48,6 +53,7 @@ export function useMediasoupEngine({
   const [remoteTracks, setRemoteTracks] = useState<RemoteTrackHandle[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [connection, setConnection] = useState<MediasoupConnection | null>(null);
+  const [speakingPeerIds, setSpeakingPeerIds] = useState<ReadonlySet<string>>(() => new Set());
   const [forceMuted, setForceMuted] = useState(false);
 
   useEffect(() => {
@@ -75,6 +81,9 @@ export function useMediasoupEngine({
       },
       onAttributesReceived: () => undefined,
       onData: () => undefined,
+      onSpeakersChange: (peerIds) => {
+        if (vivo) setSpeakingPeerIds(new Set(peerIds));
+      },
       onForceMuted: (muted) => {
         if (vivo) setForceMuted(muted);
       },
@@ -91,6 +100,7 @@ export function useMediasoupEngine({
       setConnection(null);
       setRemoteTracks([]);
       setLocalTracks([]);
+      setSpeakingPeerIds(new Set());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, peerId, displayName]);
@@ -102,6 +112,7 @@ export function useMediasoupEngine({
     remoteTracks,
     error,
     connection,
+    speakingPeerIds,
     forceMuted,
     clearError: () => setError(null),
   };

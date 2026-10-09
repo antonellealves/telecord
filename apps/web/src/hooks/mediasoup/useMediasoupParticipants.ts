@@ -11,6 +11,10 @@ import type { MediasoupEngine } from './useMediasoupEngine';
  * inferidos das tracks que o roster anuncia; do participante LOCAL, das
  * tracks publicadas pelo próprio engine — as duas fontes têm o mesmo formato
  * (`MediasoupTrackKind`), então a derivação é a mesma função nos dois casos.
+ *
+ * `isSpeaking` vem do SFU, que mede o nível do áudio que encaminha — como o
+ * LiveKit faz. O próprio participante entra na medição, então a pessoa também
+ * se vê falando.
  */
 export function useMediasoupParticipants(
   engine: MediasoupEngine,
@@ -25,7 +29,9 @@ export function useMediasoupParticipants(
       identity: localPeerId,
       displayName: localDisplayName,
       isLocal: true,
-      isSpeaking: false,
+      // Só com o microfone no ar: o destaque sustenta alguns instantes depois
+      // da última sílaba, e não deve sobrar aceso em quem acabou de se mutar.
+      isSpeaking: localMicOn && engine.speakingPeerIds.has(localPeerId),
       isMicrophoneEnabled: localMicOn,
       isSharingScreen: localSharing,
       isAway: false,
@@ -35,15 +41,13 @@ export function useMediasoupParticipants(
       .filter((peer) => peer.peerId !== localPeerId)
       .map((peer) => {
         const tracks = peer.mediasoup?.tracks ?? [];
+        const micOn = tracks.some((track) => track.trackKind === 'mic');
         return {
           identity: peer.peerId,
           displayName: peer.displayName,
           isLocal: false,
-          // Detecção de quem fala não existe ainda no protocolo do mediasoup
-          // (o LiveKit calcula no servidor, via nível de áudio) — fica falso
-          // até essa métrica existir; não afeta mic/tela, só o destaque visual.
-          isSpeaking: false,
-          isMicrophoneEnabled: tracks.some((track) => track.trackKind === 'mic'),
+          isSpeaking: micOn && engine.speakingPeerIds.has(peer.peerId),
+          isMicrophoneEnabled: micOn,
           isSharingScreen: tracks.some((track) => track.trackKind === 'screen-video'),
           isAway: false,
         };
@@ -51,5 +55,5 @@ export function useMediasoupParticipants(
       .sort((a, b) => a.displayName.localeCompare(b.displayName, 'pt-BR'));
 
     return [local, ...remotes];
-  }, [engine.roster, engine.localTracks, localPeerId, localDisplayName]);
+  }, [engine.roster, engine.localTracks, engine.speakingPeerIds, localPeerId, localDisplayName]);
 }

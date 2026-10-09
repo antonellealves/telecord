@@ -1,20 +1,30 @@
 import { Device } from 'mediasoup-client';
-import type { Producer, ProducerCodecOptions, Transport } from 'mediasoup-client/types';
+import type { ConnectionState, Consumer, Producer, ProducerCodecOptions, Transport } from 'mediasoup-client/types';
 import { io, type Socket } from 'socket.io-client';
-import type {
-  ClientToServerPresenceEvents,
-  MediasoupTrackKind,
-  PeerInfo,
-  PresenceChatMessage,
-  PresenceModerationCommand,
-  PresenceRosterUpdate,
-  PresenceTrackAnnounced,
-  PresenceTrackClosed,
-  ServerToClientPresenceEvents,
+import {
+  SIGNAL_CLOSE,
+  type ClientToServerPresenceEvents,
+  type MediasoupConsumeResult,
+  type MediasoupPublishedTrack,
+  type MediasoupTrackKind,
+  type MediasoupTransportInfo,
+  type PeerInfo,
+  type PresenceChatMessage,
+  type PresenceModerationCommand,
+  type PresenceRosterEntry,
+  type PresenceRosterUpdate,
+  type PresenceTrackAnnounced,
+  type PresenceTrackClosed,
+  type ServerToClientPresenceEvents,
+  type SignalEventName,
+  type SignalEvents,
+  type SignalReady,
 } from '@telecord/shared';
 import { MEDIASOUP_PUBLIC_URL } from '../../lib/config';
 import { peerLeave } from '../../lib/peers';
 import { DEFAULT_SCREEN_QUALITY, type ScreenQualityId } from '../../lib/media';
+import { SignalRequestFailed, SignalStream, SignalUnavailable } from '../../lib/signalStream';
+import { SpeakerHold } from '../../lib/speakerHold';
 import {
   MIC_CODEC_OPTIONS,
   MIC_SEND_ENCODING,
@@ -39,7 +49,14 @@ import {
   msResumeConsumer,
 } from '../../lib/mediasoup';
 
-export type MediasoupConnectionState = 'new' | 'connecting' | 'connected' | 'failed' | 'disconnected';
+export type MediasoupConnectionState =
+  | 'new'
+  | 'connecting'
+  | 'connected'
+  /** Já esteve conectado e está voltando sozinho — canal de mídia caído ou caminho de mídia perdido. */
+  | 'reconnecting'
+  | 'failed'
+  | 'disconnected';
 
 export interface LocalTrackHandle {
   producerId: string;
@@ -68,6 +85,12 @@ export interface MediasoupConnectionEvents {
   onAttributesReceived: (peerId: string, attributes: Record<string, string>) => void;
   onData: (payload: Uint8Array, fromPeerId: string) => void;
   /**
+   * Quem está falando agora, medido pelo SFU no áudio que ele encaminha —
+   * inclui o próprio participante. Só chega pelo canal de mídia; no caminho
+   * HTTP antigo a lista fica sempre vazia.
+   */
+  onSpeakersChange: (peerIds: string[]) => void;
+  /**
    * O painel admin pediu mudo forçado no mic local — cooperativo, sem
    * equivalente de servidor no SFU mediasoup (ver `MediasoupModerationService`
    * no backend). A conexão já pausa/retoma o `track.enabled` do producer de
@@ -78,11 +101,63 @@ export interface MediasoupConnectionEvents {
   onForceMoved: (roomSlug: string) => void;
 }
 
+/** O que a UI pediu para estar no ar. Sobrevive a uma sessão refeita: é daqui que se republica. */
+interface Publication {
+  trackKind: MediasoupTrackKind;
+  track: MediaStreamTrack;
+  screenQualityId: ScreenQualityId;
+  producer: Producer | null;
+  handle: LocalTrackHandle | null;
+}
+
+const MEDIA_BLOCKED_MESSAGE =
+  'Não foi possível estabelecer a conexão de áudio/vídeo (rede bloqueando a mídia). O chat de texto continua funcionando.';
+
+/**
+ * Quanto esperar um transporte "desconectado" se recuperar sozinho antes de
+ * renegociar o ICE. O estado é o WebRTC dizendo que perdeu contato, não que
+ * desistiu — a maior parte das vezes volta em um ou dois segundos.
+ */
+const ICE_RESTART_DELAY_MS = 2_000;
+
+/** Depois de renegociar o ICE, quanto esperar antes de desistir do transporte e refazer a sessão. */
+const ICE_RECOVERY_TIMEOUT_MS = 12_000;
+
+/** Entre uma tentativa frustrada de refazer a sessão e a próxima. */
+const REBUILD_RETRY_MS = 2_000;
+
+const CONSUME_RETRY_MS = 1_000;
+
 /**
  * Conexão de baixo nível com o SFU mediasoup: Device, os dois `Transport`s
- * (envio/recepção), produtores e consumidores, e o roster do telecord — tudo
- * ao vivo pelo socket de presença (ver `connectPresenceSocket`), sem
- * nenhum polling HTTP remanescente deste lado.
+ * (envio/recepção), produtores e consumidores, e o roster do telecord.
+ *
+ * ## Dois canais, direto com o nó
+ *
+ * - **presença** (Socket.IO, `connectPresenceSocket`): roster, chat e
+ *   moderação — o que é de sala.
+ * - **mídia** (`SignalStream`): criar transporte, publicar, assinar. É o
+ *   desenho do Discord e do Meet: `apps/api` autoriza a entrada UMA vez
+ *   (`fetchMediasoupConfig`) e sai do caminho; daí em diante ligar o
+ *   microfone ou abrir a tela é uma conversa com o mesmo processo que
+ *   encaminha os pacotes, sem função serverless nem banco no meio.
+ *
+ * Quando o canal de mídia não abre (SFU de uma versão anterior, rede que
+ * barra WebSocket), a conexão cai no caminho ANTIGO: as mesmas operações por
+ * HTTP, através do proxy `/api/mediasoup/*`. Funciona como sempre funcionou,
+ * sem o que só o canal oferece — retomada, quem está falando, parar de
+ * assistir.
+ *
+ * ## Voltar sozinho
+ *
+ * Com o canal de mídia, uma queda não é mais o fim da sala:
+ *
+ * - o canal caiu e voltou a tempo → o servidor ainda tem a sessão, e tudo
+ *   continua como estava (`reconcile`);
+ * - a sessão se perdeu (o SFU reiniciou num deploy, a folga venceu) → os
+ *   transportes são refeitos e o que estava no ar é republicado (`rebuild`);
+ * - só o caminho da mídia caiu (trocou de Wi-Fi) → o ICE é renegociado no
+ *   mesmo transporte.
  *
  * Não é um hook — é uma classe simples, instanciada uma vez por sala e
  * mantida numa ref pelos hooks React que a usam (useMediasoupParticipants,
@@ -108,12 +183,43 @@ export class MediasoupConnection {
   private device: Device | null = null;
   private sendTransport: Transport | null = null;
   private recvTransport: Transport | null = null;
-  private readonly localTracks = new Map<string, LocalTrackHandle>();
-  private readonly localProducers = new Map<string, Producer>();
-  private readonly consumedProducerIds = new Set<string>();
+  /** `null` = caminho HTTP antigo. */
+  private signal: SignalStream | null = null;
+  /** A sessão de mídia que o servidor nos deu — ver `SignalReady.sessionId`. */
+  private sessionId: string | null = null;
+  /** Sobe a cada sessão montada: quem estava no meio de montar a anterior percebe e desiste. */
+  private sessionEpoch = 0;
+  private nodeUrl = MEDIASOUP_PUBLIC_URL;
+  /** O token de entrada mais recente assinado por `apps/api`. */
+  private token = '';
+  /**
+   * Identifica ESTA página nos dois canais. Sair de uma sala e entrar de novo
+   * em seguida cria outra conexão com o mesmo `peerId`; é este valor que
+   * impede a despedida da antiga de derrubar a nova no servidor.
+   */
+  private readonly instanceId: string = crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
+
+  private readonly publications = new Map<MediasoupTrackKind, Publication>();
+  /** Tracks dos OUTROS que estão no ar agora, por `producerId`. */
+  private readonly announced = new Map<string, PresenceTrackAnnounced>();
+  /** Consumers por `producerId` — uma track remota, uma assinatura. */
+  private readonly consumers = new Map<string, Consumer>();
+  private readonly consuming = new Set<string>();
+  /**
+   * A mídia já fluiu alguma vez NESTA página. Separa os dois motivos de um
+   * transporte falhar: nunca ter funcionado (a porta de mídia está bloqueada,
+   * e insistir não muda nada) de ter parado de funcionar (a rede caiu, e
+   * volta).
+   */
+  private mediaEverConnected = false;
+  private readonly iceTimers = new Map<Transport, ReturnType<typeof setTimeout>>();
+
+  private presenceEntries: PresenceRosterEntry[] = [];
   private roster: PeerInfo[] = [];
   private state: MediasoupConnectionState = 'new';
   private presenceSocket: Socket<ServerToClientPresenceEvents, ClientToServerPresenceEvents> | null = null;
+  private presenceRetries = 0;
+  private readonly speakerHold: SpeakerHold;
   /**
    * Ouvintes de chat, à parte de `MediasoupConnectionEvents` (que tem UM dono
    * só, `useMediasoupEngine`) — `useMediasoupChat` é montado DEPOIS do
@@ -123,7 +229,7 @@ export class MediasoupConnection {
    */
   private readonly chatListeners = new Set<(fromPeer: string, displayName: string, body: string) => void>();
   private alive = true;
-  /** Evita disparar `onForceMuted`/`onForceMoved` de novo a cada tick enquanto o comando continuar o mesmo. */
+  /** Evita disparar `onForceMuted`/`onForceMoved` de novo enquanto o comando continuar o mesmo. */
   private lastForceMuted = false;
   private lastMoveTo: string | null = null;
 
@@ -132,17 +238,21 @@ export class MediasoupConnection {
     private readonly peerId: string,
     private readonly displayName: string,
     private readonly events: MediasoupConnectionEvents,
-  ) {}
+  ) {
+    this.speakerHold = new SpeakerHold((peerIds) => {
+      if (this.alive) this.events.onSpeakersChange(peerIds);
+    });
+  }
 
   async connect(): Promise<void> {
     this.setState('connecting');
     try {
       /*
-       * `fetchMediasoupConfig` já FAZ o heartbeat inicial do lado do servidor
-       * (ver `MediasoupService.clientConfig`) — é o que dá a `assertMember`
-       * uma linha de presença fresca antes de liberar `createTransport`, e é
-       * quem assina o `presenceToken` usado logo abaixo. Não há mais heartbeat
-       * HTTP separado antes de criar transporte.
+       * A única ida a `apps/api` de toda a entrada. Devolve o token que abre
+       * os dois canais do SFU e, quando há mais de um nó, QUAL deles é o
+       * desta sala. O heartbeat que ela faz do lado do servidor (ver
+       * `MediasoupService.clientConfig`) é o que mantém o caminho HTTP antigo
+       * utilizável, se for preciso cair nele.
        */
       const config = await fetchMediasoupConfig(this.roomId, this.peerId, this.displayName);
       if (!this.alive) return;
@@ -151,95 +261,24 @@ export class MediasoupConnection {
         this.setState('failed');
         return;
       }
+      this.token = config.presenceToken;
+      this.nodeUrl = (config.node?.url ?? MEDIASOUP_PUBLIC_URL).replace(/\/$/, '');
 
       const device = new Device();
       await device.load({ routerRtpCapabilities: config.routerRtpCapabilities as never });
       if (!this.alive) return;
       this.device = device;
 
-      this.connectPresenceSocket(config.presenceToken);
+      this.connectPresenceSocket();
 
-      const sendInfo = await msCreateTransport(this.roomId, { peerId: this.peerId, direction: 'send' });
-      const recvInfo = await msCreateTransport(this.roomId, { peerId: this.peerId, direction: 'recv' });
+      const ready = await this.openSignal();
+      if (!this.alive) return;
+      if (ready !== null) await this.startSession(ready);
+      else await this.createTransports(this.sessionEpoch);
       if (!this.alive) return;
 
-      const sendTransport = device.createSendTransport({
-        id: sendInfo.id,
-        iceParameters: sendInfo.iceParameters as never,
-        iceCandidates: sendInfo.iceCandidates as never,
-        dtlsParameters: sendInfo.dtlsParameters as never,
-      });
-      const recvTransport = device.createRecvTransport({
-        id: recvInfo.id,
-        iceParameters: recvInfo.iceParameters as never,
-        iceCandidates: recvInfo.iceCandidates as never,
-        dtlsParameters: recvInfo.dtlsParameters as never,
-      });
-
-      sendTransport.on('connect', ({ dtlsParameters }, callback, errback) => {
-        msConnectTransport(this.roomId, sendTransport.id, { peerId: this.peerId, dtlsParameters })
-          .then(() => callback())
-          .catch((failure: unknown) => errback(failure as Error));
-      });
-      sendTransport.on('produce', ({ kind, rtpParameters, appData }, callback, errback) => {
-        const trackKind = (appData as { trackKind?: MediasoupTrackKind }).trackKind ?? 'mic';
-        msProduce(this.roomId, sendTransport.id, { peerId: this.peerId, kind, rtpParameters, trackKind })
-          .then(({ producerId }) => callback({ id: producerId }))
-          .catch((failure: unknown) => errback(failure as Error));
-      });
-      /*
-       * NÃO é aqui que se decide "conectado" para a UI.
-       *
-       * `connectionstatechange` só dispara depois que o `WebRtcTransport`
-       * completa DTLS/ICE de verdade — e isso, no mediasoup, é LAZY: o
-       * handshake só começa na primeira chamada real de `produce()` (envio)
-       * ou `consume()` (recepção), disparada pelo callback `connect` acima.
-       * Travar a UI em "conectando…" até este evento criava uma
-       * dependência circular: o botão de microfone ficava desabilitado
-       * esperando "conectado", e "conectado" só chegava depois de alguém
-       * publicar — o que exigia o botão habilitado. Ainda assim vale ouvir
-       * o evento para detectar queda depois de já conectado.
-       */
-      sendTransport.on('connectionstatechange', (connState) => {
-        if (!this.alive) return;
-        if (connState === 'failed') {
-          // ICE não achou caminho nenhum até o SFU — o caso mais comum é a
-          // faixa de portas de mídia (MEDIASOUP_RTC_MIN_PORT..MAX_PORT)
-          // bloqueada antes de chegar na VM (firewall da nuvem, NAT
-          // restritivo), não um bug de código: sinalização (HTTP/WSS, porta
-          // 443) continua funcionando normalmente nesse caso, então chat e
-          // lista de participantes parecem OK enquanto mic/câmera/tela nunca
-          // saem do lugar — ver `setup-vm.sh` para as portas exigidas.
-          this.events.onError(
-            'Não foi possível estabelecer a conexão de áudio/vídeo (rede bloqueando a mídia). O chat de texto continua funcionando.',
-          );
-        }
-        if (connState === 'failed' || connState === 'disconnected') {
-          this.setState(connState);
-        }
-      });
-
-      recvTransport.on('connect', ({ dtlsParameters }, callback, errback) => {
-        msConnectTransport(this.roomId, recvTransport.id, { peerId: this.peerId, dtlsParameters })
-          .then(() => callback())
-          .catch((failure: unknown) => errback(failure as Error));
-      });
-      recvTransport.on('connectionstatechange', (connState) => {
-        if (!this.alive) return;
-        if (connState === 'failed') {
-          this.events.onError(
-            'Não foi possível estabelecer a conexão de áudio/vídeo (rede bloqueando a mídia). O chat de texto continua funcionando.',
-          );
-        }
-      });
-
-      this.sendTransport = sendTransport;
-      this.recvTransport = recvTransport;
-      this.drainPendingTracks();
-
-      // A UI libera assim que os dois transportes existem e a presença já
-      // foi anunciada (feito acima, antes de criar os transportes) — não
-      // espera o handshake DTLS, que só ocorre ao publicar/assinar algo.
+      // A UI libera assim que os dois transportes existem — não espera o
+      // handshake DTLS, que só ocorre ao publicar/assinar algo.
       this.setState('connected');
     } catch {
       if (this.alive) {
@@ -251,21 +290,26 @@ export class MediasoupConnection {
 
   close(): void {
     this.alive = false;
+    this.speakerHold.clear();
+    const usedHttp = this.signal === null;
     this.presenceSocket?.disconnect();
     this.presenceSocket = null;
-    this.sendTransport?.close();
-    this.recvTransport?.close();
-    this.sendTransport = null;
-    this.recvTransport = null;
+    // Fechado com 1000: é o que o SFU lê como despedida e o faz tirar este
+    // par da sala na hora, sem esperar a folga de reconexão.
+    this.signal?.close();
+    this.signal = null;
+    this.releaseMedia(true);
     this.device = null;
-    this.localTracks.clear();
-    this.localProducers.clear();
-    this.consumedProducerIds.clear();
-    // `msLeave` fecha os transportes/presença no SFU como fallback de
-    // melhor-esforço (o `disconnect` do socket já faz isso do lado dele);
-    // `peerLeave` continua limpando a linha `PeerPresence`/sinalização no
-    // Prisma, que o socket não toca.
-    void msLeave(this.roomId, this.peerId).catch(() => undefined);
+    this.announced.clear();
+    /*
+     * `msLeave` só no caminho HTTP, onde não há canal para se despedir. Com
+     * o canal de mídia ele seria pior que inútil: a chamada atravessa a
+     * função serverless e pode chegar DEPOIS de a pessoa ter entrado de novo
+     * na mesma sala — derrubando a sessão nova em nome da antiga.
+     * `peerLeave` continua limpando a linha `PeerPresence` no Prisma, que
+     * nenhum dos canais toca.
+     */
+    if (usedHttp) void msLeave(this.roomId, this.peerId).catch(() => undefined);
     void peerLeave(this.roomId, this.peerId).catch(() => undefined);
   }
 
@@ -280,13 +324,11 @@ export class MediasoupConnection {
   /**
    * Publica uma track local (mic, câmera ou tela) e devolve o handle.
    *
-   * Fecha qualquer producer JÁ existente do mesmo `trackKind` antes de criar
-   * o novo — proteção de última linha contra dois cliques rápidos (ligar,
-   * desligar, ligar de novo antes do primeiro `produce()` responder) criarem
-   * DOIS producers de mic vivos ao mesmo tempo. O sintoma observado era um
-   * producer "morto" (0 bytes enviados, nunca avança) ao lado de um vivo — o
-   * outro participante podia acabar consumindo o morto (silêncio) em vez do
-   * vivo, dependendo de qual `track:announced` chegasse primeiro.
+   * Fecha qualquer publicação JÁ existente do mesmo `trackKind` antes de
+   * criar a nova — proteção de última linha contra dois cliques rápidos
+   * (ligar, desligar, ligar de novo antes do primeiro `produce()` responder)
+   * criarem DOIS producers de mic vivos ao mesmo tempo. O SFU impõe a mesma
+   * regra do lado dele (ver `RoomRegistry.produce`).
    */
   async publish(
     track: MediaStreamTrack,
@@ -294,13 +336,518 @@ export class MediasoupConnection {
     /** Nível escolhido na UI — só usado por `screen-video`, ver `videoProfile.ts`. */
     screenQualityId: ScreenQualityId = DEFAULT_SCREEN_QUALITY,
   ): Promise<LocalTrackHandle> {
-    const transport = this.sendTransport;
-    if (transport === null) {
+    if (this.sendTransport === null) {
       throw new Error('Transporte de envio ainda não está pronto.');
     }
-    for (const [existingId, existing] of this.localTracks) {
-      if (existing.trackKind === trackKind) this.unpublish(existingId);
+    const previous = this.publications.get(trackKind);
+    if (previous !== undefined) {
+      this.publications.delete(trackKind);
+      this.retirePublication(previous, previous.track !== track);
     }
+
+    const publication: Publication = { trackKind, track, screenQualityId, producer: null, handle: null };
+    this.publications.set(trackKind, publication);
+    try {
+      await this.produceFor(publication);
+    } catch (error) {
+      if (this.publications.get(trackKind) === publication) this.publications.delete(trackKind);
+      throw error;
+    }
+    if (publication.handle === null) throw new Error('A publicação foi cancelada.');
+    return publication.handle;
+  }
+
+  /** Encerra uma track local publicada — aqui e no SFU, que avisa quem assistia na hora. */
+  unpublish(producerId: string): void {
+    for (const [trackKind, publication] of this.publications) {
+      if (publication.handle?.producerId !== producerId) continue;
+      this.publications.delete(trackKind);
+      this.retirePublication(publication, true);
+      this.emitLocalTracks();
+      return;
+    }
+  }
+
+  get localTrackHandles(): LocalTrackHandle[] {
+    return [...this.publications.values()].flatMap((publication) =>
+      publication.handle === null ? [] : [publication.handle],
+    );
+  }
+
+  /** `true` quando dá para pedir ao SFU que pare de MANDAR uma track — só existe no canal de mídia. */
+  get canPauseRemoteTracks(): boolean {
+    return this.signal !== null;
+  }
+
+  /**
+   * Para (ou retoma) o envio de uma track remota a ESTE navegador.
+   *
+   * É o "parar de assistir" de uma tela: o SFU deixa de encaminhar os pacotes,
+   * que é a única forma de aliviar a banda de verdade — esconder o vídeo com
+   * CSS continuaria baixando tudo.
+   */
+  async setRemoteTrackPaused(consumerId: string, paused: boolean): Promise<void> {
+    const signal = this.signal;
+    if (signal === null) return;
+    const consumer = [...this.consumers.values()].find((entry) => entry.id === consumerId);
+    if (consumer === undefined || consumer.closed) return;
+    await signal.request(paused ? 'pauseConsumer' : 'resumeConsumer', { consumerId });
+    if (consumer.closed) return;
+    if (paused) consumer.pause();
+    else consumer.resume();
+  }
+
+  /**
+   * Manda uma mensagem de chat/soundboard pelo socket de presença — substitui
+   * o polling de `RoomBroadcastMessage` (`msPollBroadcast`/`msSendBroadcast`).
+   * Sem persistência aqui: quem entra depois não recebe histórico, mesma
+   * regra que já valia (ver `pollBroadcast` em `mediasoup.service.ts`).
+   * Fire-and-forget: se o socket ainda não abriu, a mensagem se perde — não
+   * há fila.
+   */
+  sendChat(body: string): void {
+    this.presenceSocket?.emit('chat:send', { displayName: this.displayName, body });
+  }
+
+  /** Inscreve um ouvinte de mensagens de chat/soundboard vindas de outros peers. Devolve a função para cancelar. */
+  subscribeChat(listener: (fromPeer: string, displayName: string, body: string) => void): () => void {
+    this.chatListeners.add(listener);
+    return () => this.chatListeners.delete(listener);
+  }
+
+  /** Publica um atributo próprio no roster (ex.: "ausente") — o mesmo `PeerInfo.mediasoup` que outros já leem via heartbeat. */
+  async setAttributes(_attributes: Record<string, string>): Promise<void> {
+    // Reservado para uma versão futura: hoje o roster só carrega o anúncio de
+    // tracks publicadas (ver `MediasoupAnnounce`), sem um campo de atributo
+    // livre por participante. `useAwayMediasoup` degrada para estado local
+    // (ver esse hook) até esse campo existir no protocolo.
+  }
+
+  private setState(state: MediasoupConnectionState): void {
+    if (this.state === state) return;
+    this.state = state;
+    this.events.onStateChange(state);
+  }
+
+  // -------------------------------------------------------------------------
+  // Canal de mídia
+  // -------------------------------------------------------------------------
+
+  /**
+   * Abre o canal de mídia. `null` quer dizer que ele não está disponível e a
+   * conexão segue pelo caminho HTTP.
+   */
+  private async openSignal(): Promise<SignalReady | null> {
+    const signal = new SignalStream({
+      nodeUrl: this.nodeUrl,
+      getToken: (fresh) => this.obtainToken(fresh),
+      getSessionId: () => this.sessionId,
+      instanceId: this.instanceId,
+      onReady: (ready, reconnected) => {
+        if (!this.alive || this.signal !== signal) return;
+        // Síncrono: o retrato da sala entra antes de qualquer evento que
+        // venha depois dele.
+        this.applySnapshot(ready);
+        if (reconnected) void this.handleReconnected(ready);
+      },
+      onEvent: (name, data) => {
+        if (this.alive && this.signal === signal) this.handleSignalEvent(name, data);
+      },
+      onStateChange: (state) => {
+        if (this.alive && this.signal === signal && state === 'reconnecting') this.setState('reconnecting');
+      },
+      onFinalClose: (code) => {
+        if (this.signal === signal) this.handleFinalClose(code);
+      },
+    });
+    this.signal = signal;
+    try {
+      return await signal.start();
+    } catch (error) {
+      if (this.signal === signal) this.signal = null;
+      if (error instanceof SignalUnavailable) return null;
+      throw error;
+    }
+  }
+
+  /** Um token para os canais do SFU. `fresh` volta a `apps/api` — o único caso em que ela reentra no caminho. */
+  private async obtainToken(fresh: boolean): Promise<string> {
+    if (!fresh) return this.token;
+    const config = await fetchMediasoupConfig(this.roomId, this.peerId, this.displayName);
+    if (!config.enabled || config.presenceToken === null) {
+      throw new Error('O mediasoup deixou de estar configurado neste servidor.');
+    }
+    const nodeUrl = (config.node?.url ?? MEDIASOUP_PUBLIC_URL).replace(/\/$/, '');
+    if (nodeUrl !== this.nodeUrl) {
+      // A sala passou a morar em outro nó. Os canais desta conexão apontam
+      // para o antigo; insistir nele seria reconectar a uma sala vazia.
+      this.events.onError('O servidor desta sala mudou. Entre de novo para continuar.');
+      this.handleFinalClose(null);
+      throw new Error('A sala mudou de nó.');
+    }
+    this.token = config.presenceToken;
+    return this.token;
+  }
+
+  /** Monta a sessão de mídia do zero: capabilities, os dois transportes e o que estava no ar. */
+  private async startSession(ready: SignalReady): Promise<void> {
+    const signal = this.signal;
+    const device = this.device;
+    if (signal === null || device === null) return;
+    const epoch = (this.sessionEpoch += 1);
+    this.sessionId = ready.sessionId;
+
+    // Uma vez por sessão, em vez de ~10 KB a cada `consume`.
+    await signal.request('setRtpCapabilities', { rtpCapabilities: device.rtpCapabilities });
+    if (!this.isCurrent(epoch)) return;
+    await this.createTransports(epoch);
+    if (!this.isCurrent(epoch)) return;
+    await this.republishAll(epoch);
+  }
+
+  private isCurrent(epoch: number): boolean {
+    return this.alive && this.sessionEpoch === epoch;
+  }
+
+  /**
+   * O canal voltou. O `ready` diz o que o servidor ainda tem deste par, e é
+   * isso — não o que aconteceu enquanto estávamos fora — que decide o que
+   * fazer. Mesma regra do resto do app: depois de uma reconexão, re-derivar
+   * do estado, sem confiar em evento que pode ter se perdido.
+   */
+  private async handleReconnected(ready: SignalReady): Promise<void> {
+    const send = this.sendTransport;
+    const recv = this.recvTransport;
+    const intact =
+      ready.sessionId === this.sessionId &&
+      send !== null &&
+      recv !== null &&
+      !send.closed &&
+      !recv.closed &&
+      ready.transportIds.includes(send.id) &&
+      ready.transportIds.includes(recv.id);
+
+    try {
+      if (intact) {
+        await this.reconcile(ready);
+      } else {
+        this.releaseMedia(false);
+        await this.startSession(ready);
+      }
+    } catch {
+      // A sessão ficou pela metade. Nova volta do canal, novo `ready`.
+      if (this.alive) setTimeout(() => this.forceRebuild(), REBUILD_RETRY_MS);
+      return;
+    }
+    if (this.alive && this.signal?.currentState === 'ready' && this.transportsHealthy()) {
+      this.setState('connected');
+    }
+  }
+
+  /** A sessão sobreviveu. Só acerta o que mudou enquanto o canal estava fora. */
+  private async reconcile(ready: SignalReady): Promise<void> {
+    const epoch = this.sessionEpoch;
+    const serverConsumers = new Set(ready.consumerIds);
+    for (const [producerId, consumer] of [...this.consumers]) {
+      // Fechado lá e ainda aberto aqui: derruba e deixa `consumeMissing`
+      // assinar de novo, se a track continuar no ar.
+      if (!serverConsumers.has(consumer.id)) this.dropConsumer(producerId, consumer);
+    }
+
+    const serverProducers = new Set(ready.producerIds);
+    for (const publication of [...this.publications.values()]) {
+      const producer = publication.producer;
+      if (producer === null || serverProducers.has(producer.id)) continue;
+      producer.close();
+      publication.producer = null;
+      if (!this.isCurrent(epoch)) return;
+      await this.republish(publication, epoch);
+    }
+    this.consumeMissing();
+  }
+
+  /**
+   * Joga fora a sessão que o cliente acha que tem e pede outra. Usado quando
+   * renegociar o ICE não resolveu, ou quando o servidor diz não conhecer um
+   * transporte que aqui ainda existe.
+   */
+  private forceRebuild(): void {
+    if (!this.alive || this.signal === null) return;
+    this.sessionId = null;
+    this.signal.restart();
+  }
+
+  /**
+   * O servidor encerrou de vez: a mesma pessoa abriu a sala em outra aba, a
+   * moderação a removeu, ou a sala mudou de nó (`code === null`). Voltar
+   * sozinho seria errado nos três casos.
+   */
+  private handleFinalClose(code: number | null): void {
+    if (!this.alive) return;
+    this.alive = false;
+    if (code === SIGNAL_CLOSE.removed) {
+      this.events.onError('Um administrador removeu você desta sala.');
+    } else if (code === SIGNAL_CLOSE.replaced) {
+      this.events.onError('Esta sala foi aberta em outra aba ou dispositivo. Esta janela foi desconectada.');
+    }
+    this.speakerHold.clear();
+    this.events.onSpeakersChange([]);
+    this.presenceSocket?.disconnect();
+    this.presenceSocket = null;
+    this.signal?.close();
+    this.releaseMedia(true);
+    this.setState('disconnected');
+  }
+
+  private handleSignalEvent<E extends SignalEventName>(name: E, data: SignalEvents[E]): void {
+    switch (name) {
+      case 'track:announced':
+        this.trackAnnounced(data as SignalEvents['track:announced']);
+        break;
+      case 'track:closed':
+        this.trackClosed(data as SignalEvents['track:closed']);
+        break;
+      case 'consumer:closed': {
+        // A track continua no ar; o que caiu foi a ponte entre dois Workers
+        // do SFU. Derruba o consumer morto e assina de novo.
+        const { consumerId, producerId } = data as SignalEvents['consumer:closed'];
+        const consumer = this.consumers.get(producerId);
+        if (consumer !== undefined && consumer.id === consumerId) this.dropConsumer(producerId, consumer);
+        const track = this.announced.get(producerId);
+        if (track !== undefined) this.ensureConsumed(track);
+        break;
+      }
+      case 'speakers':
+        this.speakerHold.update((data as SignalEvents['speakers']).speakers.map((speaker) => speaker.peerId));
+        break;
+      default:
+        // Evento de uma versão mais nova do protocolo: ignorar é o certo.
+        break;
+    }
+  }
+
+  /** O retrato da sala que veio no `ready`: substitui o que se sabia, em vez de somar. */
+  private applySnapshot(ready: SignalReady): void {
+    const next = new Map(ready.tracks.map((track) => [track.producerId, track]));
+    for (const [producerId, consumer] of [...this.consumers]) {
+      if (!next.has(producerId)) this.dropConsumer(producerId, consumer);
+    }
+    this.announced.clear();
+    for (const [producerId, track] of next) this.announced.set(producerId, track);
+    this.rebuildRoster();
+    this.speakerHold.update(ready.speakers.map((speaker) => speaker.peerId));
+  }
+
+  // -------------------------------------------------------------------------
+  // Transportes
+  // -------------------------------------------------------------------------
+
+  private async createTransports(epoch: number): Promise<void> {
+    const device = this.device;
+    if (device === null) throw new Error('Device ainda não carregado.');
+
+    let sendInfo: MediasoupTransportInfo;
+    let recvInfo: MediasoupTransportInfo;
+    if (this.signal !== null) {
+      // Pelo canal de mídia os dois pedidos saem juntos: uma ida e volta.
+      [sendInfo, recvInfo] = await Promise.all([this.rpcCreateTransport('send'), this.rpcCreateTransport('recv')]);
+    } else {
+      sendInfo = await this.rpcCreateTransport('send');
+      recvInfo = await this.rpcCreateTransport('recv');
+    }
+    if (!this.isCurrent(epoch)) return;
+
+    const sendTransport = device.createSendTransport({
+      id: sendInfo.id,
+      iceParameters: sendInfo.iceParameters as never,
+      iceCandidates: sendInfo.iceCandidates as never,
+      dtlsParameters: sendInfo.dtlsParameters as never,
+    });
+    const recvTransport = device.createRecvTransport({
+      id: recvInfo.id,
+      iceParameters: recvInfo.iceParameters as never,
+      iceCandidates: recvInfo.iceCandidates as never,
+      dtlsParameters: recvInfo.dtlsParameters as never,
+    });
+
+    this.wireTransport(sendTransport, 'send');
+    this.wireTransport(recvTransport, 'recv');
+    sendTransport.on('produce', ({ kind, rtpParameters, appData }, callback, errback) => {
+      const trackKind = (appData as { trackKind?: MediasoupTrackKind }).trackKind ?? 'mic';
+      this.rpcProduce(sendTransport.id, kind, rtpParameters, trackKind)
+        .then((producerId) => callback({ id: producerId }))
+        .catch((failure: unknown) => errback(failure as Error));
+    });
+
+    this.sendTransport = sendTransport;
+    this.recvTransport = recvTransport;
+    this.consumeMissing();
+  }
+
+  private wireTransport(transport: Transport, direction: 'send' | 'recv'): void {
+    transport.on('connect', ({ dtlsParameters }, callback, errback) => {
+      this.rpcConnectTransport(transport.id, dtlsParameters)
+        .then(() => callback())
+        .catch((failure: unknown) => errback(failure as Error));
+    });
+    /*
+     * NÃO é aqui que se decide "conectado" para a UI.
+     *
+     * `connectionstatechange` só dispara depois que o `WebRtcTransport`
+     * completa DTLS/ICE de verdade — e isso, no mediasoup, é LAZY: o
+     * handshake só começa na primeira chamada real de `produce()` (envio)
+     * ou `consume()` (recepção), disparada pelo callback `connect` acima.
+     * Travar a UI em "conectando…" até este evento criava uma
+     * dependência circular: o botão de microfone ficava desabilitado
+     * esperando "conectado", e "conectado" só chegava depois de alguém
+     * publicar — o que exigia o botão habilitado. Ainda assim vale ouvir
+     * o evento para detectar queda depois de já conectado.
+     */
+    transport.on('connectionstatechange', (connState) => {
+      this.handleTransportState(transport, direction, connState);
+    });
+  }
+
+  private handleTransportState(transport: Transport, direction: 'send' | 'recv', connState: ConnectionState): void {
+    if (!this.alive) return;
+    // Transporte de uma sessão que já foi refeita: o que acontece com ele não
+    // diz mais nada sobre a conexão.
+    if ((direction === 'send' ? this.sendTransport : this.recvTransport) !== transport) return;
+
+    if (connState === 'connected') {
+      this.mediaEverConnected = true;
+      this.cancelIceRestart(transport);
+      if (this.state === 'reconnecting' && this.signal?.currentState === 'ready' && this.transportsHealthy()) {
+        this.setState('connected');
+      }
+      return;
+    }
+    if (connState !== 'failed' && connState !== 'disconnected') return;
+
+    /*
+     * Já funcionou e parou: a rede mudou (trocou de Wi-Fi, o cabo saiu).
+     * Com o canal de mídia dá para renegociar o caminho sem refazer nada —
+     * os producers e consumers continuam os mesmos. Vale também para um
+     * transporte recém-refeito que ainda não conectou: se a mídia já fluiu
+     * nesta página, o problema é a rede de agora, não a porta.
+     */
+    if (this.mediaEverConnected && this.signal !== null) {
+      this.setState('reconnecting');
+      this.scheduleIceRestart(transport, connState === 'failed' ? 0 : ICE_RESTART_DELAY_MS);
+      return;
+    }
+
+    if (connState === 'failed') {
+      // ICE não achou caminho nenhum até o SFU — o caso mais comum é a
+      // porta de mídia bloqueada antes de chegar na VM (firewall da nuvem,
+      // NAT restritivo), não um bug de código: sinalização (porta 443)
+      // continua funcionando normalmente nesse caso, então chat e lista de
+      // participantes parecem OK enquanto mic/câmera/tela nunca saem do
+      // lugar — ver `setup-vm.sh` para as portas exigidas.
+      this.events.onError(MEDIA_BLOCKED_MESSAGE);
+    }
+    if (direction === 'send') this.setState(connState);
+  }
+
+  /** `true` quando nenhum dos dois transportes está no meio de uma queda. */
+  private transportsHealthy(): boolean {
+    for (const transport of [this.sendTransport, this.recvTransport]) {
+      if (transport === null) return false;
+      const connState = transport.connectionState;
+      if (connState === 'failed' || connState === 'disconnected' || connState === 'closed') return false;
+    }
+    return true;
+  }
+
+  private scheduleIceRestart(transport: Transport, delayMs: number): void {
+    if (this.iceTimers.has(transport)) return;
+    this.iceTimers.set(
+      transport,
+      setTimeout(() => {
+        this.iceTimers.delete(transport);
+        void this.restartIce(transport);
+      }, delayMs),
+    );
+  }
+
+  private cancelIceRestart(transport: Transport): void {
+    const timer = this.iceTimers.get(transport);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    this.iceTimers.delete(transport);
+  }
+
+  private async restartIce(transport: Transport): Promise<void> {
+    const signal = this.signal;
+    if (!this.alive || signal === null || transport.closed || transport.connectionState === 'connected') return;
+    try {
+      const { iceParameters } = await signal.request('restartIce', { transportId: transport.id });
+      if (transport.closed) return;
+      await transport.restartIce({ iceParameters: iceParameters as never });
+    } catch (error) {
+      // O servidor não conhece mais este transporte: a sessão se perdeu sem
+      // o canal ter caído. Só refazendo.
+      if (error instanceof SignalRequestFailed && error.code === 'not_found') {
+        this.forceRebuild();
+        return;
+      }
+    }
+    // Renegociado. Se mesmo assim o transporte não voltar, ele não volta.
+    this.iceTimers.set(
+      transport,
+      setTimeout(() => {
+        this.iceTimers.delete(transport);
+        const current = transport === this.sendTransport || transport === this.recvTransport;
+        if (this.alive && current && !transport.closed && transport.connectionState !== 'connected') {
+          this.forceRebuild();
+        }
+      }, ICE_RECOVERY_TIMEOUT_MS),
+    );
+  }
+
+  /**
+   * Solta transportes, producers e consumers.
+   *
+   * `stopTracks` distingue os dois usos: ao SAIR da sala as tracks locais
+   * são paradas (o microfone e a captura de tela não podem continuar acesos);
+   * ao REFAZER a sessão elas ficam vivas, porque vão ser republicadas.
+   */
+  private releaseMedia(stopTracks: boolean): void {
+    for (const timer of this.iceTimers.values()) clearTimeout(timer);
+    this.iceTimers.clear();
+
+    for (const [producerId, consumer] of [...this.consumers]) this.dropConsumer(producerId, consumer);
+    this.consuming.clear();
+
+    for (const publication of this.publications.values()) {
+      publication.producer?.close();
+      publication.producer = null;
+      if (stopTracks) publication.track.stop();
+    }
+    if (stopTracks) {
+      this.publications.clear();
+      this.emitLocalTracks();
+    }
+
+    // As referências caem ANTES do `close()`: os ouvintes de estado dos
+    // transportes conferem se ainda são os atuais, e estes já não são.
+    const send = this.sendTransport;
+    const recv = this.recvTransport;
+    this.sendTransport = null;
+    this.recvTransport = null;
+    send?.close();
+    recv?.close();
+  }
+
+  // -------------------------------------------------------------------------
+  // Publicar
+  // -------------------------------------------------------------------------
+
+  private async produceFor(publication: Publication): Promise<void> {
+    const transport = this.sendTransport;
+    if (transport === null) throw new Error('Transporte de envio ainda não está pronto.');
+    const { track, trackKind } = publication;
+
     // `mediasoup-client` nasce o Producer PAUSADO se `track.enabled` for
     // `false` no instante deste `produce()` (`disableTrackOnPause`, ligado
     // por padrão) — aí ele nunca manda RTP nenhum, mesmo com o resto da
@@ -334,7 +881,7 @@ export class MediasoupConnection {
       profile = { codecOptions: SCREEN_AUDIO_CODEC_OPTIONS, encodings: [SCREEN_AUDIO_SEND_ENCODING] };
     } else if (trackKind === 'screen-video') {
       track.contentHint = SCREEN_CONTENT_HINT;
-      profile = { encodings: [screenSendEncoding(screenQualityId)] };
+      profile = { encodings: [screenSendEncoding(publication.screenQualityId)] };
       degradation = SCREEN_DEGRADATION;
     } else if (trackKind === 'camera') {
       track.contentHint = CAMERA_CONTENT_HINT;
@@ -345,8 +892,24 @@ export class MediasoupConnection {
     const producer = await transport.produce({
       track,
       appData: { trackKind },
+      /*
+       * A track NÃO é do producer. Com o padrão (`true`) o mediasoup-client
+       * a pararia junto com o transporte — e refazer a sessão depois de uma
+       * queda exigiria pedir o microfone e a tela de novo à pessoa. Quem
+       * para a track é quem sabe que ela acabou: `unpublish` e `close`.
+       */
+      stopTracks: false,
       ...(profile ?? {}),
     });
+
+    // Enquanto o `produce` esperava a rede, quem pediu pode ter desistido, e
+    // a sessão pode ter sido refeita por cima.
+    if (this.publications.get(trackKind) !== publication || this.sendTransport !== transport) {
+      producer.close();
+      this.closeServerProducer(producer.id);
+      throw new Error('A publicação foi cancelada.');
+    }
+
     // Salvaguarda incondicional: mesmo que o Producer tenha nascido pausado
     // por algum motivo (ver comentário acima), garante que ele comece a
     // mandar RTP de verdade.
@@ -360,16 +923,77 @@ export class MediasoupConnection {
     if (encoding !== undefined) {
       void this.forceSendParameters(producer.rtpSender ?? null, encoding, degradation);
     }
-    const handle: LocalTrackHandle = {
-      producerId: producer.id,
-      kind: producer.kind,
-      trackKind,
-      track,
-    };
-    this.localTracks.set(producer.id, handle);
-    this.localProducers.set(producer.id, producer);
-    this.events.onLocalTrackChange([...this.localTracks.values()]);
-    return handle;
+    // Republicado no meio de um mudo forçado pela moderação: continua mudo.
+    if (trackKind === 'mic' && this.lastForceMuted) track.enabled = false;
+
+    publication.producer = producer;
+    publication.handle = { producerId: producer.id, kind: producer.kind, trackKind, track };
+    this.emitLocalTracks();
+  }
+
+  /** Depois de uma sessão refeita: põe de volta no ar o que a UI tinha pedido. */
+  private async republishAll(epoch: number): Promise<void> {
+    for (const publication of [...this.publications.values()]) {
+      if (!this.isCurrent(epoch)) return;
+      await this.republish(publication, epoch);
+    }
+    this.emitLocalTracks();
+  }
+
+  /**
+   * Republica UMA track na sessão atual. Duas tentativas; se nenhuma der
+   * certo a publicação é desfeita de verdade — track parada, UI avisada.
+   * Deixar a entrada lá sem producer seria o pior resultado possível: o
+   * botão mostrando o microfone aberto e ninguém ouvindo.
+   */
+  private async republish(publication: Publication, epoch: number): Promise<void> {
+    const stillWanted = (): boolean => this.publications.get(publication.trackKind) === publication;
+    // A captura acabou enquanto estávamos fora (a pessoa parou de
+    // compartilhar pelo botão do navegador): não há o que republicar.
+    if (publication.track.readyState === 'live') {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        if (!this.isCurrent(epoch) || !stillWanted()) return;
+        try {
+          await this.produceFor(publication);
+          return;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      }
+      if (!this.isCurrent(epoch) || !stillWanted()) return;
+      this.events.onError('Não foi possível retomar uma transmissão depois da reconexão. Ligue de novo.');
+    }
+    if (!stillWanted()) return;
+    this.publications.delete(publication.trackKind);
+    publication.track.stop();
+    this.emitLocalTracks();
+  }
+
+  private retirePublication(publication: Publication, stopTrack: boolean): void {
+    const producer = publication.producer;
+    publication.producer = null;
+    if (producer !== null) {
+      producer.close();
+      this.closeServerProducer(producer.id);
+    }
+    if (stopTrack) publication.track.stop();
+  }
+
+  /**
+   * Avisa o SFU de que a track saiu do ar.
+   *
+   * Sem este aviso o producer continuava vivo no servidor até a pessoa sair
+   * da sala: quem assistia ficava com a tela congelada no último quadro, e
+   * cada vez que alguém soltava o "aperte para falar" sobrava um producer
+   * morto lá e um consumer morto em cada ouvinte. Só existe no canal de
+   * mídia — o caminho HTTP nunca teve essa rota.
+   */
+  private closeServerProducer(producerId: string): void {
+    void this.signal?.request('closeProducer', { producerId }).catch(() => undefined);
+  }
+
+  private emitLocalTracks(): void {
+    this.events.onLocalTrackChange(this.localTrackHandles);
   }
 
   /**
@@ -406,115 +1030,235 @@ export class MediasoupConnection {
     }
   }
 
-  /** Encerra uma track local publicada (para de enviar; quem chamou já parou a track de origem). */
-  unpublish(producerId: string): void {
-    // Sem isto, o `Producer` do lado do cliente (e o producer espelhado no
-    // SFU) continuava vivo mesmo depois de "fechar o microfone" — a próxima
-    // vez que alguém publicasse mic, o transporte de envio acumulava mais um
-    // producer de áudio nunca fechado, e o antigo (mudo, já que a track de
-    // origem já tinha sido parada) continuava anunciado para o resto da sala.
-    this.localProducers.get(producerId)?.close();
-    this.localProducers.delete(producerId);
-    this.localTracks.delete(producerId);
-    this.events.onLocalTrackChange([...this.localTracks.values()]);
+  // -------------------------------------------------------------------------
+  // Assinar
+  // -------------------------------------------------------------------------
+
+  private trackAnnounced(event: PresenceTrackAnnounced): void {
+    if (event.roomSlug !== this.roomId || event.peerId === this.peerId) return;
+    this.announced.set(event.producerId, event);
+    this.rebuildRoster();
+    this.ensureConsumed(event);
   }
 
-  get localTrackHandles(): LocalTrackHandle[] {
-    return [...this.localTracks.values()];
+  private trackClosed(event: PresenceTrackClosed): void {
+    if (event.roomSlug !== this.roomId) return;
+    if (!this.announced.delete(event.producerId)) return;
+    // A track saiu do ar: o consumer daqui vai junto, e é isso que tira o
+    // quadro do palco em vez de deixá-lo congelado no último frame.
+    const consumer = this.consumers.get(event.producerId);
+    if (consumer !== undefined) this.dropConsumer(event.producerId, consumer);
+    this.rebuildRoster();
   }
 
-  /**
-   * Manda uma mensagem de chat/soundboard pelo socket de presença — substitui
-   * o polling de `RoomBroadcastMessage` (`msPollBroadcast`/`msSendBroadcast`).
-   * Sem persistência aqui: quem entra depois não recebe histórico, mesma
-   * regra que já valia (ver `pollBroadcast` em `mediasoup.service.ts`).
-   * Fire-and-forget: se o socket ainda não abriu, a mensagem se perde — não
-   * há fila.
-   */
-  sendChat(body: string): void {
-    this.presenceSocket?.emit('chat:send', { displayName: this.displayName, body });
+  /** Assina tudo o que está no ar e ainda não foi assinado — chamado sempre que os transportes (re)aparecem. */
+  private consumeMissing(): void {
+    for (const track of this.announced.values()) this.ensureConsumed(track);
   }
 
-  /** Inscreve um ouvinte de mensagens de chat/soundboard vindas de outros peers. Devolve a função para cancelar. */
-  subscribeChat(listener: (fromPeer: string, displayName: string, body: string) => void): () => void {
-    this.chatListeners.add(listener);
-    return () => this.chatListeners.delete(listener);
+  private ensureConsumed(track: PresenceTrackAnnounced, isRetry = false): void {
+    const recvTransport = this.recvTransport;
+    // Sem transporte ainda (o anúncio chegou antes de a sessão ficar
+    // pronta): `consumeMissing` passa de novo quando ele existir.
+    if (recvTransport === null || this.device === null) return;
+    const { producerId } = track;
+    if (this.consumers.has(producerId) || this.consuming.has(producerId)) return;
+
+    this.consuming.add(producerId);
+    void this.consume(recvTransport, track)
+      .catch(() => {
+        // Uma segunda chance, e só uma: o que falhou por um soluço passa; o
+        // que falhou porque a track já saiu do ar não fica tentando.
+        if (isRetry) return;
+        setTimeout(() => {
+          if (this.alive && this.recvTransport === recvTransport && this.announced.has(producerId)) {
+            this.ensureConsumed(track, true);
+          }
+        }, CONSUME_RETRY_MS);
+      })
+      .finally(() => {
+        this.consuming.delete(producerId);
+      });
   }
 
-  /** Publica um atributo próprio no roster (ex.: "ausente") — o mesmo `PeerInfo.mediasoup` que outros já leem via heartbeat. */
-  async setAttributes(_attributes: Record<string, string>): Promise<void> {
-    // Reservado para uma versão futura: hoje o roster só carrega o anúncio de
-    // tracks publicadas (ver `MediasoupAnnounce`), sem um campo de atributo
-    // livre por participante. `useAwayMediasoup` degrada para estado local
-    // (ver esse hook) até esse campo existir no protocolo.
+  private async consume(recvTransport: Transport, announced: PresenceTrackAnnounced): Promise<void> {
+    const { producerId, peerId: ownerPeerId, trackKind } = announced;
+    // A sessão pode ser refeita, ou a track sair do ar, entre um `await` e
+    // o seguinte: cada passo confere antes de continuar.
+    const stale = (): boolean =>
+      !this.alive || this.recvTransport !== recvTransport || !this.announced.has(producerId);
+
+    const result = await this.rpcConsume(recvTransport.id, producerId);
+    if (stale()) return;
+
+    const consumer = await recvTransport.consume({
+      id: result.id,
+      producerId: result.producerId,
+      kind: result.kind,
+      rtpParameters: result.rtpParameters as never,
+    });
+    if (stale()) {
+      consumer.close();
+      return;
+    }
+    this.consumers.set(producerId, consumer);
+
+    consumer.on('transportclose', () => {
+      this.dropConsumer(producerId, consumer);
+    });
+    consumer.track.addEventListener('ended', () => {
+      this.dropConsumer(producerId, consumer);
+    });
+
+    try {
+      await this.rpcResumeConsumer(consumer.id);
+    } catch (error) {
+      this.dropConsumer(producerId, consumer);
+      throw error;
+    }
+    if (consumer.closed) return;
+    consumer.resume();
+
+    this.events.onRemoteTrack({
+      consumerId: consumer.id,
+      producerId: consumer.producerId,
+      ownerPeerId,
+      kind: consumer.kind,
+      trackKind,
+      track: consumer.track,
+    });
   }
 
-  private setState(state: MediasoupConnectionState): void {
-    this.state = state;
-    this.events.onStateChange(state);
+  /** Fecha um consumer e avisa a UI. Idempotente: os vários caminhos que chegam aqui não precisam combinar. */
+  private dropConsumer(producerId: string, consumer: Consumer): void {
+    if (this.consumers.get(producerId) !== consumer) return;
+    this.consumers.delete(producerId);
+    if (!consumer.closed) consumer.close();
+    this.events.onRemoteTrackEnded(consumer.id);
   }
+
+  // -------------------------------------------------------------------------
+  // As operações de mídia, pelo canal ou pelo caminho HTTP antigo
+  // -------------------------------------------------------------------------
+
+  private rpcCreateTransport(direction: 'send' | 'recv'): Promise<MediasoupTransportInfo> {
+    if (this.signal !== null) return this.signal.request('createTransport', { direction });
+    return msCreateTransport(this.roomId, { peerId: this.peerId, direction });
+  }
+
+  private async rpcConnectTransport(transportId: string, dtlsParameters: unknown): Promise<void> {
+    if (this.signal !== null) {
+      await this.signal.request('connectTransport', { transportId, dtlsParameters });
+      return;
+    }
+    await msConnectTransport(this.roomId, transportId, { peerId: this.peerId, dtlsParameters });
+  }
+
+  private async rpcProduce(
+    transportId: string,
+    kind: 'audio' | 'video',
+    rtpParameters: unknown,
+    trackKind: MediasoupTrackKind,
+  ): Promise<string> {
+    const result =
+      this.signal !== null
+        ? await this.signal.request('produce', { transportId, kind, rtpParameters, trackKind })
+        : await msProduce(this.roomId, transportId, { peerId: this.peerId, kind, rtpParameters, trackKind });
+    return result.producerId;
+  }
+
+  private rpcConsume(transportId: string, producerId: string): Promise<MediasoupConsumeResult> {
+    if (this.signal !== null) return this.signal.request('consume', { transportId, producerId });
+    return msConsume(this.roomId, transportId, {
+      peerId: this.peerId,
+      producerId,
+      rtpCapabilities: this.device?.rtpCapabilities as never,
+    });
+  }
+
+  private async rpcResumeConsumer(consumerId: string): Promise<void> {
+    if (this.signal !== null) {
+      await this.signal.request('resumeConsumer', { consumerId });
+      return;
+    }
+    await msResumeConsumer(this.roomId, consumerId, this.peerId);
+  }
+
+  // -------------------------------------------------------------------------
+  // Presença
+  // -------------------------------------------------------------------------
 
   /**
    * Abre o canal Socket.IO de presença direto no mediasoup-sfu — a
    * substituição do heartbeat de roster de 2.5s. `disconnect` do lado do
-   * servidor (fechar aba, F5, queda de rede) é o que agora tira alguém do
-   * roster de todo mundo, em vez de depender de um TTL de 20s sem renovação.
+   * servidor (fechar aba, F5, queda de rede) é o que tira alguém do roster
+   * de todo mundo, em vez de depender de um TTL de 20s sem renovação.
    */
-  private connectPresenceSocket(presenceToken: string): void {
-    const socket: Socket<ServerToClientPresenceEvents, ClientToServerPresenceEvents> = io(MEDIASOUP_PUBLIC_URL, {
+  private connectPresenceSocket(): void {
+    const socket: Socket<ServerToClientPresenceEvents, ClientToServerPresenceEvents> = io(this.nodeUrl, {
       path: '/presence',
-      auth: { token: presenceToken },
+      /*
+       * Função, e não um valor fixo: é chamada a CADA tentativa de conexão.
+       * O token de entrada vale dois minutos; com ele fixo, qualquer
+       * reconexão depois disso era recusada para sempre — o roster congelava
+       * e a pessoa só voltava recarregando a página. O canal de mídia renova
+       * o token a cada batimento, e é esse que vai aqui quando existe.
+       */
+      auth: (callback) =>
+        callback({ token: this.signal?.freshToken() ?? this.token, instance: this.instanceId }),
       reconnection: true,
     });
     this.presenceSocket = socket;
 
+    socket.on('connect', () => {
+      this.presenceRetries = 0;
+    });
+    socket.on('connect_error', () => {
+      // `active` continua `true` quando o próprio Socket.IO vai tentar de
+      // novo (rede). `false` é o servidor RECUSANDO — token vencido —, e aí
+      // ele não tenta mais sozinho.
+      if (!this.alive || this.presenceSocket !== socket || socket.active) return;
+      const delay = Math.min(30_000, 1_000 * 2 ** this.presenceRetries);
+      this.presenceRetries += 1;
+      setTimeout(() => {
+        if (!this.alive || this.presenceSocket !== socket) return;
+        // O token do canal de mídia, se houver um ainda válido; senão, um
+        // novo de `apps/api`. O `auth` acima pega o que estiver valendo.
+        const renewed = this.signal?.freshToken() != null;
+        void (renewed ? Promise.resolve('') : this.obtainToken(true))
+          .catch(() => undefined)
+          .then(() => {
+            if (this.alive && this.presenceSocket === socket) socket.connect();
+          });
+      }, delay);
+    });
+    socket.on('disconnect', (reason) => {
+      // Derrubado PELO SERVIDOR: a moderação removeu este par. O Socket.IO
+      // não reconecta nesse caso, e a conexão também não deve.
+      if (reason === 'io server disconnect' && this.presenceSocket === socket) {
+        this.handleFinalClose(SIGNAL_CLOSE.removed);
+      }
+    });
+
     socket.on('roster:update', (update: PresenceRosterUpdate) => {
       if (!this.alive || update.roomSlug !== this.roomId) return;
-      // O socket só carrega presença pura (peerId/displayName/joinedAt) — o
-      // comando de moderação vem do heartbeat de baixa cadência
-      // (`startAnnounceTick`) e precisa ser preservado ao reconstruir o
-      // `PeerInfo[]` que o resto da conexão espera.
-      const byId = new Map(this.roster.map((peer) => [peer.peerId, peer]));
-      const merged: PeerInfo[] = update.peers.map((entry) => ({
-        peerId: entry.peerId,
-        displayName: entry.displayName,
-        isAnonymous: byId.get(entry.peerId)?.isAnonymous ?? true,
-        joinedAt: entry.joinedAt,
-        mediasoup: byId.get(entry.peerId)?.mediasoup ?? null,
-        adminCommand: byId.get(entry.peerId)?.adminCommand ?? null,
-      }));
-      this.roster = merged;
-      this.events.onRosterChange(merged);
+      this.presenceEntries = update.peers;
+      this.rebuildRoster();
     });
 
-    // Descoberta de producers novos (mic, câmera, tela) AO VIVO — substitui a
-    // varredura do heartbeat de 4s. É isto que corrige a tela preta ao
-    // compartilhar: antes, o outro par só descobria o producer novo no
-    // próximo tick do `startAnnounceTick`, e uma tela que MUDAVA de producer
-    // (parar/recomeçar rápido) podia perder a janela.
+    /*
+     * Anúncio de tracks pelo socket de presença: é a fonte SÓ no caminho
+     * HTTP. Com o canal de mídia os mesmos avisos chegam por ele, na mesma
+     * fila ordenada das respostas — ouvir os dois faria um `track:closed`
+     * daqui atropelar um `consume` de lá.
+     */
     socket.on('track:announced', (event: PresenceTrackAnnounced) => {
-      if (!this.alive || event.roomSlug !== this.roomId || event.peerId === this.peerId) return;
-      this.addRosterTrack(event.peerId, event.producerId, event.kind, event.trackKind);
-      if (this.consumedProducerIds.has(event.producerId)) return;
-      this.consumedProducerIds.add(event.producerId);
-      const device = this.device;
-      const recvTransport = this.recvTransport;
-      if (device === null || recvTransport === null) {
-        // Ainda conectando (o socket abre antes dos transportes existirem,
-        // ver `connect()`) — devolve à fila para a próxima tentativa possível.
-        this.consumedProducerIds.delete(event.producerId);
-        this.pendingTracks.push(event);
-        return;
-      }
-      void this.consume(recvTransport, device, event.producerId, event.peerId, event.trackKind).catch(() => {
-        this.consumedProducerIds.delete(event.producerId);
-      });
+      if (!this.alive || this.signal !== null) return;
+      this.trackAnnounced(event);
     });
-
     socket.on('track:closed', (event: PresenceTrackClosed) => {
-      if (!this.alive || event.roomSlug !== this.roomId) return;
-      this.consumedProducerIds.delete(event.producerId);
-      this.removeRosterTrack(event.peerId, event.producerId);
+      if (!this.alive || this.signal !== null) return;
+      this.trackClosed(event);
     });
 
     // Mute/move do painel admin, ao vivo — substitui a leitura de
@@ -533,64 +1277,35 @@ export class MediasoupConnection {
   }
 
   /**
-   * Mantém `PeerInfo.mediasoup.tracks` vivo a partir dos eventos de socket
-   * `track:announced`/`track:closed`, em vez de depender do heartbeat de 4s
-   * que este canal substituiu (ver docstring de `connectPresenceSocket`).
-   * Sem isto, `roster:update` só carrega presença pura — nenhum campo do
-   * protocolo preenche `mediasoup` de novo — e o resto da sala nunca via o
-   * mic/câmera/tela de outro peer acender no `ParticipantSidebar`, mesmo com
-   * o áudio/vídeo chegando de verdade (a reprodução em si usa `remoteTracks`,
-   * que é outra lista, alimentada direto pelos mesmos eventos).
+   * Monta o `PeerInfo[]` que a UI lê, juntando as duas fontes: QUEM está na
+   * sala (socket de presença) e O QUE cada um publicou (anúncio de tracks).
+   *
+   * Sempre recalculado das duas, nunca remendado. As fontes chegam por
+   * canais diferentes e em qualquer ordem: quando o roster era só atualizado
+   * a cada evento, o anúncio de uma track que chegasse antes do roster que
+   * incluía o dono dela era descartado — e o microfone daquela pessoa nunca
+   * acendia na lista.
    */
-  private addRosterTrack(
-    peerId: string,
-    producerId: string,
-    kind: 'audio' | 'video',
-    trackKind: MediasoupTrackKind,
-  ): void {
-    const index = this.roster.findIndex((peer) => peer.peerId === peerId);
-    if (index === -1) return;
-    const peer = this.roster[index]!;
-    const tracks = peer.mediasoup?.tracks ?? [];
-    if (tracks.some((track) => track.producerId === producerId)) return;
-    const nextPeer: PeerInfo = {
-      ...peer,
-      mediasoup: { tracks: [...tracks, { producerId, kind, trackKind }] },
-    };
-    this.roster = [...this.roster.slice(0, index), nextPeer, ...this.roster.slice(index + 1)];
-    this.events.onRosterChange(this.roster);
-  }
-
-  private removeRosterTrack(peerId: string, producerId: string): void {
-    const index = this.roster.findIndex((peer) => peer.peerId === peerId);
-    if (index === -1) return;
-    const peer = this.roster[index]!;
-    const tracks = peer.mediasoup?.tracks ?? [];
-    if (!tracks.some((track) => track.producerId === producerId)) return;
-    const nextPeer: PeerInfo = {
-      ...peer,
-      mediasoup: { tracks: tracks.filter((track) => track.producerId !== producerId) },
-    };
-    this.roster = [...this.roster.slice(0, index), nextPeer, ...this.roster.slice(index + 1)];
-    this.events.onRosterChange(this.roster);
-  }
-
-  /** Tracks anunciadas antes dos transportes ficarem prontos — drenada assim que `recvTransport`/`device` existem, ver `connect()`. */
-  private pendingTracks: PresenceTrackAnnounced[] = [];
-
-  private drainPendingTracks(): void {
-    if (this.device === null || this.recvTransport === null || this.pendingTracks.length === 0) return;
-    const device = this.device;
-    const recvTransport = this.recvTransport;
-    const pending = this.pendingTracks;
-    this.pendingTracks = [];
-    for (const event of pending) {
-      if (this.consumedProducerIds.has(event.producerId)) continue;
-      this.consumedProducerIds.add(event.producerId);
-      void this.consume(recvTransport, device, event.producerId, event.peerId, event.trackKind).catch(() => {
-        this.consumedProducerIds.delete(event.producerId);
-      });
+  private rebuildRoster(): void {
+    const tracksByPeer = new Map<string, MediasoupPublishedTrack[]>();
+    for (const track of this.announced.values()) {
+      const list = tracksByPeer.get(track.peerId) ?? [];
+      list.push({ producerId: track.producerId, kind: track.kind, trackKind: track.trackKind });
+      tracksByPeer.set(track.peerId, list);
     }
+    const previous = new Map(this.roster.map((peer) => [peer.peerId, peer]));
+    this.roster = this.presenceEntries.map((entry) => {
+      const tracks = tracksByPeer.get(entry.peerId);
+      return {
+        peerId: entry.peerId,
+        displayName: entry.displayName,
+        isAnonymous: previous.get(entry.peerId)?.isAnonymous ?? true,
+        joinedAt: entry.joinedAt,
+        mediasoup: tracks === undefined ? null : { tracks },
+        adminCommand: previous.get(entry.peerId)?.adminCommand ?? null,
+      };
+    });
+    this.events.onRosterChange(this.roster);
   }
 
   /**
@@ -608,9 +1323,8 @@ export class MediasoupConnection {
   private applyAdminCommand(command: PresenceModerationCommand): void {
     if (command.forceMuted !== undefined && command.forceMuted !== this.lastForceMuted) {
       this.lastForceMuted = command.forceMuted;
-      for (const handle of this.localTracks.values()) {
-        if (handle.trackKind === 'mic') handle.track.enabled = !command.forceMuted;
-      }
+      const mic = this.publications.get('mic');
+      if (mic !== undefined) mic.track.enabled = !command.forceMuted;
       this.events.onForceMuted(command.forceMuted);
     }
 
@@ -621,45 +1335,5 @@ export class MediasoupConnection {
     } else if (moveTo === null) {
       this.lastMoveTo = null;
     }
-  }
-
-  private async consume(
-    recvTransport: Transport,
-    device: Device,
-    producerId: string,
-    ownerPeerId: string,
-    trackKind: MediasoupTrackKind,
-  ): Promise<void> {
-    const result = await msConsume(this.roomId, recvTransport.id, {
-      peerId: this.peerId,
-      producerId,
-      rtpCapabilities: device.rtpCapabilities as never,
-    });
-
-    const consumer = await recvTransport.consume({
-      id: result.id,
-      producerId: result.producerId,
-      kind: result.kind,
-      rtpParameters: result.rtpParameters as never,
-    });
-
-    await msResumeConsumer(this.roomId, consumer.id, this.peerId);
-    await consumer.resume();
-
-    consumer.on('transportclose', () => {
-      this.events.onRemoteTrackEnded(consumer.id);
-    });
-    consumer.track.addEventListener('ended', () => {
-      this.events.onRemoteTrackEnded(consumer.id);
-    });
-
-    this.events.onRemoteTrack({
-      consumerId: consumer.id,
-      producerId: consumer.producerId,
-      ownerPeerId,
-      kind: consumer.kind,
-      trackKind,
-      track: consumer.track,
-    });
   }
 }

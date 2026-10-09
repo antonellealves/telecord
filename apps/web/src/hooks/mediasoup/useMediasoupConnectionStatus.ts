@@ -9,6 +9,9 @@ function toStatus(state: MediasoupConnectionState): RoomConnectionStatus {
     case 'connecting':
     case 'new':
       return 'connecting';
+    // Voltando sozinho depois de uma queda — ver `MediasoupConnection`.
+    case 'reconnecting':
+      return 'reconnecting';
     case 'disconnected':
       return 'disconnected';
     case 'failed':

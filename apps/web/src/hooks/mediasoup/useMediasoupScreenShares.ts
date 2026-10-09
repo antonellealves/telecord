@@ -9,9 +9,21 @@ import { wrapMediaStreamTrack, type MediasoupTrackHandle } from './mediasoupTrac
 import type { MediasoupEngine } from './useMediasoupEngine';
 import { withPublishTimeout } from './withPublishTimeout';
 
+export interface MediasoupScreenPublication {
+  track: MediasoupTrackHandle | null;
+  /**
+   * Só nas telas dos OUTROS, e só com o canal de mídia: pede ao SFU que pare
+   * (ou volte) a mandar esta tela para este navegador. É a presença deste
+   * método que faz o `ScreenStage` mostrar o botão de "parar de assistir" —
+   * mesmo nome e mesmo sentido do `setSubscribed` do livekit-client, para o
+   * componente não precisar saber qual transporte está por trás.
+   */
+  setSubscribed?: (subscribed: boolean) => void;
+}
+
 export interface MediasoupScreenShareEntry {
   owner: ScreenShareOwner;
-  publication: { track: MediasoupTrackHandle | null };
+  publication: MediasoupScreenPublication;
 }
 
 export interface MediasoupScreenShares {
@@ -32,11 +44,9 @@ function displayNameOf(peers: PeerInfo[], peerId: string): string {
  * `useScreenShares`.
  *
  * Sem `restart()`: no LiveKit, trocar a qualidade de uma tela JÁ no ar
- * republica com um encoding diferente (`screenShareEncoding`). O mediasoup
- * ainda publica com um único perfil de bitrate fixo do lado do servidor (ver
- * `apps/mediasoup-sfu/src/rooms.ts`, `initialAvailableOutgoingBitrate`) — a
- * troca de qualidade em pleno compartilhamento fica para quando o SFU
- * expuser controle de bitrate por producer.
+ * republica com um encoding diferente (`screenShareEncoding`). Aqui a troca
+ * em pleno compartilhamento ainda não existe — o nível escolhido vale para a
+ * próxima vez que a pessoa compartilhar.
  */
 export function useMediasoupScreenShares(
   engine: MediasoupEngine,
@@ -59,8 +69,13 @@ export function useMediasoupScreenShares(
    * muda, a tela do outro participante ficava sendo desconectada e
    * reconectada do elemento <video> a cada 2.5s, aparecendo preta/travada.
    * A local não sofria porque já vinha de `useState` (referência estável).
+   *
+   * O que fica em cache é a PUBLICAÇÃO inteira, não só a track: o
+   * `ScreenStage` repõe a assinatura (`setSubscribed(true)`) toda vez que a
+   * referência da publicação muda, então um objeto novo a cada render
+   * desfaria o "parar de assistir" no instante seguinte ao clique.
    */
-  const remoteHandleCache = useRef(new Map<MediaStreamTrack, MediasoupTrackHandle>());
+  const remotePublicationCache = useRef(new Map<MediaStreamTrack, MediasoupScreenPublication>());
 
   const stop = useCallback(() => {
     if (isBusy) return;
@@ -142,14 +157,21 @@ export function useMediasoupScreenShares(
         publication: { track: localVideoHandle },
       });
     }
-    const cache = remoteHandleCache.current;
+    const cache = remotePublicationCache.current;
+    const connection = engine.connection;
     const liveTracks = new Set<MediaStreamTrack>();
     for (const remote of remoteShares) {
       liveTracks.add(remote.track);
-      let handle = cache.get(remote.track);
-      if (handle === undefined) {
-        handle = wrapMediaStreamTrack(remote.track);
-        cache.set(remote.track, handle);
+      let publication = cache.get(remote.track);
+      if (publication === undefined) {
+        publication = { track: wrapMediaStreamTrack(remote.track) };
+        if (connection !== null && connection.canPauseRemoteTracks) {
+          const { consumerId } = remote;
+          publication.setSubscribed = (subscribed) => {
+            void connection.setRemoteTrackPaused(consumerId, !subscribed).catch(() => undefined);
+          };
+        }
+        cache.set(remote.track, publication);
       }
       out.push({
         owner: {
@@ -158,14 +180,22 @@ export function useMediasoupScreenShares(
           isLocal: false,
           trackSid: remote.consumerId,
         },
-        publication: { track: handle },
+        publication,
       });
     }
     for (const cachedTrack of cache.keys()) {
       if (!liveTracks.has(cachedTrack)) cache.delete(cachedTrack);
     }
     return out.sort((a, b) => (a.owner.trackSid < b.owner.trackSid ? -1 : a.owner.trackSid > b.owner.trackSid ? 1 : 0));
-  }, [engine.remoteTracks, engine.roster, isLocalSharing, localVideoProducer, localVideoHandle, localPeerId]);
+  }, [
+    engine.remoteTracks,
+    engine.roster,
+    engine.connection,
+    isLocalSharing,
+    localVideoProducer,
+    localVideoHandle,
+    localPeerId,
+  ]);
 
   let disabledReason: string | null = null;
   if (isBusy) {

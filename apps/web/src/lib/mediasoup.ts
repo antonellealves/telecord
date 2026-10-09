@@ -1,9 +1,16 @@
 /**
- * Proxy do processo mediasoup-sfu, visto do navegador.
+ * O que o navegador pede a `apps/api` sobre o transporte mediasoup.
  *
- * O cliente nunca fala com o processo na VM direto — o segredo interno vive só
- * no backend. Estas funções batem no proxy `/api/mediasoup/*`, que confere a
- * participação na sala antes de repassar.
+ * Uma chamada importa de verdade: `fetchMediasoupConfig`, a ENTRADA na sala.
+ * Ela devolve o token com que o navegador abre, direto no SFU, o canal de
+ * presença e o canal de mídia (`signalStream.ts`) — e daí em diante criar
+ * transporte, publicar e assinar não passam mais por aqui.
+ *
+ * As funções `ms*` abaixo são o caminho ANTIGO dessas mesmas operações: cada
+ * uma é uma requisição ao proxy `/api/mediasoup/*`, que confere a
+ * participação na sala e repassa ao SFU com o segredo interno. Continuam
+ * existindo para quando o canal de mídia não abre — ver
+ * `MediasoupConnection`.
  */
 import type {
   MediasoupClientConfig,
@@ -20,10 +27,11 @@ import { apiGet, apiJson, query } from './apiClient';
 const roomPath = (roomSlug: string): string => `/mediasoup/rooms/${encodeURIComponent(roomSlug)}`;
 
 /**
- * Config pública: se está ligado, as RTP capabilities do Router da sala, e o
- * token de curta duração para abrir o canal Socket.IO de presença direto no
- * mediasoup-sfu. `peerId`/`displayName` vão na query porque é aqui — e não
- * mais num heartbeat HTTP separado — que a presença inicial é registrada.
+ * A entrada: se o transporte está ligado, as RTP capabilities dos Routers,
+ * o token de curta duração que abre os canais do mediasoup-sfu e, quando há
+ * mais de um nó, qual deles é o desta sala. `peerId`/`displayName` vão na
+ * query porque é aqui — e não mais num heartbeat HTTP separado — que a
+ * presença inicial é registrada.
  */
 export function fetchMediasoupConfig(
   roomSlug: string,

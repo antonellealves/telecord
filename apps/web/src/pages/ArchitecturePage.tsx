@@ -74,13 +74,16 @@ const LAYERS: Layer[] = [
     title: 'O servidor de mídia é nosso código',
     body:
       'Um processo Node com a biblioteca mediasoup, na mesma VM que hospeda o LiveKit. O ' +
-      'navegador nunca fala com ele para criar transporte ou publicar — isso passa por um ' +
-      'proxy que confere a participação na sala. O que fala direto é um Socket.IO de presença, ' +
-      'autenticado por token curto: é ele que entrega roster, chat e descoberta de faixas ao ' +
-      'vivo, sem nenhum polling sobrando. Ser código próprio é o que permitiu empurrar áudio e ' +
-      'vídeo para bem além do preset de videoconferência.',
-    chips: ['mediasoup na VM', 'Socket.IO de presença', 'proxy confere a sala'],
-    survives: 'Reiniciar o processo derrota as salas ativas — trade-off assumido, igual ao LiveKit.',
+      'desenho é o do Discord e do Meet: o serviço de contas autoriza a entrada uma vez e sai ' +
+      'do caminho; daí em diante o navegador fala direto com o nó, por dois canais ' +
+      'autenticados por token curto — um de presença, com roster e chat, e um de mídia, por ' +
+      'onde passa tudo o que faz a voz e a tela funcionarem. Os pacotes de áudio e vídeo nunca ' +
+      'passam pelo Node: quem os encaminha é um processo C++ por núcleo. Ser código próprio é ' +
+      'o que permitiu empurrar áudio e vídeo para bem além do preset de videoconferência.',
+    chips: ['mediasoup na VM', 'canal de mídia direto', 'um Worker por núcleo'],
+    survives:
+      'Reiniciar o processo derruba as sessões, e os clientes voltam sozinhos: refazem os ' +
+      'transportes e republicam o que estava no ar.',
   },
   {
     id: 'edge',
@@ -99,9 +102,9 @@ const LAYERS: Layer[] = [
     title: 'NestJS para tudo que lembra',
     body:
       'Contas, salas persistidas, canais, sons enviados, log, auditoria, painel de ' +
-      'administração — e o proxy do mediasoup, que guarda o segredo interno e confere ' +
-      'presença antes de repassar qualquer chamada ao SFU. É o único que fala com o banco, e ' +
-      'por isso fica separado das camadas acima.',
+      'administração — e a portaria do mediasoup: confere a entrada na sala, assina o token ' +
+      'que abre os canais do SFU e, quando houver mais de um nó, diz em qual deles a sala ' +
+      'mora. É o único que fala com o banco, e por isso fica separado das camadas acima.',
     chips: ['NestJS', 'Prisma', 'TiDB (MySQL)'],
     survives: 'Se cair, o telecord vira o que era antes das contas.',
   },
@@ -135,7 +138,7 @@ const TRANSPORTS: Transport[] = [
   {
     id: 'mediasoup',
     name: 'mediasoup',
-    tech: 'SFU próprio em VM · WebRTC + Socket.IO',
+    tech: 'SFU próprio em VM · WebRTC + WebSocket',
     status: 'mantido',
     promise: 'O mesmo que o LiveKit faz, mas com o servidor sendo código nosso.',
     verdict:
@@ -195,10 +198,10 @@ interface Stat {
 }
 
 const STATS: Stat[] = [
-  { value: '~39k', label: 'linhas de TypeScript', note: 'monorepo pnpm, 4 pacotes' },
+  { value: '~40k', label: 'linhas de TypeScript', note: 'monorepo pnpm, 4 pacotes' },
   { value: '5 → 2', label: 'transportes de mídia', note: 'três construídos e aposentados' },
   { value: '20', label: 'tabelas no banco', note: '79 rotas HTTP' },
-  { value: '118', label: 'testes', note: 'rodam sem banco e sem rede' },
+  { value: '201', label: 'testes', note: 'sem banco; os do SFU sobem o Worker de verdade' },
 ];
 
 interface Decision {
@@ -280,6 +283,27 @@ const DECISIONS: Decision[] = [
       'teto de uso é o que a fatura permitir. Numa máquina própria que só roteia — sem gravar ' +
       'nada, sem guardar nada — o custo é fixo e o teto é a banda da máquina. Trocar de ' +
       'biblioteca resolveria a API; não resolveria o dono da conta.',
+  },
+  {
+    title: 'A função serverless saiu do caminho da voz',
+    body:
+      'Ligar o microfone custava duas idas e voltas à função serverless — cada uma com uma ' +
+      'consulta ao banco — em quem fala, e mais duas em cada ouvinte. Hoje a função autoriza a ' +
+      'entrada e mais nada: criar transporte, publicar e assinar são conversados direto com o ' +
+      'SFU, por um WebSocket que do lado do servidor é um stream do Node. Pedidos atendidos em ' +
+      'ordem, resposta sempre na frente dos avisos que ela provocou, e um cliente lento segura ' +
+      'só a própria fila. De quebra consertou um defeito que era do protocolo, não do código: ' +
+      'parar de compartilhar não avisava ninguém, e a tela ficava congelada no palco dos outros.',
+  },
+  {
+    title: 'Capacidade é assunto de máquina',
+    body:
+      'O que limita uma sala não deve ser uma decisão escrita no código. Cada núcleo da máquina ' +
+      'vira um Worker; a sala pequena mora inteira num só, que é o caminho mais curto para um ' +
+      'pacote, e a que enche transborda para o seguinte por uma ponte criada na hora. Havia um ' +
+      'teto escondido: cada transporte sorteava uma porta de mídia, cada pessoa abre dois, e a ' +
+      'faixa de cem portas fechava o nó em cinquenta pessoas por mais CPU que sobrasse. Agora é ' +
+      'uma porta por Worker. Crescer é trocar a máquina por uma maior, ou subir outra ao lado.',
   },
   {
     title: 'Qualidade é uma corrente: a camada mais fraca decide',

@@ -85,15 +85,21 @@ type PanelWidthStyle = CSSProperties & {
  *   `useActivityReporter`): o relatório de atividade usa o TOKEN do LiveKit
  *   como credencial (`sendActivityEvents(participantToken, …)`), que não
  *   existe neste transporte.
- * - **"Quem está falando" (`isSpeaking`) por nível de áudio de verdade**: o
- *   LiveKit calcula isso no servidor; o mediasoup-sfu ainda não expõe essa
- *   métrica. O destaque ainda acende ao soltar um som do soundboard (ver
- *   `useSoundboardSpeakers`), que não depende dela.
  * - **Ausência (`away`) sincronizada com os outros**: fica local a este
  *   navegador (ver `useMediasoupAway`) até o roster carregar um campo de
  *   atributo livre por participante.
- * - **Troca de qualidade de tela em pleno compartilhamento**: o SFU publica
- *   com um perfil de bitrate fixo por ora (ver `useMediasoupScreenShares`).
+ * - **Troca de qualidade de tela em pleno compartilhamento**: o nível
+ *   escolhido só vale para o próximo compartilhamento (ver
+ *   `useMediasoupScreenShares`).
+ *
+ * ## O que entrou com o canal de mídia
+ *
+ * A sinalização de voz e tela deixou de passar pela função serverless e fala
+ * direto com o SFU (ver `MediasoupConnection`). Com isso vieram três coisas
+ * que esta tela mostra sem precisar saber de onde vêm: o destaque de quem
+ * está falando, medido pelo SFU; o "parar de assistir" de uma tela, que faz o
+ * SFU parar de enviá-la; e a volta sozinha depois de uma queda — o banner de
+ * conexão passa por "reconectando" e a sala continua.
  */
 export function MediasoupRoomShell({
   roomId,
@@ -137,9 +143,9 @@ export function MediasoupRoomShell({
     soundboardSpeakers.mark,
   );
   /*
-   * O mediasoup ainda não calcula "quem está falando" de verdade (ver nota no
-   * topo deste arquivo) — mas soltar um som do soundboard pode acender o
-   * mesmo destaque, do mesmo jeito que no LiveKit.
+   * Quem fala já vem marcado de `useMediasoupParticipants`, medido pelo SFU.
+   * Soltar um som do soundboard acende o mesmo destaque, do mesmo jeito que
+   * no LiveKit.
    */
   const participantsWithSoundboard = participants.map((participant) =>
     soundboardSpeakers.speaking.has(participant.identity)

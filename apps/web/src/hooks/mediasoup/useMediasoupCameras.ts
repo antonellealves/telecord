@@ -107,7 +107,7 @@ export function useMediasoupCameras(
         identity: localPeerId,
         displayName: 'você',
         isLocal: true,
-        isSpeaking: false,
+        isSpeaking: engine.speakingPeerIds.has(localPeerId),
         trackSid: localProducer.producerId,
         publication: { track: localHandle },
       });
@@ -125,7 +125,7 @@ export function useMediasoupCameras(
         identity: remote.ownerPeerId,
         displayName: displayNameOf(engine.roster, remote.ownerPeerId),
         isLocal: false,
-        isSpeaking: false,
+        isSpeaking: engine.speakingPeerIds.has(remote.ownerPeerId),
         trackSid: remote.consumerId,
         publication: { track: handle },
       });
@@ -134,7 +134,15 @@ export function useMediasoupCameras(
       if (!liveTracks.has(cachedTrack)) cache.delete(cachedTrack);
     }
     return out.sort((a, b) => (a.trackSid < b.trackSid ? -1 : a.trackSid > b.trackSid ? 1 : 0));
-  }, [engine.remoteTracks, engine.roster, isLocalOn, localProducer, localHandle, localPeerId]);
+  }, [
+    engine.remoteTracks,
+    engine.roster,
+    engine.speakingPeerIds,
+    isLocalOn,
+    localProducer,
+    localHandle,
+    localPeerId,
+  ]);
 
   const supported = typeof navigator.mediaDevices?.getUserMedia === 'function';
   let disabledReason: string | null = null;
