@@ -71,13 +71,19 @@ export class MediasoupService {
   }
 
   /**
-   * Config pública da sala + token de presença de curta duração (ver
-   * `presenceToken.ts`) para o navegador abrir o canal Socket.IO direto no
-   * mediasoup-sfu. O heartbeat aqui é o ÚNICO que resta no fluxo HTTP: dá a
-   * `assertMember` uma linha de `PeerPresence` fresca ANTES de assinar o
-   * token — emitir o token sem essa prova deixaria qualquer um entrar numa
-   * sala sem ter passado pela portaria. Depois disto, o browser não faz mais
-   * polling de roster: quem mantém presença é o socket.
+   * A entrada na sala: o que o navegador precisa para falar DIRETO com o SFU.
+   *
+   * É a única vez em que este serviço fica no caminho. Devolve o token de
+   * curta duração (ver `presenceToken.ts`) que abre os dois canais do nó — o
+   * de presença e o de mídia — e, quando há mais de um nó, QUAL deles é o
+   * desta sala. Dali em diante criar transporte, publicar e assinar são
+   * conversados com o SFU pelo canal de mídia, sem passar por aqui: é o
+   * mesmo papel que o gateway do Discord tem ao dizer ao cliente em que
+   * servidor de voz conectar.
+   *
+   * O heartbeat dá a `assertMember` uma linha de `PeerPresence` fresca ANTES
+   * de assinar o token — é o que mantém funcionando o caminho HTTP antigo,
+   * para o cliente que ainda o usa.
    */
   async clientConfig(
     roomSlug: string,
@@ -89,6 +95,9 @@ export class MediasoupService {
       return { enabled: false, routerRtpCapabilities: null, presenceToken: null };
     }
     await this.peers.heartbeat(roomSlug, peerId, displayName, userId, null);
+    // `nodeFor` primeiro: a chamada seguinte já sai para o nó escolhido, e é
+    // ele que o navegador recebe.
+    const node = await this.client.nodeFor(roomSlug);
     const routerRtpCapabilities = await this.client.routerRtpCapabilities(roomSlug);
     const presenceToken = await signPresenceToken({
       peerId,
@@ -97,7 +106,12 @@ export class MediasoupService {
       secret: this.appConfig.mediasoup.internalSecret,
       ttlMs: PRESENCE_TOKEN_TTL_MS,
     });
-    return { enabled: true, routerRtpCapabilities, presenceToken };
+    return {
+      enabled: true,
+      routerRtpCapabilities,
+      presenceToken,
+      node: this.client.multiNode ? { url: node } : null,
+    };
   }
 
   async createTransport(

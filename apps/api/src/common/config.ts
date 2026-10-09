@@ -43,16 +43,20 @@ export interface LiveKitConfig {
 }
 
 /**
- * Processo mediasoup-sfu próprio, na VM Oracle (transporte 'mediasoup').
+ * Processos mediasoup-sfu próprios (transporte 'mediasoup').
  *
- * `internalUrl` nunca é exposta ao navegador: o proxy `/api/mediasoup/*` é
- * quem fala com o processo, autenticado por `internalSecret` (segredo
- * compartilhado, tráfego servidor-servidor — não a borda pública que exige
- * JWT). `null` = a quinta opção some da tela, mesmo critério de "a presença
- * da credencial é o interruptor" do LiveKit e do Cloudflare acima.
+ * `nodeUrls` são os nós do SFU, sem barra no fim. Um só é o caso de hoje — a
+ * VM Oracle. Mais de um é como se acrescenta capacidade: cada sala mora num
+ * nó (ver `mediasoup/node-ring.ts`) e a API passa a dizer ao navegador qual.
+ * Com um nó, a URL nunca sai daqui: o proxy `/api/mediasoup/*` é quem fala
+ * com o processo, autenticado por `internalSecret` (segredo compartilhado,
+ * tráfego servidor-servidor — não a borda pública que exige JWT).
+ *
+ * `null` = a opção some da tela, mesmo critério de "a presença da credencial
+ * é o interruptor" do LiveKit acima.
  */
 export interface MediasoupConfig {
-  internalUrl: string;
+  nodeUrls: string[];
   internalSecret: string;
 }
 
@@ -117,17 +121,42 @@ function trimTrailingSlash(url: string): string {
  * sintoma seria 401 em toda tentativa de entrar em sala nesse modo.
  */
 function loadMediasoupConfig(env: NodeJS.ProcessEnv): MediasoupConfig | null {
-  const internalUrl = trimTrailingSlash(env.MEDIASOUP_INTERNAL_URL?.trim() ?? '');
+  // Uma URL, ou várias separadas por vírgula — uma por nó do SFU.
+  const nodeUrls = (env.MEDIASOUP_INTERNAL_URL ?? '')
+    .split(',')
+    .map((url) => trimTrailingSlash(url.trim()))
+    .filter((url) => url !== '');
   const internalSecret = env.MEDIASOUP_INTERNAL_SECRET?.trim() ?? '';
 
-  if (internalUrl === '' && internalSecret === '') return null;
-  if (internalUrl === '' || internalSecret === '') {
+  if (nodeUrls.length === 0 && internalSecret === '') return null;
+  if (nodeUrls.length === 0 || internalSecret === '') {
     throw new ConfigError(
       'MEDIASOUP_INTERNAL_URL e MEDIASOUP_INTERNAL_SECRET vão juntos ou nenhum dos dois.',
     );
   }
 
-  return { internalUrl, internalSecret };
+  for (const url of nodeUrls) {
+    if (!/^https?:\/\/[^/\s]+/.test(url)) {
+      throw new ConfigError(`MEDIASOUP_INTERNAL_URL tem um endereço que não é http(s): ${url}`);
+    }
+  }
+  // O mesmo nó duas vezes não é capacidade em dobro: é a mesma máquina
+  // recebendo o dobro das salas que a conta acha que distribuiu.
+  if (new Set(nodeUrls).size !== nodeUrls.length) {
+    throw new ConfigError('MEDIASOUP_INTERNAL_URL repete o mesmo nó.');
+  }
+  /*
+   * Com mais de um nó, é esta URL que o navegador recebe para conectar — a
+   * do build só sabe apontar para um. Então ela precisa ser pública e com
+   * TLS: uma página em https não abre WebSocket para http.
+   */
+  if (nodeUrls.length > 1 && nodeUrls.some((url) => !url.startsWith('https://'))) {
+    throw new ConfigError(
+      'Com mais de um nó em MEDIASOUP_INTERNAL_URL, todos precisam ser https:// e alcançáveis pelo navegador.',
+    );
+  }
+
+  return { nodeUrls, internalSecret };
 }
 
 /**

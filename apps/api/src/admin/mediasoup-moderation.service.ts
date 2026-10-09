@@ -190,7 +190,8 @@ export class MediasoupModerationService {
     client: LogClient | undefined,
   ): Promise<void> {
     await this.assertPresent(slug, peerId);
-    await this.sfu.leave(slug, peerId);
+    // `kicked`: o SFU fecha os canais do par proibindo a reconexão automática.
+    await this.sfu.leave(slug, peerId, true);
     await this.peers.leave(slug, peerId);
 
     await this.log.audit({
