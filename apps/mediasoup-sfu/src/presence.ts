@@ -2,6 +2,7 @@ import type { Server as HttpServer } from 'node:http';
 import { Server as SocketIOServer, type Socket } from 'socket.io';
 import type { PresenceModerationCommand } from '@telecord/shared';
 import { verifyAdminPresenceToken, verifyPresenceToken } from '@telecord/shared';
+import type { PeerLiveness } from './liveness';
 import type { RoomRegistry } from './rooms';
 
 const ADMIN_ROOM_PREFIX = 'admin:';
@@ -9,24 +10,6 @@ const ADMIN_ROOM_PREFIX = 'admin:';
 const peerRoom = (roomSlug: string, peerId: string): string => `peer:${roomSlug}:${peerId}`;
 
 let ioInstance: SocketIOServer | null = null;
-
-/**
- * Último socket vivo para cada `roomSlug:peerId` — usado só para o `disconnect`
- * abaixo saber se ELE ainda é o dono da presença antes de apagá-la.
- *
- * Sem isto, um par cujo socket reconecta (rede instável, ou o `reconnection:
- * true` do cliente depois de uma queda breve) corre risco de: o socket NOVO
- * conecta e chama `setPresence` primeiro, e só depois o evento `disconnect`
- * do socket ANTIGO chega ao servidor (a ordem entre "nova conexão" e
- * "desconexão da antiga" não é garantida) — sem essa guarda, esse
- * `disconnect` atrasado apagava a presença que o socket novo tinha acabado
- * de escrever, e junto dela os producers do par (`removePeer` fecha os
- * transportes). Do lado de quem estava assistindo, o sintoma era o vídeo
- * (câmera ou tela) desse par sumir sem nenhum erro — o mesmo tipo de "falha
- * silenciosa" que o commit anterior corrigiu para `assertMember`.
- */
-const peerSockets = new Map<string, string>();
-const peerSocketKey = (roomSlug: string, peerId: string): string => `${roomSlug}:${peerId}`;
 
 /**
  * Chamado pela rota interna `POST /rooms/:roomSlug/peers/:peerId/command`
@@ -56,24 +39,38 @@ interface AdminSocketData {
 type PresenceSocketData = PeerSocketData | AdminSocketData;
 
 /**
- * Canal de presença ao vivo, exposto PUBLICAMENTE ao navegador (diferente do
- * resto deste processo — ver `http.ts`, que continua interno, só para
- * `apps/api`). Autenticado por um token de curta duração assinado com o
- * MESMO `MEDIASOUP_INTERNAL_SECRET` (ver `presenceToken.ts` em
- * `@telecord/shared`), sem precisar bater no Prisma/`apps/api` de novo — é
- * isso que deixa este processo validar a conexão sozinho.
+ * A página que abriu o socket, quando ela diz — ver `PeerLiveness`. Vem do
+ * handshake, que é entrada não confiável: serve só para AGRUPAR os canais de
+ * uma mesma página, nunca para decidir quem a pessoa é.
+ */
+function instanceOf(socket: Socket): string | null {
+  const instance: unknown = socket.handshake.auth.instance;
+  return typeof instance === 'string' && instance !== '' && instance.length <= 64 ? instance : null;
+}
+
+/**
+ * Canal de presença ao vivo, exposto PUBLICAMENTE ao navegador (diferente das
+ * rotas `/rooms/*` de `http.ts`, que continuam internas, só para `apps/api`).
+ * Autenticado por um token de curta duração assinado com o MESMO
+ * `MEDIASOUP_INTERNAL_SECRET` (ver `presenceToken.ts` em `@telecord/shared`),
+ * sem precisar bater no Prisma/`apps/api` de novo — é isso que deixa este
+ * processo validar a conexão sozinho.
  *
- * Substitui o heartbeat HTTP de 2.5s que existia antes para roster: aqui a
- * saída de um par é o evento `disconnect` do próprio transporte Socket.IO —
- * dispara ao fechar a aba, dar F5, ou perder a conexão de rede (detectado
- * pelo ping/pong nativo do socket.io, bem mais rápido que os 20s de TTL do
- * heartbeat antigo).
+ * Carrega o que é de sala, não de mídia: roster, chat, soundboard e os
+ * comandos de moderação. A sinalização de voz e tela mora em `signal/` — o
+ * anúncio de tracks continua saindo por aqui também, para o cliente que
+ * ainda fala o caminho HTTP antigo.
  *
  * Anexado ao MESMO `http.Server` que já escuta a porta pública de sempre
- * (ver `main.ts`) — o Caddy já encaminha upgrade de WebSocket por padrão
+ * (ver `node.ts`) — o Caddy já encaminha upgrade de WebSocket por padrão
  * (`infra/Caddyfile`), então não precisa de porta nova nem config de infra.
  */
-export function startPresenceServer(httpServer: HttpServer, internalSecret: string, registry: RoomRegistry): void {
+export function startPresenceServer(
+  httpServer: HttpServer,
+  internalSecret: string,
+  registry: RoomRegistry,
+  liveness: PeerLiveness,
+): SocketIOServer {
   const io = new SocketIOServer(httpServer, {
     path: '/presence',
     cors: { origin: '*' },
@@ -96,14 +93,35 @@ export function startPresenceServer(httpServer: HttpServer, internalSecret: stri
     });
   });
 
-  registry.setTrackListeners(
-    (event) => {
-      io.to(event.roomSlug).emit('track:announced', event);
-    },
-    (event) => {
-      io.to(event.roomSlug).emit('track:closed', event);
-    },
-  );
+  registry.on('track:announced', (event) => {
+    io.to(event.roomSlug).emit('track:announced', event);
+  });
+  registry.on('track:closed', (event) => {
+    io.to(event.roomSlug).emit('track:closed', event);
+  });
+  /*
+   * O roster sai daqui, e só daqui. Quem muda a presença — este canal, o de
+   * mídia, a folga de reconexão que venceu, a moderação — só mexe no
+   * registry; o aviso é consequência. Antes cada caminho que removia alguém
+   * precisava lembrar de reemitir a lista, e o que esquecia deixava um
+   * fantasma na coluna de participantes de todo mundo.
+   *
+   * Retrato completo, não delta: salas são pequenas, e reenviar tudo é mais
+   * simples e resiste melhor a perda de mensagem.
+   */
+  registry.on('presence', (roomSlug) => {
+    io.to(roomSlug)
+      .to(`${ADMIN_ROOM_PREFIX}${roomSlug}`)
+      .emit('roster:update', { roomSlug, peers: registry.listPresence(roomSlug) });
+  });
+  registry.on('peer:removed', (event) => {
+    // Quem foi removido pela moderação perde o socket também. Derrubado pelo
+    // SERVIDOR, o cliente do Socket.IO não reconecta sozinho — que é o que
+    // faz a remoção valer mais do que dois segundos.
+    if (event.reason === 'kicked') {
+      io.in(peerRoom(event.roomSlug, event.peerId)).disconnectSockets(true);
+    }
+  });
 
   io.on('connection', (socket: Socket) => {
     const data = socket.data as PresenceSocketData;
@@ -113,8 +131,10 @@ export function startPresenceServer(httpServer: HttpServer, internalSecret: stri
       return;
     }
 
-    handlePeerConnection(socket, registry, data);
+    handlePeerConnection(socket, registry, liveness, data);
   });
+
+  return io;
 }
 
 async function authenticate(token: string, secret: string): Promise<PresenceSocketData | null> {
@@ -130,18 +150,35 @@ async function authenticate(token: string, secret: string): Promise<PresenceSock
 }
 
 /** `displayName` vem do TOKEN (já verificado por `apps/api`, ver `signPresenceToken`), nunca de um campo solto do handshake — o handshake é entrada não confiável. */
-function handlePeerConnection(socket: Socket, registry: RoomRegistry, data: PeerSocketData): void {
+function handlePeerConnection(
+  socket: Socket,
+  registry: RoomRegistry,
+  liveness: PeerLiveness,
+  data: PeerSocketData,
+): void {
   const { peerId, roomSlug, displayName } = data;
+  const channel = `presence:${socket.id}`;
 
   void socket.join(roomSlug);
   // Sala PRÓPRIA deste par — é nela que `pushModerationCommand` mira, sem
   // precisar varrer todo mundo em `roomSlug` para achar o socket certo.
   void socket.join(peerRoom(roomSlug, peerId));
-  peerSockets.set(peerSocketKey(roomSlug, peerId), socket.id);
-  registry.setPresence(roomSlug, peerId, displayName);
-  broadcastRoster(socket, registry, roomSlug);
 
-  // Snapshot das tracks já publicadas por OUTROS pares — sem isto, quem entra
+  // Quem RECONECTA já estava no roster, então `setPresence` não muda nada e
+  // nenhum aviso sai: este socket recebe o retrato direto. Quem é novo recebe
+  // o retrato e, logo depois, o aviso que inclui ele mesmo.
+  socket.emit('roster:update', { roomSlug, peers: registry.listPresence(roomSlug) });
+  /*
+   * Cada socket é um canal com identidade própria (ver `PeerLiveness`). É o
+   * que resolve sozinho a corrida da reconexão: o `disconnect` atrasado do
+   * socket ANTIGO só tira o canal dele, e o par continua de pé pelo novo —
+   * antes era preciso um mapa à parte só para o socket antigo descobrir que
+   * já não era o dono da presença.
+   */
+  liveness.attach(roomSlug, peerId, channel, instanceOf(socket));
+  registry.setPresence(roomSlug, peerId, displayName);
+
+  // Retrato das tracks já publicadas por OUTROS pares — sem isto, quem entra
   // numa sala com um compartilhamento de tela já em andamento nunca recebe o
   // `track:announced` original (esse evento já passou) e fica sem consumir.
   for (const track of registry.publishedTracksInRoom(roomSlug)) {
@@ -172,14 +209,11 @@ function handlePeerConnection(socket: Socket, registry: RoomRegistry, data: Peer
     });
   });
 
-  socket.on('disconnect', () => {
-    const key = peerSocketKey(roomSlug, peerId);
-    // Só remove a presença se NENHUM socket mais novo já assumiu este par —
-    // ver docstring de `peerSockets` acima.
-    if (peerSockets.get(key) !== socket.id) return;
-    peerSockets.delete(key);
-    registry.removePeer(roomSlug, peerId);
-    broadcastRoster(socket, registry, roomSlug);
+  socket.on('disconnect', (reason) => {
+    // `client namespace disconnect` é o cliente chamando `disconnect()` —
+    // saiu da sala de propósito. Todo o resto (rede que caiu, aba morta sem
+    // aviso, o servidor derrubando) é queda, e queda ganha a folga.
+    liveness.detach(roomSlug, peerId, channel, reason === 'client namespace disconnect');
   });
 }
 
@@ -195,10 +229,4 @@ function handleAdminConnection(socket: Socket, registry: RoomRegistry): void {
     if (typeof roomSlug !== 'string' || roomSlug === '') return;
     void socket.leave(`${ADMIN_ROOM_PREFIX}${roomSlug}`);
   });
-}
-
-/** Emite o snapshot completo da sala (não delta — salas são pequenas, e reenviar tudo é mais simples e resiste melhor a perda de mensagem) para peers e para admins assistindo. */
-function broadcastRoster(socket: Socket, registry: RoomRegistry, roomSlug: string): void {
-  const payload = { roomSlug, peers: registry.listPresence(roomSlug) };
-  socket.nsp.to(roomSlug).to(`${ADMIN_ROOM_PREFIX}${roomSlug}`).emit('roster:update', payload);
 }

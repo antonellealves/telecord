@@ -9,15 +9,18 @@
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc --project tsconfig.json",
     "start": "node dist/src/main.js",
     "dev": "tsc --project tsconfig.json --watch",
-    "typecheck": "tsc --project tsconfig.json --noEmit"
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "test": "node --test --test-force-exit \"dist/test/**/*.test.js\""
   },
   "dependencies": {
     "@telecord/shared": "workspace:*",
     "mediasoup": "^3.14.0",
-    "socket.io": "^4.8.0"
+    "socket.io": "^4.8.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
     "typescript": "^5.7.0"
   }
 }

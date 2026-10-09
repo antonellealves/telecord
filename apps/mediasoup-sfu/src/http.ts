@@ -71,14 +71,20 @@ function requireString(value: unknown, field: string): string {
  *
  * As rotas `/rooms/*` daqui continuam só para `apps/api` (ver
  * `apps/api/src/mediasoup/mediasoup.service.ts`), autenticado pelo Bearer
- * `internalSecret`. O que MUDOU: este mesmo `http.Server` agora também
- * carrega, num caminho separado (`/presence`, ver `presence.ts`), um canal
- * Socket.IO exposto PUBLICAMENTE ao navegador, com um mecanismo de auth
- * diferente (token de curta duração, não o Bearer) — os dois convivem na
- * mesma porta porque o Caddy da VM (`infra/Caddyfile`) já encaminha essa
- * porta inteira para fora via `MEDIASOUP_PUBLIC_HOST`. Espelha em forma o
- * `CloudflareRealtimeClient`: aqui é este processo quem faz o papel da API
- * da Cloudflare, só que como serviço nosso na VM em vez de terceiro.
+ * `internalSecret`. Este mesmo `http.Server` também carrega, em caminhos
+ * separados, os dois canais expostos PUBLICAMENTE ao navegador — `/presence`
+ * (Socket.IO, ver `presence.ts`) e `/signal` (o canal de mídia, ver
+ * `signal/server.ts`) —, com outro mecanismo de auth (token de curta
+ * duração, não o Bearer). Convivem na mesma porta porque o Caddy da VM
+ * (`infra/Caddyfile`) já encaminha essa porta inteira para fora via
+ * `MEDIASOUP_PUBLIC_HOST`.
+ *
+ * As rotas de transporte, produce e consume daqui são o caminho ANTIGO da
+ * sinalização: o navegador as alcançava pelo proxy `/api/mediasoup/*`, com a
+ * função serverless e o banco no meio. Continuam de pé para a aba que ainda
+ * roda o cliente anterior e para o cliente novo que não conseguiu abrir o
+ * canal de mídia; o que é de moderação e de presença (`leave`, `presence`,
+ * `command`) segue sendo daqui mesmo.
  *
  * Sem framework (Express/Nest): é um processo pequeno, de responsabilidade
  * única, e a lista de rotas cabe inteira nesta função sem perder legibilidade.
@@ -87,9 +93,10 @@ export function startHttpServer(
   port: number,
   internalSecret: string,
   registry: RoomRegistry,
+  nodeStats: () => unknown,
 ): Server {
   const server = createServer((req, res) => {
-    void handle(req, res, internalSecret, registry).catch((error) => {
+    void handle(req, res, internalSecret, registry, nodeStats).catch((error) => {
       if (error instanceof HttpError) {
         sendJson(res, error.status, { error: error.message });
         return;
@@ -116,6 +123,7 @@ async function handle(
   res: ServerResponse,
   internalSecret: string,
   registry: RoomRegistry,
+  nodeStats: () => unknown,
 ): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://internal');
   const path = url.pathname;
@@ -133,6 +141,14 @@ async function handle(
   const actual = Buffer.from(token);
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
     sendJson(res, 401, { error: 'segredo interno inválido' });
+    return;
+  }
+
+  // Quanto este nó está carregando: Workers, CPU de cada um, salas e tracks.
+  // É a leitura que responde "está na hora de uma máquina maior?" — atrás do
+  // Bearer porque conta quantas salas existem, e isso não é público.
+  if (path === '/node' && req.method === 'GET') {
+    sendJson(res, 200, nodeStats());
     return;
   }
 
@@ -163,8 +179,9 @@ async function handle(
   }
 
   if (parts.length === 3 && parts[2] === 'rtp-capabilities' && req.method === 'GET') {
-    const capabilities = await registry.routerRtpCapabilities(roomSlug);
-    sendJson(res, 200, capabilities);
+    // As mesmas para qualquer sala — perguntar não cria nada no Worker. Ver
+    // `RoomRegistry.routerRtpCapabilities`.
+    sendJson(res, 200, registry.routerRtpCapabilities);
     return;
   }
 
@@ -271,9 +288,11 @@ async function handle(
   }
 
   if (parts.length === 3 && parts[2] === 'leave' && req.method === 'POST') {
-    const body = (await readBody(req)) as { peerId?: unknown };
+    const body = (await readBody(req)) as { peerId?: unknown; kicked?: unknown };
     const peerId = requireString(body.peerId, 'peerId');
-    registry.removePeer(roomSlug, peerId);
+    // `kicked` vem só da moderação (`MediasoupModerationService`). Muda o
+    // código com que os canais do par são fechados: expulso não reconecta.
+    registry.removePeer(roomSlug, peerId, body.kicked === true ? 'kicked' : 'left');
     sendJson(res, 200, { ok: true });
     return;
   }
