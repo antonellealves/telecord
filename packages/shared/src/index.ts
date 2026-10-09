@@ -13,6 +13,9 @@
 // `apps/web` só usa os tipos de `presenceProtocol`.
 export * from './presenceToken.js';
 export * from './presenceProtocol.js';
+// Canal de mídia do mesmo transporte: a sinalização de voz e tela por um
+// WebSocket direto com o SFU, sem a função serverless no caminho.
+export * from './signalProtocol.js';
 
 // ---------------------------------------------------------------------------
 // Limites e formatos (SPEC §2.1)
@@ -1125,11 +1128,17 @@ export interface MediasoupClientConfig {
   /** RTP capabilities do `Router` — o `Device` do cliente carrega com isto antes de tudo. */
   routerRtpCapabilities: unknown;
   /**
-   * Token de curta duração (ver `presenceToken.ts`) para o cliente abrir o
-   * canal Socket.IO de presença direto no mediasoup-sfu. `null` quando
-   * `enabled` é falso.
+   * Token de curta duração (ver `presenceToken.ts`) para o cliente abrir os
+   * canais do mediasoup-sfu — o de presença (Socket.IO) e o de mídia
+   * (`signalProtocol.ts`). `null` quando `enabled` é falso.
    */
   presenceToken: string | null;
+  /**
+   * O nó do SFU onde esta sala mora, quando há mais de um — o equivalente do
+   * "servidor de voz" que o Discord atribui a cada canal. Ausente ou `null`,
+   * o navegador usa o endereço do build (`VITE_MEDIASOUP_PUBLIC_URL`).
+   */
+  node?: { url: string } | null;
 }
 
 /**
