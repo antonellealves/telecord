@@ -3,13 +3,16 @@
 #
 # Roda NA MESMA VM Oracle que já hospeda o LiveKit (ver livekit/setup-vm.sh),
 # mas como serviço à parte: um processo NOSSO (build a partir de
-# mediasoup/Dockerfile), não uma imagem de terceiro. `apps/api` (na Vercel) é
-# quem fala com as rotas /rooms/* (control-plane do SFU), através do proxy
-# /api/mediasoup/*, autenticado por MEDIASOUP_INTERNAL_SECRET. O canal de
-# presença (`/presence`, Socket.IO — ver apps/mediasoup-sfu/src/presence.ts)
-# É exposto diretamente ao navegador do participante, na MESMA porta 3100,
-# atrás do mesmo Caddy — autenticado por um token de curta duração assinado
-# com o mesmo segredo, não pelo Bearer completo.
+# mediasoup/Dockerfile), não uma imagem de terceiro. `apps/api` (na Vercel)
+# autoriza a entrada na sala e fala com as rotas internas /rooms/*,
+# autenticada por MEDIASOUP_INTERNAL_SECRET. Os dois canais do participante
+# são expostos DIRETAMENTE ao navegador, na MESMA porta 3100, atrás do mesmo
+# Caddy, autenticados por um token de curta duração assinado com o mesmo
+# segredo (não pelo Bearer completo):
+#   /presence  roster, chat e moderação (Socket.IO — src/presence.ts)
+#   /signal    a sinalização de voz e tela (WebSocket — src/signal/)
+#
+# ESCALAR é mexer só aqui e na máquina — ver "Capacidade" mais abaixo.
 #
 # Uso na VM (feito pelo workflow de deploy, ver .github/workflows/deploy.yml):
 #   cd /opt/telecord-mediasoup-src/mediasoup   # repo inteiro, não só esta pasta —
@@ -40,12 +43,28 @@ services:
       PORT: 3100
       # Faixa PRÓPRIA — fora da 40000-40100/udp que o livekit.yaml já reserva
       # nesta mesma VM. As duas faixas nunca podem se sobrepor.
+      #
+      # Cada Worker escuta numa porta FIXA (o primeiro em 40101, o segundo em
+      # 40102…) e todos os participantes dele dividem essa porta. A faixa
+      # deixou de limitar quantas pessoas cabem: limita quantos Workers.
       MEDIASOUP_RTC_MIN_PORT: 40101
       MEDIASOUP_RTC_MAX_PORT: 40200
+      #
+      # --- Capacidade ---------------------------------------------------
+      # Um Worker ocupa um núcleo, e a capacidade do nó é a soma deles.
+      # Fixado em 1 porque ESTA VM (E2.1.Micro, ~500 MB) é dividida com o
+      # LiveKit e não tem núcleo sobrando. Ao trocar por uma máquina maior,
+      # crie a variável `MEDIASOUP_WORKERS` no Environment Production do
+      # GitHub com o valor `auto` (um Worker por núcleo) ou um número — o
+      # workflow de deploy a escreve no .env desta pasta, e é a única coisa a
+      # mudar para o SFU usar a máquina nova.
+      MEDIASOUP_WORKERS: ${MEDIASOUP_WORKERS:-1}
     ports:
-      # A faixa de mídia (RTP/ICE) é UDP direto — TLS não se aplica a ela, só
-      # ao control-plane HTTP (porta 3100), que fica só na rede interna
-      # `telecord-proxy` e é alcançado pelo Caddy único da VM.
+      # A porta de mídia (RTP/ICE) é UDP direto — TLS não se aplica a ela, só
+      # ao que passa pela 3100 (rotas internas e os dois canais), que fica
+      # só na rede interna `telecord-proxy` e é alcançada pelo Caddy único
+      # da VM. A faixa inteira continua publicada: sobra para os Workers
+      # que uma máquina maior subir, sem tocar em firewall de novo.
       - "40101-40200:40101-40200/udp"
     networks:
       - telecord-proxy

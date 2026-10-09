@@ -86,10 +86,11 @@ services:
       - "7881:7881" # TCP fallback do ICE
       - "40000-40100:40000-40100/udp" # mídia (RTC), ver livekit.yaml
 
-  # Processo mediasoup-sfu local — quinto transporte, opcional (SPEC do
-  # transporte 'mediasoup'). Faixa de portas PRÓPRIA, fora da 40000-40100/udp
-  # que o LiveKit já reserva acima: as duas nunca podem se sobrepor na mesma
-  # máquina.
+  # Processo mediasoup-sfu local — o SFU próprio, opcional. Faixa de portas
+  # PRÓPRIA, fora da 40000-40100/udp que o LiveKit já reserva acima: as duas
+  # nunca podem se sobrepor na mesma máquina. Cada Worker usa UMA porta dela
+  # (o primeiro a 40101), e sobe um Worker por núcleo que o Docker entregar
+  # ao contêiner — `MEDIASOUP_WORKERS` no .env fixa outro número.
   mediasoup-sfu:
     build:
       context: .
@@ -100,6 +101,7 @@ services:
       PORT: "3100"
       MEDIASOUP_RTC_MIN_PORT: "40101"
       MEDIASOUP_RTC_MAX_PORT: "40200"
+      MEDIASOUP_WORKERS: ${MEDIASOUP_WORKERS:-auto}
     ports:
       - "40101-40200:40101-40200/udp"
 

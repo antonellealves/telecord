@@ -682,22 +682,31 @@ jobs:
       # LIVEKIT_VM_HOST/LIVEKIT_NODE_IP — não precisa de um secret à parte.
       # MEDIASOUP_INTERNAL_SECRET é sensível de verdade; escrito aqui a
       # partir do Environment do GitHub, nunca commitado.
+      #
+      # MEDIASOUP_WORKERS é OPCIONAL e não é segredo: quantos Workers o SFU
+      # sobe (um por núcleo). Sem a variável a linha sai vazia e o compose
+      # fica no padrão dele — 1, o que cabe na VM de hoje. É o botão de
+      # capacidade: máquina maior, `auto` (ou um número) aqui, e nada mais.
+      # `${VAR:-}` e não `$VAR` porque o script roda com `set -u`, e a
+      # variável pode nem chegar a existir do lado de lá.
       - name: Escreve o .env do mediasoup-sfu na VM
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.LIVEKIT_VM_HOST || vars.LIVEKIT_VM_HOST }}
           username: ${{ secrets.LIVEKIT_VM_USER || vars.LIVEKIT_VM_USER }}
           key: ${{ env.LIVEKIT_VM_SSH_KEY }}
-          envs: MEDIASOUP_INTERNAL_SECRET,MEDIASOUP_ANNOUNCED_IP
+          envs: MEDIASOUP_INTERNAL_SECRET,MEDIASOUP_ANNOUNCED_IP,MEDIASOUP_WORKERS
           script: |
             set -euo pipefail
             cat > /opt/telecord-mediasoup-src/mediasoup/.env <<EOF2
             MEDIASOUP_INTERNAL_SECRET=$MEDIASOUP_INTERNAL_SECRET
             MEDIASOUP_ANNOUNCED_IP=$MEDIASOUP_ANNOUNCED_IP
+            MEDIASOUP_WORKERS=${MEDIASOUP_WORKERS:-}
             EOF2
         env:
           MEDIASOUP_INTERNAL_SECRET: ${{ secrets.MEDIASOUP_INTERNAL_SECRET || vars.MEDIASOUP_INTERNAL_SECRET }}
           MEDIASOUP_ANNOUNCED_IP: ${{ secrets.LIVEKIT_VM_HOST || vars.LIVEKIT_VM_HOST }}
+          MEDIASOUP_WORKERS: ${{ vars.MEDIASOUP_WORKERS }}
 
       - name: Builda a imagem e sobe o serviço na VM
         uses: appleboy/ssh-action@v1.2.0

@@ -51,6 +51,44 @@ Browser ──POST /api/token──> Vercel (Node) ──assina JWT──┐
 
 A função serverless é o único lugar que toca no secret do LiveKit. Todo o estado da sala (quem está dentro, quem fala, quem compartilha) vive na memória do SFU e é derivado dos eventos do `Room` — não há persistência em lugar nenhum.
 
+## O SFU próprio (mediasoup)
+
+O segundo transporte é um SFU nosso, em [apps/mediasoup-sfu](./apps/mediasoup-sfu). O desenho é o do Discord e do Meet: um serviço autoriza a entrada **uma vez**, e daí em diante o navegador conversa direto com o nó que encaminha a mídia.
+
+```
+Browser ──GET /api/mediasoup/rooms/:sala/config──> apps/api      autoriza, assina o token
+   │                                                             (com vários nós: diz em qual a sala mora)
+   ├── wss://<nó>/presence ──> mediasoup-sfu   roster, chat, moderação
+   ├── wss://<nó>/signal   ──> mediasoup-sfu   criar transporte, publicar, assinar, retomar
+   └── UDP (DTLS/SRTP)     ──> Worker          áudio e vídeo — um processo C++ por núcleo
+```
+
+- **A sinalização de voz e tela é um stream do Node.** Cada conexão em `/signal` é um par de `pipeline`s (`apps/mediasoup-sfu/src/signal/`): pedidos atendidos em ordem, respostas e avisos numa fila com prioridade, e contrapressão do socket até quem atende. Ligar o microfone não passa mais pela função serverless nem pelo banco.
+- **A mídia nunca passa pelo Node.** Quem recebe e reenvia cada pacote é o Worker do mediasoup. O Node só diz o que ligar a quê.
+- **Queda não é o fim da sala.** O canal volta sozinho e retoma a sessão; se o SFU reiniciou (um deploy), o cliente refaz os transportes e republica o que estava no ar.
+- **O caminho antigo continua de pé.** Se `/signal` não abrir, o cliente usa as mesmas operações por HTTP, através do proxy `/api/mediasoup/*`.
+
+### Capacidade é assunto de máquina
+
+Nada abaixo exige mexer em código.
+
+| Para ter | O que fazer |
+|---|---|
+| mais gente no mesmo nó | VM com mais núcleos, e a variável `MEDIASOUP_WORKERS` = `auto` no Environment **Production** do GitHub. Sobe um Worker por núcleo; sala que enche um Worker transborda para o seguinte sozinha. |
+| mais nós | Outra VM com o mesmo `mediasoup/docker-compose.prod.yml` e o mesmo `MEDIASOUP_INTERNAL_SECRET`, atrás de TLS. Depois, `MEDIASOUP_INTERNAL_URL` passa a ser a lista das URLs, separadas por vírgula. Cada sala mora num nó, e sala com gente não muda de lugar quando a lista muda. |
+| saber se está na hora | `GET https://<nó>/node` com `Authorization: Bearer <MEDIASOUP_INTERNAL_SECRET>`: CPU e carga de cada Worker, salas, tracks. |
+
+Dois avisos para o dia do segundo nó: o workflow de deploy publica **uma** VM e monta `MEDIASOUP_INTERNAL_URL` a partir de `MEDIASOUP_PUBLIC_HOST`, então a segunda máquina precisa do próprio deploy e essa linha precisa passar a lista; e o painel "Ao vivo" só recebe o roster em tempo real do primeiro nó — nos demais ele atualiza pela consulta periódica.
+
+A VM de hoje fica em **um** Worker de propósito (o padrão do compose de produção): ela tem ~500 MB e divide o processador com o LiveKit. Cada Worker escuta numa porta fixa a partir de `40101/udp`, e todos os participantes dele dividem essa porta — a faixa `40101-40200` já liberada no firewall cobre até cem Workers.
+
+Testes do SFU (sobem o Worker de verdade, em `127.0.0.1`):
+
+```bash
+pnpm --filter @telecord/shared build
+pnpm --filter @telecord/mediasoup-sfu build && pnpm --filter @telecord/mediasoup-sfu test
+```
+
 ## Rodando local
 
 Requisitos: **Node 22+** e **pnpm 9** (via corepack: `corepack enable pnpm`).
