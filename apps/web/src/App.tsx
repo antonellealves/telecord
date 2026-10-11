@@ -7,6 +7,7 @@ import { AdminPage } from './pages/AdminPage';
 import { ArchitecturePage } from './pages/ArchitecturePage';
 import { AuthReturnPage } from './pages/AuthReturnPage';
 import { ChannelPage } from './pages/ChannelPage';
+import { DownloadPage } from './pages/DownloadPage';
 import { JoinPage } from './pages/JoinPage';
 import { LoginPage } from './pages/LoginPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
@@ -62,6 +63,8 @@ export function App(): JSX.Element {
           * ser mandada a alguém — é conteúdo, não configuração.
           */}
         <Route path="/arquitetura" element={<ArchitecturePage />} />
+        {/* Os instaladores do app de computador, que antes só existiam no README. */}
+        <Route path="/download" element={<DownloadPage />} />
         <Route path="/canal/:channelSlug" element={<ChannelPage />} />
         <Route path="/sala/:roomId" element={<RoomPage />} />
         <Route path="*" element={<NotFound />} />

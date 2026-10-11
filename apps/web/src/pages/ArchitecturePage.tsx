@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AmbientGradient } from '../components/AmbientGradient';
+import { SiteNav } from '../components/SiteNav';
 import styles from './ArchitecturePage.module.css';
 
 /**
@@ -705,13 +706,11 @@ export function ArchitecturePage(): JSX.Element {
         */}
       <AmbientGradient variant="subtle" />
       <Starfield />
+      <SiteNav />
 
       <div className={styles.page}>
         <div className={styles.shell}>
           <header className={styles.hero}>
-            <Link to="/" className={styles.back}>
-              ← telecord
-            </Link>
             <p className={styles.tagline}>como é feito</p>
             <h1 className={styles.title}>
               Cinco jeitos de transmitir,

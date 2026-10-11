@@ -4,7 +4,7 @@
   min-height: 100%;
   display: grid;
   justify-items: center;
-  padding: 56px 24px 80px;
+  padding: 88px 24px 80px;
 }
 
 /* ---- campo de estrelas -------------------------------------------------- */
@@ -197,20 +197,6 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 14px;
-}
-
-.back {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-  text-decoration: none;
-  transition: color 0.16s ease;
-}
-
-.back:hover {
-  color: var(--accent-soft);
 }
 
 .tagline {

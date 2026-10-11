@@ -13,6 +13,7 @@ import { ActiveRoomsList } from '../components/ActiveRoomsList';
 import { AmbientGradient } from '../components/AmbientGradient';
 import { ChannelsList } from '../components/ChannelsList';
 import { GamificationCenter } from '../components/GamificationCenter';
+import { SiteNav } from '../components/SiteNav';
 import { useActiveMediasoupRooms } from '../hooks/useActiveMediasoupRooms';
 import { useActiveRooms } from '../hooks/useActiveRooms';
 import { useChannelDirectory } from '../hooks/useChannelDirectory';
@@ -101,6 +102,7 @@ export function JoinPage(): JSX.Element {
   return (
     <>
       <AmbientGradient />
+      <SiteNav />
 
       <div className={styles.page}>
         <div className={styles.shell}>
@@ -282,8 +284,8 @@ export function JoinPage(): JSX.Element {
           </ul>
 
           {/*
-            * Navegação discreta, no rodapé e no tom mais apagado da tela: quem
-            * chega aqui quer criar uma sala, não ler sobre o projeto.
+            * Arquitetura e download moram no menu do topo (`SiteNav`). Aqui
+            * sobra só o atalho do painel.
             *
             * O painel só aparece para quem tem o papel — e isso é conveniência
             * de navegação, não controle de acesso: as rotas de administração
@@ -293,16 +295,13 @@ export function JoinPage(): JSX.Element {
             <GamificationCenter variant="hero" />
           </div>
 
-          <nav className={styles.footerNav} aria-label="Sobre o projeto">
-            <Link to="/arquitetura" className={styles.footerLink}>
-              como é feito
-            </Link>
-            {isSignedIn && user.role === 'ADMIN' ? (
+          {isSignedIn && user.role === 'ADMIN' ? (
+            <nav className={styles.footerNav} aria-label="Administração">
               <Link to="/painel" className={styles.footerLink}>
                 painel
               </Link>
-            ) : null}
-          </nav>
+            </nav>
+          ) : null}
 
           <p className={styles.signature}>feito com carinho de jogador para jogadores</p>
         </div>
