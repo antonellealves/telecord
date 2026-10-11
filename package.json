@@ -21,7 +21,7 @@
     "@telecord/api": "workspace:*",
     "@telecord/shared": "workspace:*",
     "jose": "^5.9.0",
-    "livekit-server-sdk": "^2.9.0",
+    "livekit-server-sdk": "^2.19.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {

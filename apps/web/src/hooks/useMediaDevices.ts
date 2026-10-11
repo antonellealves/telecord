@@ -217,7 +217,7 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
 
   /*
    * Só grava a preferência. Quem aplica no microfone é `useNoiseFilter`, na
-   * sala LiveKit — ele decide entre Krisp e o filtro do navegador, e ter um
+   * sala LiveKit — ele decide entre o filtro de IA e o do navegador, e ter um
    * dono só evita os dois brigando pela mesma constraint.
    */
   const setNoiseSuppression = useCallback((enabled: boolean) => {

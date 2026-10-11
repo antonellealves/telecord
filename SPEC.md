@@ -494,7 +494,9 @@ Dois limites do navegador, não do app:
 
 **Teste de microfone.** Grava alguns segundos e toca de volta, em vez de monitorar ao vivo. Monitoração ao vivo em quem está de caixa de som vira microfonia imediata; gravar e reproduzir é o único jeito de "ouvir você mesmo" sem exigir fone. A reprodução usa `setSinkId` quando disponível, então o mesmo teste cobre a saída escolhida. O teste usa `getUserMedia` próprio e **não** publica nada na sala.
 
-**Supressão de ruído.** Ajustável em tempo de execução, em duas frentes: os defaults do `Room` governam a próxima publicação (o app entra mutado, então é quase sempre esse o caso) e `restartTrack` reabre a captura quando já existe microfone no ar. Só a primeira deixaria a mudança sem efeito para quem já está falando.
+**Supressão de ruído.** Ajustável em tempo de execução, em duas frentes: os defaults do `Room` governam a próxima publicação (o app entra mutado, então é quase sempre esse o caso) e `restartTrack` reabre a captura quando já existe microfone no ar. Só a primeira deixaria a mudança sem efeito para quem já está falando. `applyConstraints` não substitui o `restartTrack`: no Chrome ele resolve com sucesso e mantém o filtro como nasceu na captura, então o resultado é conferido em `getSettings` antes de confiar nele (`lib/browserNoiseSuppression.ts`).
+
+O filtro em si é escolhido por `useNoiseFilter`, nesta ordem: Krisp, quando o servidor é LiveKit Cloud (só lá ele é licenciado); RNNoise (`lib/rnnoiseProcessor.ts`, pacote `@sapphi-red/web-noise-suppressor`), que roda no navegador de quem fala e é o caso do servidor próprio; e a supressão do navegador, se nenhum dos dois subir. Com um filtro de IA no ar, a supressão do navegador fica **desligada** na captura — em série, os dois somam os cortes na voz. Cancelamento de eco e ganho automático continuam ligados em qualquer caso.
 
 ### 6.9 Câmera (emenda pós-implementação)
 

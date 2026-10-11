@@ -13,6 +13,7 @@
   "dependencies": {
     "@livekit/components-react": "^2.9.0",
     "@livekit/krisp-noise-filter": "^0.4.5",
+    "@sapphi-red/web-noise-suppressor": "^0.4.1",
     "@telecord/shared": "workspace:*",
     "livekit-client": "^2.9.0",
     "mediasoup-client": "^3.9.0",

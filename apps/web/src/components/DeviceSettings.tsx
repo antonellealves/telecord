@@ -45,7 +45,8 @@ interface DeviceSettingsProps {
 
 const NOISE_FILTER_NOTE: Record<NoiseFilterStatus, string | null> = {
   krisp: 'Ativo: Krisp, filtro de IA.',
-  browser: 'Ativo: filtro do navegador — o Krisp não está disponível neste servidor.',
+  rnnoise: 'Ativo: RNNoise, filtro de IA.',
+  browser: 'Ativo: filtro do navegador — o filtro de IA não carregou neste aparelho.',
   idle: 'Aplicado quando o microfone ligar.',
   off: null,
 };

@@ -325,7 +325,9 @@ const DECISIONS: Decision[] = [
       'salvar notebook no viva-voz, e fazem isso destruindo fidelidade: o AEC derruba a banda ' +
       'alta junto com o eco, a supressão apaga respiração e cauda de consoante junto com o ' +
       'ruído, o AGC achata a dinâmica. No mediasoup os três estão desligados. É uma escolha ' +
-      'com dono: assume fone de ouvido, e quem usar caixa aberta vai ouvir eco.',
+      'com dono: assume fone de ouvido, e quem usar caixa aberta vai ouvir eco. No LiveKit, a ' +
+      'supressão do navegador deu lugar a uma rede neural (RNNoise) que roda no aparelho de quem ' +
+      'fala: medida com a mesma voz e o mesmo ruído, limpa mais o fundo e corta menos da voz.',
   },
 ];
 
