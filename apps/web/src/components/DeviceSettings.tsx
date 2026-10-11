@@ -241,6 +241,28 @@ export function DeviceSettings({
         </span>
       </div>
 
+      {/* Só a sala LiveKit aplica: nas outras a captura já é crua. */}
+      {noiseFilter !== undefined ? (
+        <div className={styles.field}>
+          <label className={styles.switchRow}>
+            <input
+              type="checkbox"
+              className={styles.checkbox}
+              checked={devices.echoCancellation}
+              onChange={(event) => devices.setEchoCancellation(event.target.checked)}
+            />
+            <span className={styles.switchTrack} aria-hidden="true">
+              <span className={styles.switchThumb} />
+            </span>
+            <span className={styles.switchLabel}>Cancelamento de eco</span>
+          </label>
+          <span className={styles.hint}>
+            Impede que a sala volte pelo seu microfone. De fone de ouvido, desligue: o cancelamento corta o
+            agudo da voz acima de 14 kHz. Com caixa de som, deixe ligado.
+          </span>
+        </div>
+      ) : null}
+
       </>
       ) : null}
 

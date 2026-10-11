@@ -496,7 +496,9 @@ Dois limites do navegador, não do app:
 
 **Supressão de ruído.** Ajustável em tempo de execução, em duas frentes: os defaults do `Room` governam a próxima publicação (o app entra mutado, então é quase sempre esse o caso) e `restartTrack` reabre a captura quando já existe microfone no ar. Só a primeira deixaria a mudança sem efeito para quem já está falando. `applyConstraints` não substitui o `restartTrack`: no Chrome ele resolve com sucesso e mantém o filtro como nasceu na captura, então o resultado é conferido em `getSettings` antes de confiar nele (`lib/browserNoiseSuppression.ts`).
 
-O filtro em si é escolhido por `useNoiseFilter`, nesta ordem: Krisp, quando o servidor é LiveKit Cloud (só lá ele é licenciado); RNNoise (`lib/rnnoiseProcessor.ts`, pacote `@sapphi-red/web-noise-suppressor`), que roda no navegador de quem fala e é o caso do servidor próprio; e a supressão do navegador, se nenhum dos dois subir. Com um filtro de IA no ar, a supressão do navegador fica **desligada** na captura — em série, os dois somam os cortes na voz. Cancelamento de eco e ganho automático continuam ligados em qualquer caso.
+O filtro em si é escolhido por `useNoiseFilter`, nesta ordem: Krisp, quando o servidor é LiveKit Cloud (só lá ele é licenciado); RNNoise (`lib/rnnoiseProcessor.ts`, pacote `@sapphi-red/web-noise-suppressor`), que roda no navegador de quem fala e é o caso do servidor próprio; e a supressão do navegador, se nenhum dos dois subir. Com um filtro de IA no ar, a supressão do navegador fica **desligada** na captura — em série, os dois somam os cortes na voz. O ganho automático continua ligado em qualquer caso.
+
+**Cancelamento de eco.** Ligado por padrão e desligável no painel, pelo mesmo caminho da supressão (`lib/captureProcessing.ts`). Existe a chave porque no Chrome ele custa o agudo: medido de ponta a ponta com ruído rosa, a voz chega plana até 20 kHz sem ele e, com ele, perde 15 dB entre 14 e 16 kHz e tudo acima. Quem usa fone não tem eco para cancelar e só paga o custo; quem usa caixa de som precisa dele, e por isso o padrão não muda sozinho.
 
 ### 6.9 Câmera (emenda pós-implementação)
 

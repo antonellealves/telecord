@@ -70,6 +70,30 @@ export function writeNoiseSuppression(enabled: boolean): void {
   window.dispatchEvent(new CustomEvent<boolean>(NOISE_SUPPRESSION_EVENT, { detail: enabled }));
 }
 
+const ECHO_CANCELLATION_KEY = 'telecord.echoCancellation';
+
+export function readEchoCancellation(): boolean {
+  try {
+    // Ligado é o padrão: desligado, quem ouve a sala por caixa de som devolve
+    // a voz de todo mundo como eco.
+    return window.localStorage.getItem(ECHO_CANCELLATION_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+/** Disparado a cada troca; a sala escuta para aplicar no microfone já no ar. */
+export const ECHO_CANCELLATION_EVENT = 'telecord:echo-cancellation';
+
+export function writeEchoCancellation(enabled: boolean): void {
+  try {
+    window.localStorage.setItem(ECHO_CANCELLATION_KEY, enabled ? 'on' : 'off');
+  } catch {
+    // Storage indisponível: vale só para esta aba.
+  }
+  window.dispatchEvent(new CustomEvent<boolean>(ECHO_CANCELLATION_EVENT, { detail: enabled }));
+}
+
 // ---------------------------------------------------------------------------
 // Volta do usuário
 // ---------------------------------------------------------------------------

@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
 import { LocalAudioTrack, type Room } from 'livekit-client';
-import { applyBrowserNoiseSuppression } from '../lib/browserNoiseSuppression';
+import { applyCaptureProcessing, captureOptionsFor, type CaptureProcessing } from '../lib/captureProcessing';
 import { RNNOISE_PROCESSOR_NAME, RnnoiseProcessor, isRnnoiseSupported } from '../lib/rnnoiseProcessor';
-import { NOISE_SUPPRESSION_EVENT, readNoiseSuppression } from '../lib/storage';
+import {
+  ECHO_CANCELLATION_EVENT,
+  NOISE_SUPPRESSION_EVENT,
+  readEchoCancellation,
+  readNoiseSuppression,
+} from '../lib/storage';
 
 /**
  * - `krisp`: filtro de IA da Krisp ativo no microfone (só no LiveKit Cloud).
@@ -38,27 +43,36 @@ function isLiveKitCloud(room: Room): boolean {
 }
 
 /**
- * A supressão do NAVEGADOR: nos defaults da sala, para a próxima captura já
- * nascer certa, e no microfone que estiver aberto. A track precisa estar sem
- * processador — com um, `mediaStreamTrack` é a saída do filtro, não a captura.
+ * O processamento de voz do NAVEGADOR: nos defaults da sala, para a próxima
+ * captura já nascer certa, e no microfone que estiver aberto. A track precisa
+ * estar sem processador — com um, `mediaStreamTrack` é a saída do filtro, não
+ * a captura.
  */
-async function setBrowserNoiseSuppression(
-  room: Room,
-  track: LocalAudioTrack | null,
-  enabled: boolean,
-): Promise<void> {
-  room.options.audioCaptureDefaults = {
-    ...room.options.audioCaptureDefaults,
-    noiseSuppression: enabled,
-    voiceIsolation: enabled,
-  };
-  if (track !== null) await applyBrowserNoiseSuppression(track, enabled);
+async function setCapture(room: Room, track: LocalAudioTrack | null, processing: CaptureProcessing): Promise<void> {
+  room.options.audioCaptureDefaults = { ...room.options.audioCaptureDefaults, ...captureOptionsFor(processing) };
+  if (track !== null) await applyCaptureProcessing(track, processing);
+}
+
+/**
+ * O mesmo, com um filtro de IA já na track. A captura crua fica escondida
+ * atrás do processador, então o estado dela vem do que o LiveKit guardou em
+ * `constraints` — que acompanha a realidade porque toda troca passa por
+ * `setCapture` ou por aqui. Só o cancelamento de eco pode divergir: a
+ * supressão do navegador já está desligada sob o filtro. Reabrir o microfone
+ * mantém o processador, que recebe a track nova.
+ */
+async function setEchoUnderFilter(room: Room, track: LocalAudioTrack, echoCancellation: boolean): Promise<void> {
+  const processing: CaptureProcessing = { noiseSuppression: false, echoCancellation };
+  room.options.audioCaptureDefaults = { ...room.options.audioCaptureDefaults, ...captureOptionsFor(processing) };
+  if (track.constraints.echoCancellation === echoCancellation) return;
+  await track.restartTrack({ ...track.constraints, ...captureOptionsFor(processing) });
 }
 
 async function reconcile(
   room: Room,
   track: LocalAudioTrack | null,
   wanted: boolean,
+  echoCancellation: boolean,
   memory: FilterMemory,
 ): Promise<NoiseFilterStatus> {
   const attached = track?.getProcessor()?.name;
@@ -67,7 +81,7 @@ async function reconcile(
 
   if (!wanted) {
     if (track !== null && (hasKrisp || hasRnnoise)) await track.stopProcessor();
-    await setBrowserNoiseSuppression(room, track, false);
+    await setCapture(room, track, { noiseSuppression: false, echoCancellation });
     return 'off';
   }
 
@@ -76,11 +90,13 @@ async function reconcile(
   // Sem microfone no ar, só dá para preparar a PRÓXIMA captura: crua se o
   // RNNoise vai cuidar dela, já filtrada pelo navegador se não vai.
   if (track === null) {
-    await setBrowserNoiseSuppression(room, null, !rnnoiseUsable);
+    await setCapture(room, null, { noiseSuppression: !rnnoiseUsable, echoCancellation });
     return rnnoiseUsable || !memory.krispRejected ? 'idle' : 'browser';
   }
-  if (hasKrisp) return 'krisp';
-  if (hasRnnoise) return 'rnnoise';
+  if (hasKrisp || hasRnnoise) {
+    await setEchoUnderFilter(room, track, echoCancellation);
+    return hasKrisp ? 'krisp' : 'rnnoise';
+  }
 
   if (!isLiveKitCloud(room)) memory.krispRejected = true;
 
@@ -113,7 +129,7 @@ async function reconcile(
     try {
       // O RNNoise recebe o microfone cru: por baixo dele, o filtro do
       // navegador só somaria os próprios cortes aos do RNNoise.
-      await setBrowserNoiseSuppression(room, track, false);
+      await setCapture(room, track, { noiseSuppression: false, echoCancellation });
       await track.setProcessor(new RnnoiseProcessor());
       return 'rnnoise';
     } catch {
@@ -121,7 +137,7 @@ async function reconcile(
     }
   }
 
-  await setBrowserNoiseSuppression(room, track, true);
+  await setCapture(room, track, { noiseSuppression: true, echoCancellation });
   return 'browser';
 }
 
@@ -129,8 +145,9 @@ async function reconcile(
  * Supressão de ruído do microfone na sala LiveKit: Krisp quando o servidor
  * autoriza, RNNoise quando não, e a do navegador se nenhum dos dois subir.
  *
- * É o ÚNICO dono da constraint `noiseSuppression` nesta sala — o painel de
- * configurações só grava a preferência (`NOISE_SUPPRESSION_EVENT`). Com dois
+ * É o ÚNICO dono das constraints `noiseSuppression` e `echoCancellation`
+ * nesta sala — o painel de configurações só grava as preferências
+ * (`NOISE_SUPPRESSION_EVENT`, `ECHO_CANCELLATION_EVENT`). Com dois
  * donos, o filtro do navegador voltava a ligar por baixo do filtro de IA a
  * cada troca, e a voz passava por dois filtros em série.
  */
@@ -140,6 +157,7 @@ export function useNoiseFilter(): NoiseFilterStatus {
   const track = microphoneTrack?.track instanceof LocalAudioTrack ? microphoneTrack.track : null;
 
   const [wanted, setWanted] = useState(readNoiseSuppression);
+  const [echoCancellation, setEchoCancellation] = useState(readEchoCancellation);
   const [status, setStatus] = useState<NoiseFilterStatus>(() => (readNoiseSuppression() ? 'idle' : 'off'));
   const memory = useRef<FilterMemory>({ krispRejected: false, rnnoiseFailed: false });
   // Uma troca por vez: ligar e desligar rápido não pode intercalar
@@ -150,14 +168,21 @@ export function useNoiseFilter(): NoiseFilterStatus {
     const handle = (event: Event): void => {
       setWanted((event as CustomEvent<boolean>).detail);
     };
+    const handleEcho = (event: Event): void => {
+      setEchoCancellation((event as CustomEvent<boolean>).detail);
+    };
     window.addEventListener(NOISE_SUPPRESSION_EVENT, handle);
-    return () => window.removeEventListener(NOISE_SUPPRESSION_EVENT, handle);
+    window.addEventListener(ECHO_CANCELLATION_EVENT, handleEcho);
+    return () => {
+      window.removeEventListener(NOISE_SUPPRESSION_EVENT, handle);
+      window.removeEventListener(ECHO_CANCELLATION_EVENT, handleEcho);
+    };
   }, []);
 
   useEffect(() => {
     let current = true;
     queue.current = queue.current
-      .then(() => reconcile(room, track, wanted, memory.current))
+      .then(() => reconcile(room, track, wanted, echoCancellation, memory.current))
       .then((next) => {
         if (current) setStatus(next);
       })
@@ -165,7 +190,7 @@ export function useNoiseFilter(): NoiseFilterStatus {
     return () => {
       current = false;
     };
-  }, [room, track, wanted]);
+  }, [room, track, wanted, echoCancellation]);
 
   return status;
 }

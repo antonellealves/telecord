@@ -3,8 +3,10 @@ import { useMaybeRoomContext } from '@livekit/components-react';
 import { Room, RoomEvent, supportsAudioOutputSelection } from 'livekit-client';
 import { describeMicrophoneError } from '../lib/errors';
 import {
+  readEchoCancellation,
   readNoiseSuppression,
   readPreferredDevice,
+  writeEchoCancellation,
   writeNoiseSuppression,
   writePreferredDevice,
 } from '../lib/storage';
@@ -28,6 +30,8 @@ export interface MediaDeviceSettings {
   isSwitching: boolean;
   noiseSuppression: boolean;
   setNoiseSuppression: (enabled: boolean) => void;
+  echoCancellation: boolean;
+  setEchoCancellation: (enabled: boolean) => void;
   selectAudioInput: (deviceId: string) => void;
   selectAudioOutput: (deviceId: string) => void;
   selectVideoInput: (deviceId: string) => void;
@@ -77,6 +81,7 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
   const [labelsHidden, setLabelsHidden] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
   const [noiseSuppression, setNoiseSuppressionState] = useState(() => readNoiseSuppression());
+  const [echoCancellation, setEchoCancellationState] = useState(() => readEchoCancellation());
 
   const outputSelectionSupported = supportsAudioOutputSelection();
   const onErrorRef = useRef(onError);
@@ -225,6 +230,12 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
     writeNoiseSuppression(enabled);
   }, []);
 
+  // Mesmo arranjo: só a preferência; `useNoiseFilter` é quem mexe na captura.
+  const setEchoCancellation = useCallback((enabled: boolean) => {
+    setEchoCancellationState(enabled);
+    writeEchoCancellation(enabled);
+  }, []);
+
   const revealLabels = useCallback(() => {
     void Room.getLocalDevices('audioinput', true)
       .then(() => refresh())
@@ -245,6 +256,8 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
     isSwitching,
     noiseSuppression,
     setNoiseSuppression,
+    echoCancellation,
+    setEchoCancellation,
     selectAudioInput,
     selectAudioOutput,
     selectVideoInput,
