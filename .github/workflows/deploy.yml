@@ -725,11 +725,36 @@ jobs:
           # (EXPOSE, penúltimo do Dockerfile). Não é o build travando, é só
           # o limite do próprio ssh-action sendo curto demais para esta VM.
           command_timeout: 20m
+          # O build só roda quando o que entra na imagem mudou.
+          #
+          # Ele levava de 14 a 16 minutos nesta VM em TODO push, inclusive os
+          # que só mexem no site: o cache de camadas do Docker não segura de
+          # um deploy para o outro. E a VM é a mesma que carrega a voz: medido
+          # com o build rodando, o buffer de quem ouve no LiveKit foi de ~80 ms
+          # para mais de 500 ms, 3,7% do áudio saiu esticado (o som
+          # "robotizado") e uma em cada três entradas na sala falhou. Um
+          # quarto de hora disso por push.
+          #
+          # `.built-inputs` guarda o resumo das fontes da imagem que está no
+          # ar, e só é gravado depois de um build E um `up` que deram certo.
+          # Na dúvida (arquivo ausente, contêiner ausente, resumo diferente),
+          # builda. O `up -d` roda sempre: é ele que aplica mudança no .env.
           script: |
             set -euo pipefail
-            cd /opt/telecord-mediasoup-src/mediasoup
-            docker compose -f docker-compose.prod.yml --env-file .env build
+            cd /opt/telecord-mediasoup-src
+            # Tudo que o Dockerfile copia, mais ele mesmo e o compose.
+            inputs_sha="$( { cat package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json .dockerignore mediasoup/docker-compose.prod.yml; find packages/shared apps/mediasoup-sfu -type f -not -path '*/node_modules/*' -not -path '*/dist/*' -print0 | sort -z | xargs -0 sha256sum; } | sha256sum | cut -c1-16 )"
+            cd mediasoup
+            built_sha="$(cat .built-inputs 2>/dev/null || true)"
+            running_image="$(docker compose -f docker-compose.prod.yml --env-file .env images -q mediasoup-sfu 2>/dev/null || true)"
+            if [ "$inputs_sha" = "$built_sha" ] && [ -n "$running_image" ]; then
+              echo "A imagem no ar já foi construída destas fontes ($inputs_sha): build pulado."
+            else
+              echo "Construindo a imagem (no ar: ${built_sha:-nenhuma}, fontes: $inputs_sha)."
+              docker compose -f docker-compose.prod.yml --env-file .env build
+            fi
             docker compose -f docker-compose.prod.yml --env-file .env up -d --remove-orphans
+            echo "$inputs_sha" > .built-inputs
             # Cada build deixa a imagem anterior órfã (<none>); no disco
             # pequeno da VM elas se acumulam a cada deploy.
             docker image prune -f
