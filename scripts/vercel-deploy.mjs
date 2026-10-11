@@ -19,6 +19,7 @@
  * Nenhum valor de credencial é impresso.
  */
 import { appendFileSync, readFileSync } from 'node:fs';
+import { pickProductionUrl } from './vercel-production-url.mjs';
 
 const API = 'https://api.vercel.com';
 const POLL_INTERVAL_MS = 5000;
@@ -244,13 +245,24 @@ if (state !== 'READY') {
   fail(`Deployment terminou em ${state}.${inspector ? ` Logs: ${inspector}` : ''}`);
 }
 
-// A URL de produção é o alias mais curto; as outras são por-deploy.
-const aliases = Array.isArray(deployment.alias) ? deployment.alias : [];
-const productionUrl = aliases.length > 0
-  ? `https://${aliases.reduce((a, b) => (a.length <= b.length ? a : b))}`
-  : `https://${deployment.url}`;
+// ---------------------------------------------------------------------------
+// 5. Qual endereço é o de produção
+// ---------------------------------------------------------------------------
+
+const picked = await pickProductionUrl({
+  deployment,
+  refresh: async () => {
+    const polled = await api(`/v13/deployments/${deploymentId}?${team}`, { headers: authHeaders });
+    return polled.ok ? polled.body : null;
+  },
+  pollMs: POLL_INTERVAL_MS,
+});
+const productionUrl = picked.url;
 
 console.log(`\nPublicado: ${productionUrl}`);
+if (!picked.open) {
+  console.log('  (nenhum endereço respondeu sem a proteção da Vercel; a verificação depende do segredo de bypass)');
+}
 
 if (process.env.GITHUB_OUTPUT) {
   appendFileSync(process.env.GITHUB_OUTPUT, `url=${productionUrl}\n`);
