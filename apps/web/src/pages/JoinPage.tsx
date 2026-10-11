@@ -112,7 +112,7 @@ export function JoinPage(): JSX.Element {
               <span className={styles.titleAccent}>mostre a tela.</span>
             </p>
             <p className={styles.lead}>
-              Suprasumo do entretenimento de dota 2
+              Suprasumo do entretenimento
             </p>
           </header>
 
@@ -304,7 +304,7 @@ export function JoinPage(): JSX.Element {
             ) : null}
           </nav>
 
-          <p className={styles.signature}>feito com carinho para a galera do dota teleton</p>
+          <p className={styles.signature}>feito com carinho de jogador para jogadores</p>
         </div>
       </div>
     </>
