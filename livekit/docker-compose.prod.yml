@@ -37,6 +37,13 @@ services:
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?defina no .env}
       LIVEKIT_WEBHOOK_URL: ${LIVEKIT_WEBHOOK_URL:?defina no .env}
       LIVEKIT_NODE_IP: ${LIVEKIT_NODE_IP:?defina o IP publico da VM no .env}
+      # O servidor não lê isto. Existe para o compose RECRIAR o contêiner
+      # quando o livekit.yaml muda: o arquivo é montado, e trocar o conteúdo
+      # dele não muda nada na definição do serviço — `up -d` olhava, via tudo
+      # igual e deixava o processo antigo rodando com a configuração antiga.
+      # Foi assim que uma mudança de portas chegou à VM e não entrou em vigor.
+      # O workflow de deploy preenche com o hash do arquivo.
+      LIVEKIT_CONFIG_SHA: ${LIVEKIT_CONFIG_SHA:-}
     volumes:
       - ./livekit.yaml:/etc/livekit.yaml:ro
     ports:

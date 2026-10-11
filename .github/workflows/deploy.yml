@@ -577,6 +577,10 @@ jobs:
           script: |
             set -euo pipefail
             cd /opt/telecord-livekit
+            # O hash do livekit.yaml entra no ambiente do serviço (ver o
+            # compose): config diferente recria o contêiner, config igual
+            # não derruba as salas que estão no ar.
+            export LIVEKIT_CONFIG_SHA="$(sha256sum livekit.yaml | cut -c1-16)"
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
