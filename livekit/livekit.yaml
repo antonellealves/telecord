@@ -18,8 +18,22 @@ rtc:
   # hábito) abrem no host para a própria mídia — o sintoma era o
   # `docker compose up` falhar com "port is not available" sempre que um
   # desses apps já estivesse rodando. 40000+ tem bem menos concorrência.
-  port_range_start: 40000
-  port_range_end: 40100
+  #
+  # `udp_port`, e não `port_range_start`/`port_range_end`: com a faixa, cada
+  # participante ocupa UMA porta só dele, e a sala inteira do LiveKit trava
+  # no tamanho da faixa — 101 pessoas, numa VM de qualquer tamanho. Medido
+  # com esta mesma versão: faixa de 4 portas, a 5ª pessoa não entra; com
+  # `udp_port` nas mesmas 4 portas, entram todas, por UDP. Aqui todo mundo
+  # divide as portas listadas e quem limita é a máquina.
+  #
+  # Dezesseis portas porque o LiveKit espalha o tráfego por elas, e o
+  # recomendado é ter pelo menos uma por vCPU: cobre uma VM de até 16 vCPUs
+  # sem tocar aqui. Ficam dentro da faixa 40000-40100/udp que o firewall da
+  # VM e o compose já liberam, então nada muda na infraestrutura.
+  #
+  # As duas formas não convivem: com port_range_* definido, udp_port é
+  # ignorado.
+  udp_port: 40000-40015
   # Sem isto, o LiveKit anuncia o IP INTERNO do contêiner (172.x.x.x) como
   # candidato ICE — o navegador aceita a conexão de sinalização (WebSocket)
   # só que a mídia nunca fecha de verdade, o ping do RTC expira e o cliente
@@ -34,6 +48,14 @@ rtc:
   # completa, não uma troca suave (só existe a partir do LiveKit v1.9+).
   # Em uma VM com rede de verdade, isto deixa de importar; pode manter.
   allow_udp_unstable_fallback: false
+  # Voz antes de vídeo quando a rede de alguém aperta. Já é o padrão; fica
+  # escrito porque é a regra que impede a tela compartilhada de deixar a voz
+  # lagada: o SFU mede a banda de cada ouvinte e, se não couber tudo, pausa
+  # vídeo para aquela pessoa em vez de deixar a fila crescer. O áudio fica
+  # fora desse alocador.
+  congestion_control:
+    enabled: true
+    allow_pause: true
 
 # Autenticação por par de chaves, igual ao LiveKit Cloud: a MESMA
 # LIVEKIT_API_KEY / LIVEKIT_API_SECRET que a API já usa para emitir

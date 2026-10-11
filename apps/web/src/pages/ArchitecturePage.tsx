@@ -303,7 +303,9 @@ const DECISIONS: Decision[] = [
       'pacote, e a que enche transborda para o seguinte por uma ponte criada na hora. Havia um ' +
       'teto escondido: cada transporte sorteava uma porta de mídia, cada pessoa abre dois, e a ' +
       'faixa de cem portas fechava o nó em cinquenta pessoas por mais CPU que sobrasse. Agora é ' +
-      'uma porta por Worker. Crescer é trocar a máquina por uma maior, ou subir outra ao lado.',
+      'uma porta por Worker. O LiveKit tinha o mesmo teto, uma porta por pessoa, e passou a ' +
+      'dividir dezesseis entre todo mundo. Crescer é trocar a máquina por uma maior, ou subir ' +
+      'outra ao lado.',
   },
   {
     title: 'Qualidade é uma corrente: a camada mais fraca decide',
