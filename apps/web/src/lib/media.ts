@@ -10,6 +10,7 @@ import {
   type VideoEncoding,
 } from 'livekit-client';
 import { SCREEN_AUDIO_PROFILE, VOICE_PROFILE, type AudioSendProfile } from './audioSendProfile';
+import type { ScreenCodec } from './screenCodec';
 import { canCaptureSystemAudio } from './shell';
 
 /**
@@ -157,9 +158,16 @@ export const VOICE_PRESET: AudioPreset = audioPreset(VOICE_PROFILE);
  * Sem `audioPreset` e `red` aqui, o áudio da tela herdava o perfil da voz dos
  * `publishDefaults` — RED incluído, porque `red: true` explícito vence o
  * padrão do SDK de desligar RED em estéreo.
+ *
+ * `codec` vem de `screenCodec.ts`, que mede o que este aparelho aguenta e
+ * explica a escolha; o VP9 é o que vale sem essa resposta.
  */
-export function screenSharePublishOptions(quality: ScreenQualityId = DEFAULT_SCREEN_QUALITY): TrackPublishOptions {
+export function screenSharePublishOptions(
+  quality: ScreenQualityId = DEFAULT_SCREEN_QUALITY,
+  codec: ScreenCodec = 'vp9',
+): TrackPublishOptions {
   return {
+    videoCodec: codec,
     screenShareEncoding: screenEncoding(quality),
     degradationPreference: 'maintain-resolution',
     audioPreset: audioPreset(SCREEN_AUDIO_PROFILE),

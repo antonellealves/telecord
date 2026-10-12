@@ -437,7 +437,7 @@ Três coisas atuavam juntas contra a nitidez, e todas foram corrigidas:
 
 1. **`degradationPreference`** não era declarado, então o WebRTC usava `balanced` e derrubava a RESOLUÇÃO ao primeiro aperto de CPU ou banda, sem voltar com a mesma pressa. Agora é `maintain-resolution`: perde quadro antes de perder pixel.
 2. **`adaptiveStream: true`** pedia um fluxo do tamanho do ELEMENTO, assumindo densidade de pixel 1 — num monitor de alta densidade, metade dos pixels que a tela desenha. Agora é `{ pixelDensity: 'screen' }`, e o pedido acompanha o monitor de quem assiste. Este era o único que agia do lado de QUEM RECEBE, e sozinho já explicava boa parte da queixa.
-3. **VP8** borra borda de letra que o VP9 resolve no mesmo bitrate. Agora `videoCodec: 'vp9'` com `backupCodec: { codec: 'vp8' }` — quem não tem VP9 recebe a versão VP8 em vez de nada.
+3. **VP8** borra borda de letra que o VP9 resolve no mesmo bitrate. Agora `videoCodec: 'vp9'` com `backupCodec: { codec: 'vp8' }` — quem não tem VP9 recebe a versão VP8 em vez de nada. Desde então a TELA sai em **AV1** onde o navegador codifica e diz dar conta de 1080p60 (`lib/screenCodec.ts`, com a tabela do A/B): 3,6 dB a mais que o VP9 em movimento na mesma banda, e texto a um sétimo da banda. Sem isso, e na resolução nativa, continua VP9; a câmera também.
 
 `resolution` continua virando `ideal` nas constraints, e isso é deliberado: com `exact`, um monitor 1600×900 não degradaria para o que cabe, **falharia** — a pessoa clicaria em compartilhar e não sairia nada. Quem garante a qualidade é o que vem depois da captura, nos três pontos acima.
 

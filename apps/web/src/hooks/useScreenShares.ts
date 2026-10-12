@@ -12,11 +12,14 @@ import type { ScreenShareOwner } from '@telecord/shared';
 import type { AttachablePublication } from '../lib/attachableTrack';
 import { describeScreenShareError, isScreenShareSupported } from '../lib/errors';
 import {
+  DEFAULT_SCREEN_QUALITY,
   applyScreenPlayoutDelay,
+  screenQuality,
   screenShareCaptureOptions,
   screenSharePublishOptions,
   type ScreenQualityId,
 } from '../lib/media';
+import { detectScreenCodec, screenCodec, type ScreenCodec } from '../lib/screenCodec';
 import type { ToastKind } from './useToasts';
 
 export interface ScreenShareEntry {
@@ -60,6 +63,11 @@ const SHARE_EVENTS: RoomEvent[] = [
   RoomEvent.ConnectionStateChanged,
   RoomEvent.Reconnected,
 ];
+
+/** O nível "máxima" (largura 0) publica a resolução nativa da tela. */
+function codecFor(quality: ScreenQualityId = DEFAULT_SCREEN_QUALITY): ScreenCodec {
+  return screenCodec(screenQuality(quality).width === 0);
+}
 
 function participantLabel(participant: Participant): string {
   return participant.name && participant.name.length > 0 ? participant.name : participant.identity;
@@ -259,6 +267,11 @@ export function useScreenShares(notify: (kind: ToastKind, message: string) => vo
     };
   }, [room]);
 
+  // Resolve o codec da tela já ao entrar, para a resposta existir no clique.
+  useEffect(() => {
+    void detectScreenCodec();
+  }, []);
+
   const isLocalSharing = entries.some((entry) => entry.owner.isLocal);
 
   const start = useCallback(
@@ -270,7 +283,7 @@ export function useScreenShares(notify: (kind: ToastKind, message: string) => vo
       setIsBusy(true);
       const options = screenShareCaptureOptions(quality);
       void room.localParticipant
-        .setScreenShareEnabled(true, options, screenSharePublishOptions(quality))
+        .setScreenShareEnabled(true, options, screenSharePublishOptions(quality, codecFor(quality)))
         .then(() => {
           silenceVoicesInSharedAudio(room, notifyRef.current);
         })
@@ -335,7 +348,7 @@ export function useScreenShares(notify: (kind: ToastKind, message: string) => vo
           room.localParticipant.setScreenShareEnabled(
             true,
             screenShareCaptureOptions(quality),
-            screenSharePublishOptions(quality),
+            screenSharePublishOptions(quality, codecFor(quality)),
           ),
         )
         .then(() => {
