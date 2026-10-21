@@ -10,6 +10,7 @@ import {
   writeNoiseSuppression,
   writePreferredDevice,
 } from '../lib/storage';
+import { SYSTEM_DEFAULT_DEVICE, selectedInputOption } from '../lib/voice/inputDevice';
 
 export interface DeviceOption {
   deviceId: string;
@@ -50,6 +51,19 @@ function toOptions(devices: MediaDeviceInfo[], fallbackLabel: string): DeviceOpt
 }
 
 /**
+ * Microfones, sempre com a opção "Padrão do sistema" no topo.
+ *
+ * O Chrome já lista uma entrada `default` ("Padrão - Microfone X"); Firefox e
+ * Safari não. Escolher o padrão NÃO abre `default`: a sala resolve o aparelho
+ * por trás dele e abre pelo id exato (`resolveInputDevice`).
+ */
+function inputOptions(devices: MediaDeviceInfo[]): DeviceOption[] {
+  const options = toOptions(devices, 'Microfone').filter((device) => device.deviceId !== 'communications');
+  if (options.length === 0 || options.some((device) => device.deviceId === SYSTEM_DEFAULT_DEVICE)) return options;
+  return [{ deviceId: SYSTEM_DEFAULT_DEVICE, label: 'Padrão do sistema' }, ...options];
+}
+
+/**
  * Escolha de dispositivo de áudio.
  *
  * `switchActiveDevice` guarda a preferência no Room mesmo antes de existir
@@ -75,7 +89,7 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
   const [audioInputs, setAudioInputs] = useState<DeviceOption[]>([]);
   const [audioOutputs, setAudioOutputs] = useState<DeviceOption[]>([]);
   const [videoInputs, setVideoInputs] = useState<DeviceOption[]>([]);
-  const [activeAudioInput, setActiveAudioInput] = useState(DEFAULT_DEVICE);
+  const [activeAudioInput, setActiveAudioInput] = useState(() => selectedInputOption(readPreferredDevice('audioinput')));
   const [activeAudioOutput, setActiveAudioOutput] = useState(DEFAULT_DEVICE);
   const [activeVideoInput, setActiveVideoInput] = useState(DEFAULT_DEVICE);
   const [labelsHidden, setLabelsHidden] = useState(false);
@@ -97,12 +111,11 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
         : [];
       const cameras = await Room.getLocalDevices('videoinput', false);
 
-      setAudioInputs(toOptions(inputs, 'Microfone'));
+      setAudioInputs(inputOptions(inputs));
       setAudioOutputs(toOptions(outputs, 'Saída de áudio'));
       setVideoInputs(toOptions(cameras, 'Câmera'));
       setLabelsHidden(inputs.length > 0 && inputs.every((device) => device.label === ''));
       if (room !== undefined) {
-        setActiveAudioInput(room.getActiveDevice('audioinput') ?? DEFAULT_DEVICE);
         setActiveAudioOutput(room.getActiveDevice('audiooutput') ?? DEFAULT_DEVICE);
         setActiveVideoInput(room.getActiveDevice('videoinput') ?? DEFAULT_DEVICE);
       }
@@ -117,13 +130,17 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
     const handleDevicesChanged = (): void => {
       void refresh();
     };
+    // O microfone mostra a ESCOLHA (inclusive "Padrão do sistema"), não o id
+    // concreto que a sala resolveu a partir dela.
     const handleActiveChanged = (kind: MediaDeviceKind, deviceId: string): void => {
-      if (kind === 'audioinput') setActiveAudioInput(deviceId);
       if (kind === 'audiooutput') setActiveAudioOutput(deviceId);
       if (kind === 'videoinput') setActiveVideoInput(deviceId);
     };
 
-    if (room === undefined) return;
+    if (room === undefined) {
+      navigator.mediaDevices?.addEventListener?.('devicechange', handleDevicesChanged);
+      return () => navigator.mediaDevices?.removeEventListener?.('devicechange', handleDevicesChanged);
+    }
     room.on(RoomEvent.MediaDevicesChanged, handleDevicesChanged);
     room.on(RoomEvent.ActiveDeviceChanged, handleActiveChanged);
     return () => {
@@ -168,13 +185,16 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
     [room, refresh, isSwitching],
   );
 
-  const selectAudioInput = useCallback(
-    (deviceId: string) => {
-      writePreferredDevice('audioinput', deviceId);
-      select('audioinput', deviceId);
-    },
-    [select],
-  );
+  /*
+   * O microfone só grava a escolha. Quem troca a track no ar é a sala
+   * (`useLiveKitVoicePipeline` ou `useMediasoupTalkControls`), ouvindo o
+   * evento que `writePreferredDevice` dispara: resolve o id exato e faz
+   * `replaceTrack`, sem renegociar. Um dono só, como na supressão de ruído.
+   */
+  const selectAudioInput = useCallback((deviceId: string) => {
+    setActiveAudioInput(deviceId);
+    writePreferredDevice('audioinput', deviceId);
+  }, []);
 
   const selectAudioOutput = useCallback(
     (deviceId: string) => {
@@ -193,7 +213,8 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
   );
 
   /**
-   * Restaura o dispositivo escolhido da última vez.
+   * Restaura a saída de áudio escolhida da última vez (o microfone é
+   * restaurado pela sala, sempre montada, e não por este painel).
    *
    * Só depois de enumerar, e só se o id ainda existir: fone desconectado deixa
    * uma preferência órfã, e tentar aplicá-la daria erro de dispositivo
@@ -205,20 +226,13 @@ export function useMediaDevices(onError: (message: string) => void): MediaDevice
     }
     restoredRef.current = true;
 
-    const wantedInput = readPreferredDevice('audioinput');
-    if (wantedInput !== '' && wantedInput !== activeAudioInput) {
-      if (audioInputs.some((device) => device.deviceId === wantedInput)) {
-        select('audioinput', wantedInput);
-      }
-    }
-
     const wantedOutput = readPreferredDevice('audiooutput');
     if (outputSelectionSupported && wantedOutput !== '' && wantedOutput !== activeAudioOutput) {
       if (audioOutputs.some((device) => device.deviceId === wantedOutput)) {
         select('audiooutput', wantedOutput);
       }
     }
-  }, [audioInputs, audioOutputs, activeAudioInput, activeAudioOutput, outputSelectionSupported, select]);
+  }, [audioInputs, audioOutputs, activeAudioOutput, outputSelectionSupported, select]);
 
   /*
    * Só grava a preferência. Quem aplica no microfone é `useNoiseFilter`, na

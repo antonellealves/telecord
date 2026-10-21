@@ -1,6 +1,7 @@
 import type { AudioCaptureOptions } from 'livekit-client';
 import { describe, expect, it } from 'vitest';
 import { applyCaptureProcessing, type CaptureProcessing, type CaptureTrack } from './captureProcessing';
+import { constraintBoolean } from './voice/voiceProfile';
 
 type Browser = 'chrome' | 'firefox' | 'calado';
 
@@ -20,15 +21,15 @@ function fakeTrack(browser: Browser, initial: CaptureProcessing) {
   let restartedWith: AudioCaptureOptions | undefined;
   const adopt = (options: AudioCaptureOptions | undefined): void => {
     current = {
-      noiseSuppression: options?.noiseSuppression === true,
-      echoCancellation: options?.echoCancellation === true,
+      noiseSuppression: constraintBoolean(options?.noiseSuppression) === true,
+      echoCancellation: constraintBoolean(options?.echoCancellation) === true,
     };
   };
   const track: CaptureTrack = {
     mediaStreamTrack: {
       getSettings: () => (browser === 'calado' ? {} : { ...current }),
     },
-    constraints: { deviceId: { exact: 'microfone-usb' }, echoCancellation: true, channelCount: 1, sampleRate: 48_000 },
+    constraints: { deviceId: { exact: 'microfone-usb' }, echoCancellation: { ideal: true }, autoGainControl: { ideal: true } },
     applyConstraints: async (constraints) => {
       calls.push('apply');
       if (browser === 'firefox') adopt(constraints);
@@ -61,11 +62,10 @@ describe('applyCaptureProcessing', () => {
     await applyCaptureProcessing(fake.track, ON);
     expect(fake.restartedWith()).toEqual({
       deviceId: { exact: 'microfone-usb' },
-      echoCancellation: true,
-      channelCount: 1,
-      sampleRate: 48_000,
-      noiseSuppression: true,
-      voiceIsolation: true,
+      echoCancellation: { ideal: true },
+      autoGainControl: { ideal: true },
+      noiseSuppression: { ideal: true },
+      voiceIsolation: { ideal: true },
     });
   });
 
@@ -73,7 +73,11 @@ describe('applyCaptureProcessing', () => {
     const fake = fakeTrack('chrome', RAW_WITH_ECHO);
     await applyCaptureProcessing(fake.track, RAW);
     expect(fake.calls).toEqual(['apply', 'restart']);
-    expect(fake.restartedWith()).toMatchObject({ echoCancellation: false, noiseSuppression: false, channelCount: 1 });
+    expect(fake.restartedWith()).toMatchObject({
+      deviceId: { exact: 'microfone-usb' },
+      echoCancellation: { ideal: false },
+      noiseSuppression: { ideal: false },
+    });
     expect(fake.current()).toEqual(RAW);
   });
 

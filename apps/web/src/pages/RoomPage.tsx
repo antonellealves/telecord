@@ -8,7 +8,7 @@ import { readPeerId, readTransport, writeTransport } from '../lib/storage';
 import { MediasoupRoomShell } from './mediasoup/MediasoupRoomShell';
 import { useToken } from '../hooks/useToken';
 import { LIVEKIT_URL, getConfigError } from '../lib/config';
-import { roomOptions } from '../lib/media';
+import { LIVEKIT_CONNECT_OPTIONS, roomOptions } from '../lib/media';
 import { RoomShell } from './RoomShell';
 import statusStyles from '../components/StatusScreen.module.css';
 import styles from './RoomPage.module.css';
@@ -184,6 +184,9 @@ function RoomSession({
       audio={false}
       video={false}
       options={roomOptions}
+      // `max-bundle` + `rtcp-mux` como o Discord. Sem `iceServers`: o SDK usa
+      // os TURN que o servidor manda no join.
+      connectOptions={LIVEKIT_CONNECT_OPTIONS}
       onConnected={() => {
         connectedRef.current = true;
       }}

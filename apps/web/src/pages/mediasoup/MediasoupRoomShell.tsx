@@ -46,6 +46,8 @@ import { useMediasoupParticipants } from '../../hooks/mediasoup/useMediasoupPart
 import { useMediasoupPeerVolume } from '../../hooks/mediasoup/useMediasoupPeerVolume';
 import { useMediasoupScreenShares } from '../../hooks/mediasoup/useMediasoupScreenShares';
 import { useMediasoupTalkControls } from '../../hooks/mediasoup/useMediasoupTalkControls';
+import { useMediasoupVoice } from '../../hooks/mediasoup/useMediasoupVoice';
+import { VoiceDebugPanel } from '../../components/VoiceDebugPanel';
 import styles from '../RoomPage.module.css';
 
 interface Props {
@@ -125,6 +127,7 @@ export function MediasoupRoomShell({
   const shares = useMediasoupScreenShares(engine, peerId, push);
   const cameras = useMediasoupCameras(engine, peerId, push);
   const talk = useMediasoupTalkControls(engine, (message) => push('error', message));
+  const voice = useMediasoupVoice(engine, roomId);
   const sound = useSoundVolume();
   const { status: authStatus } = useAuth();
 
@@ -361,6 +364,8 @@ export function MediasoupRoomShell({
               isOverlaySupported={overlay.isSupported}
               isOverlayOpen={overlay.isOpen}
               onToggleOverlay={overlay.toggle}
+              voiceBitrate={voice.bitrate}
+              onChangeVoiceBitrate={voice.setBitrate}
               onChangeScreenQuality={(id) => {
                 writeScreenQuality(id);
                 // Sem restart em pleno compartilhamento neste v1 — ver nota
@@ -442,6 +447,8 @@ export function MediasoupRoomShell({
             isAway: p.isAway,
           }))}
         />
+
+        <VoiceDebugPanel getSources={voice.getStatsSources} bitrate={voice.bitrate} transportLabel="mediasoup" />
 
         <ToastStack toasts={toasts} onDismiss={dismiss} />
       </div>

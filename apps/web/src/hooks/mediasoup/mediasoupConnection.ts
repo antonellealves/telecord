@@ -1,4 +1,4 @@
-import { Device } from 'mediasoup-client';
+import type { Device } from 'mediasoup-client';
 import type { ConnectionState, Consumer, Producer, ProducerCodecOptions, Transport } from 'mediasoup-client/types';
 import { io, type Socket } from 'socket.io-client';
 import {
@@ -27,10 +27,14 @@ import { SignalRequestFailed, SignalStream, SignalUnavailable } from '../../lib/
 import { SpeakerHold } from '../../lib/speakerHold';
 import {
   MIC_CODEC_OPTIONS,
-  MIC_SEND_ENCODING,
   SCREEN_AUDIO_CODEC_OPTIONS,
   SCREEN_AUDIO_SEND_ENCODING,
+  micSendEncoding,
 } from './audioProfile';
+import { createVoiceDevice } from './voiceDevice';
+import { attachVoiceFrameTransform } from '../../lib/voice/frameTransform';
+import { DEFAULT_VOICE_BITRATE, type VoiceBitrate } from '../../lib/voice/voiceProfile';
+import type { VoiceStatsSource } from '../../components/VoiceDebugPanel';
 import {
   CAMERA_CONTENT_HINT,
   CAMERA_DEGRADATION,
@@ -232,6 +236,8 @@ export class MediasoupConnection {
   /** Evita disparar `onForceMuted`/`onForceMoved` de novo enquanto o comando continuar o mesmo. */
   private lastForceMuted = false;
   private lastMoveTo: string | null = null;
+  /** Teto do microfone nesta sala — ver `setVoiceBitrate`. */
+  private voiceBitrate: VoiceBitrate = DEFAULT_VOICE_BITRATE;
 
   constructor(
     private readonly roomId: string,
@@ -264,7 +270,8 @@ export class MediasoupConnection {
       this.token = config.presenceToken;
       this.nodeUrl = (config.node?.url ?? MEDIASOUP_PUBLIC_URL).replace(/\/$/, '');
 
-      const device = new Device();
+      // Com a política de SDP da voz (Opus só, fmtp do Discord) — ver `voiceDevice.ts`.
+      const device = createVoiceDevice();
       await device.load({ routerRtpCapabilities: config.routerRtpCapabilities as never });
       if (!this.alive) return;
       this.device = device;
@@ -366,6 +373,60 @@ export class MediasoupConnection {
       this.emitLocalTracks();
       return;
     }
+  }
+
+  /**
+   * Troca a track de uma publicação no ar sem renegociar (`replaceTrack`).
+   * É o caminho da troca de microfone, da supressão de ruído e do
+   * cancelamento de eco: a captura nova entra no MESMO producer, e quem ouve
+   * não percebe nada além de um corte de milissegundos.
+   *
+   * A track antiga continua sendo de quem a capturou — parar é com ele.
+   * `false` quando não há publicação daquele tipo no ar.
+   */
+  async replaceTrack(trackKind: MediasoupTrackKind, track: MediaStreamTrack): Promise<boolean> {
+    const publication = this.publications.get(trackKind);
+    if (publication === undefined) return false;
+    track.enabled = !(trackKind === 'mic' && this.lastForceMuted);
+    publication.track = track;
+    const producer = publication.producer;
+    if (producer !== null && !producer.closed) {
+      await producer.replaceTrack({ track });
+    }
+    if (publication.handle !== null) publication.handle = { ...publication.handle, track };
+    this.emitLocalTracks();
+    return true;
+  }
+
+  /** Teto do microfone. Vale na hora para o que está no ar e para a próxima publicação. */
+  setVoiceBitrate(bitrate: VoiceBitrate): void {
+    this.voiceBitrate = bitrate;
+    const producer = this.publications.get('mic')?.producer ?? null;
+    if (producer !== null && !producer.closed) {
+      void this.forceSendParameters(producer.rtpSender ?? null, micSendEncoding(bitrate), null);
+    }
+  }
+
+  /** Para o painel de debug: o microfone e cada voz/áudio de tela que chega. */
+  getVoiceStatsSources(): VoiceStatsSource[] {
+    const sources: VoiceStatsSource[] = [];
+    const mic = this.publications.get('mic')?.producer ?? null;
+    if (mic !== null && !mic.closed) {
+      sources.push({ id: 'local-mic', label: 'Você · microfone', direction: 'send', getStats: () => mic.getStats() });
+    }
+    const names = new Map(this.roster.map((peer) => [peer.peerId, peer.displayName]));
+    for (const [producerId, consumer] of this.consumers) {
+      if (consumer.closed || consumer.kind !== 'audio') continue;
+      const track = this.announced.get(producerId);
+      const owner = track === undefined ? 'alguém' : (names.get(track.peerId) ?? track.peerId);
+      sources.push({
+        id: consumer.id,
+        label: `${owner}${track?.trackKind === 'screen-audio' ? ' · áudio da tela' : ''}`,
+        direction: 'recv',
+        getStats: () => consumer.getStats(),
+      });
+    }
+    return sources;
   }
 
   get localTrackHandles(): LocalTrackHandle[] {
@@ -876,7 +937,7 @@ export class MediasoupConnection {
     let degradation: RTCDegradationPreference | null = null;
 
     if (trackKind === 'mic') {
-      profile = { codecOptions: MIC_CODEC_OPTIONS, encodings: [MIC_SEND_ENCODING] };
+      profile = { codecOptions: MIC_CODEC_OPTIONS, encodings: [micSendEncoding(this.voiceBitrate)] };
     } else if (trackKind === 'screen-audio') {
       profile = { codecOptions: SCREEN_AUDIO_CODEC_OPTIONS, encodings: [SCREEN_AUDIO_SEND_ENCODING] };
     } else if (trackKind === 'screen-video') {
@@ -925,6 +986,10 @@ export class MediasoupConnection {
     }
     // Republicado no meio de um mudo forçado pela moderação: continua mudo.
     if (trackKind === 'mic' && this.lastForceMuted) track.enabled = false;
+    // Gancho de E2EE por quadro (desligado por padrão).
+    if ((trackKind === 'mic' || trackKind === 'screen-audio') && producer.rtpSender !== undefined) {
+      attachVoiceFrameTransform(producer.rtpSender, { direction: 'send', trackKind, peerId: this.peerId });
+    }
 
     publication.producer = producer;
     publication.handle = { producerId: producer.id, kind: producer.kind, trackKind, track };
@@ -1102,6 +1167,9 @@ export class MediasoupConnection {
       return;
     }
     this.consumers.set(producerId, consumer);
+    if (consumer.kind === 'audio' && consumer.rtpReceiver !== undefined) {
+      attachVoiceFrameTransform(consumer.rtpReceiver, { direction: 'recv', trackKind, peerId: ownerPeerId });
+    }
 
     consumer.on('transportclose', () => {
       this.dropConsumer(producerId, consumer);

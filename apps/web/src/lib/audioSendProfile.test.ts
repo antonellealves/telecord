@@ -8,6 +8,7 @@
  *    `publishTrack` (foi aí que o áudio da tela herdou o RED da voz).
  * 2. BANDA — o perfil cabe numa sala cheia sem roubar a banda da tela (o
  *    lag de 256 kbps + RED) e não desce a qualidade de telefone para caber.
+ *    O perfil é o do Discord: 64 kbps, Opus só, DTX ligado.
  * 3. AUDITORIA — dado o que um `RTCRtpSender` real reporta, a conferência
  *    acusa cada divergência conhecida e não acusa o que está certo. É ela
  *    que roda no navegador (`useAudioSendAudit`).
@@ -20,11 +21,13 @@ import {
   VOICE_PROFILE,
   auditAudioSender,
   roomAudioDownlink,
+  voiceProfileFor,
   wireBitrate,
   type AudioSendProfile,
   type AudioSenderSnapshot,
 } from './audioSendProfile';
-import { SCREEN_QUALITY_OPTIONS, roomOptions, screenSharePublishOptions } from './media';
+import { SCREEN_QUALITY_OPTIONS, roomOptions, screenSharePublishOptions, voicePreset } from './media';
+import { DEFAULT_VOICE_BITRATE, VOICE_BITRATE_OPTIONS } from './voice/voiceProfile';
 
 /** O que `LocalParticipant.publishTrack` faz antes de montar o encoding. */
 function effectiveOptions(options?: TrackPublishOptions): TrackPublishOptions {
@@ -45,9 +48,23 @@ describe('configuração entregue ao SDK', () => {
     expect(options.forceStereo ?? false).toBe(VOICE_PROFILE.stereo);
   });
 
-  it('captura do microfone em 48 kHz mono, sem reamostrar para banda estreita', () => {
-    expect(roomOptions.audioCaptureDefaults?.sampleRate).toBe(48_000);
-    expect(roomOptions.audioCaptureDefaults?.channelCount).toBe(1);
+  it('é o perfil do Discord: 64 kbps, sem RED, com DTX, mono', () => {
+    expect(VOICE_PROFILE).toEqual({ maxBitrate: 64_000, stereo: false, red: false, dtx: true });
+    expect(DEFAULT_VOICE_BITRATE).toBe(64_000);
+  });
+
+  it.each(VOICE_BITRATE_OPTIONS)('o teto da sala (%i) chega ao preset da voz', (bitrate) => {
+    expect(voicePreset(bitrate).maxBitrate).toBe(bitrate);
+    expect(voiceProfileFor(bitrate)).toMatchObject({ red: false, dtx: true, stereo: false });
+  });
+
+  it('captura com processamento de voz como pedido ideal, sem forçar taxa nem canais', () => {
+    const capture = roomOptions.audioCaptureDefaults!;
+    expect(capture.echoCancellation).toEqual({ ideal: true });
+    expect(capture.autoGainControl).toEqual({ ideal: true });
+    expect(capture.noiseSuppression).toEqual({ ideal: true });
+    expect(capture.sampleRate).toBeUndefined();
+    expect(capture.channelCount).toBeUndefined();
   });
 
   it.each(SCREEN_QUALITY_OPTIONS.map((option) => option.id))(
@@ -88,27 +105,26 @@ describe('banda', () => {
   });
 });
 
-/** Payload de fala contínua com RED: um pouco abaixo do dobro do teto (VBR). */
-const SPEECH_WITH_RED = VOICE_PROFILE.maxBitrate * 1.875;
+/** Payload de fala contínua: um pouco abaixo do teto (VBR). */
+const SPEECH = VOICE_PROFILE.maxBitrate * 0.94;
+
+/** O fmtp do Opus que a resposta do LiveKit dá ao microfone, já com o teto da sala. */
+const VOICE_FMTP = 'maxaveragebitrate=64000;minptime=10;usedtx=1;useinbandfec=1';
 
 /** O que o Chromium reporta para o microfone publicado conforme o perfil. */
 function conformingVoice(overrides: Partial<AudioSenderSnapshot> = {}): AudioSenderSnapshot {
   const target = VOICE_PROFILE.maxBitrate;
   return {
     maxBitrate: target,
-    codecs: [
-      { mimeType: 'audio/red', clockRate: 48_000, channels: 2, sdpFmtpLine: '111/111' },
-      { mimeType: 'audio/opus', clockRate: 48_000, channels: 2, sdpFmtpLine: 'minptime=10;useinbandfec=1' },
-    ],
+    codecs: [{ mimeType: 'audio/opus', clockRate: 48_000, channels: 2, sdpFmtpLine: VOICE_FMTP }],
     sampleRate: 48_000,
-    channelCount: 1,
     // 5 s de fala entre as duas leituras.
-    first: { timestamp: 10_000, bytesSent: 200_000, targetBitrate: target, codecMimeType: 'audio/red' },
+    first: { timestamp: 10_000, bytesSent: 200_000, targetBitrate: target, codecMimeType: 'audio/opus' },
     second: {
       timestamp: 15_000,
-      bytesSent: 200_000 + (SPEECH_WITH_RED * 5) / 8,
+      bytesSent: 200_000 + (SPEECH * 5) / 8,
       targetBitrate: target,
-      codecMimeType: 'audio/red',
+      codecMimeType: 'audio/opus',
     },
     ...overrides,
   };
@@ -123,7 +139,7 @@ describe('auditoria do sender', () => {
     const audit = auditAudioSender(conformingVoice(), VOICE_PROFILE);
     expect(audit.issues).toEqual([]);
     expect(audit.ok).toBe(true);
-    expect(audit.measuredBitrate).toBeCloseTo(SPEECH_WITH_RED, -3);
+    expect(audit.measuredBitrate).toBeCloseTo(SPEECH, -3);
   });
 
   it('acusa o teto do sender diferente do programado', () => {
@@ -133,36 +149,52 @@ describe('auditoria do sender', () => {
 
   it('acusa SDP que corta o Opus abaixo do teto', () => {
     const codecs = [
-      { mimeType: 'audio/red', sdpFmtpLine: '111/111' },
-      { mimeType: 'audio/opus', clockRate: 48_000, sdpFmtpLine: 'minptime=10;useinbandfec=1;maxaveragebitrate=32000' },
+      { mimeType: 'audio/opus', clockRate: 48_000, sdpFmtpLine: 'minptime=10;useinbandfec=1;usedtx=1;maxaveragebitrate=32000' },
     ];
     expect(issueCodes(conformingVoice({ codecs }))).toEqual(['fmtp-ceiling']);
   });
 
-  it('acusa DTX e FEC negociados ao contrário do perfil', () => {
-    const codecs = [
-      { mimeType: 'audio/red', sdpFmtpLine: '111/111' },
-      { mimeType: 'audio/opus', clockRate: 48_000, sdpFmtpLine: 'minptime=10;usedtx=1' },
-    ];
+  it('acusa DTX e FEC faltando (o perfil pede os dois)', () => {
+    const codecs = [{ mimeType: 'audio/opus', clockRate: 48_000, sdpFmtpLine: 'minptime=10' }];
     expect(issueCodes(conformingVoice({ codecs }))).toEqual(['fec', 'dtx']);
   });
 
-  it('acusa RED faltando na voz', () => {
-    const codecs = [{ mimeType: 'audio/opus', clockRate: 48_000, sdpFmtpLine: 'minptime=10;useinbandfec=1' }];
-    const second = { timestamp: 15_000, bytesSent: 200_000 + (VOICE_PROFILE.maxBitrate * 5) / 8, codecMimeType: 'audio/opus' };
+  it('acusa RED saindo na voz, que agora é só Opus', () => {
+    const codecs = [
+      { mimeType: 'audio/red', sdpFmtpLine: '111/111' },
+      { mimeType: 'audio/opus', clockRate: 48_000, sdpFmtpLine: VOICE_FMTP },
+    ];
+    const second = { timestamp: 15_000, bytesSent: 200_000 + (SPEECH * 5) / 8, codecMimeType: 'audio/red' };
     expect(issueCodes(conformingVoice({ codecs, second }))).toEqual(['red']);
   });
 
-  it('acusa captura reamostrada ou em estéreo', () => {
+  it('acusa codec além do Opus na seção (setCodecPreferences não pegou)', () => {
+    const codecs = [
+      { mimeType: 'audio/opus', clockRate: 48_000, sdpFmtpLine: VOICE_FMTP },
+      { mimeType: 'audio/G722', clockRate: 8_000 },
+    ];
+    expect(issueCodes(conformingVoice({ codecs }))).toEqual(['extra-codecs']);
+  });
+
+  it('só acusa captura em banda de telefone; 44,1 kHz é normal', () => {
     expect(issueCodes(conformingVoice({ sampleRate: 16_000 }))).toEqual(['sample-rate']);
-    expect(issueCodes(conformingVoice({ channelCount: 2 }))).toEqual(['channels']);
+    expect(issueCodes(conformingVoice({ sampleRate: 44_100 }))).toEqual([]);
+  });
+
+  it('o teto escolhido na sala é o que a auditoria confere', () => {
+    const profile = voiceProfileFor(128_000);
+    expect(issueCodes(conformingVoice(), profile)).toEqual(['max-bitrate', 'fmtp-ceiling']);
+    const codecs = [
+      { mimeType: 'audio/opus', clockRate: 48_000, sdpFmtpLine: 'maxaveragebitrate=128000;minptime=10;usedtx=1;useinbandfec=1' },
+    ];
+    expect(auditAudioSender(conformingVoice({ maxBitrate: 128_000, codecs }), profile).ok).toBe(true);
   });
 
   it('acusa encoder acima do teto (Firefox usando maxaveragebitrate=510000 como alvo)', () => {
     const codecs = [{ mimeType: 'audio/opus', clockRate: 48_000, sdpFmtpLine: 'useinbandfec=1;maxaveragebitrate=510000' }];
     const first = { timestamp: 0, bytesSent: 0, codecMimeType: 'audio/opus' };
     const second = { timestamp: 5_000, bytesSent: 318_750, targetBitrate: 510_000, codecMimeType: 'audio/opus' };
-    const profile = { ...VOICE_PROFILE, red: false };
+    const profile = { ...VOICE_PROFILE, dtx: false };
     expect(issueCodes(conformingVoice({ codecs, first, second }), profile)).toEqual(['target-bitrate', 'overspend']);
   });
 

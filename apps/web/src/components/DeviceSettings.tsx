@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { useMediaDevices } from '../hooks/useMediaDevices';
+import { useMicLevelMeter } from '../hooks/useMicLevelMeter';
 import { useMicrophoneTest } from '../hooks/useMicrophoneTest';
 import type { NoiseFilterStatus } from '../hooks/useNoiseFilter';
 import type { ToastKind } from '../hooks/useToasts';
@@ -9,6 +10,14 @@ import {
   type ScreenQualityId,
 } from '../lib/media';
 import type { TalkMode, ThemeId } from '../lib/storage';
+import { resolveInputDevice } from '../lib/voice/inputDevice';
+import {
+  VOICE_BITRATE_OPTIONS,
+  isVoiceBitrate,
+  voiceBitrateLabel,
+  voiceCaptureConstraints,
+  type VoiceBitrate,
+} from '../lib/voice/voiceProfile';
 import { MicIcon, ScreenIcon, SpeakerIcon } from './icons';
 import styles from './DeviceSettings.module.css';
 
@@ -41,6 +50,9 @@ interface DeviceSettingsProps {
   onToggleOverlay?: () => void;
   /** Qual filtro está de fato no microfone (só a sala LiveKit sabe dizer). */
   noiseFilter?: NoiseFilterStatus;
+  /** Teto da voz NESTA sala. */
+  voiceBitrate?: VoiceBitrate;
+  onChangeVoiceBitrate?: (bitrate: VoiceBitrate) => void;
 }
 
 const NOISE_FILTER_NOTE: Record<NoiseFilterStatus, string | null> = {
@@ -96,6 +108,8 @@ export function DeviceSettings({
   isOverlayOpen,
   onToggleOverlay,
   noiseFilter,
+  voiceBitrate,
+  onChangeVoiceBitrate,
 }: DeviceSettingsProps): JSX.Element {
   const [section, setSection] = useState<Section>('audio');
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -103,7 +117,27 @@ export function DeviceSettings({
   const test = useMicrophoneTest(
     () => devices.activeAudioOutput,
     (message) => notify('error', message),
+    async () => {
+      const list = await navigator.mediaDevices.enumerateDevices();
+      return voiceCaptureConstraints({
+        deviceId: resolveInputDevice(list, devices.activeAudioInput),
+        noiseSuppression: devices.noiseSuppression,
+        echoCancellation: devices.echoCancellation,
+      });
+    },
   );
+  /*
+   * Medidor ao vivo do microfone escolhido, enquanto a aba de dispositivos
+   * está aberta. Pausa durante o teste (que tem a própria captura) e sem
+   * permissão de microfone (abrir aqui faria o navegador perguntar do nada).
+   */
+  const level = useMicLevelMeter({
+    preferredDevice: devices.activeAudioInput,
+    noiseSuppression: devices.noiseSuppression,
+    echoCancellation: devices.echoCancellation,
+    enabled:
+      section === 'dispositivos' && !devices.labelsHidden && devices.audioInputs.length > 0 && test.state === 'idle',
+  });
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent): void => {
@@ -241,26 +275,53 @@ export function DeviceSettings({
         </span>
       </div>
 
-      {/* Só a sala LiveKit aplica: nas outras a captura já é crua. */}
-      {noiseFilter !== undefined ? (
-        <div className={styles.field}>
-          <label className={styles.switchRow}>
-            <input
-              type="checkbox"
-              className={styles.checkbox}
-              checked={devices.echoCancellation}
-              onChange={(event) => devices.setEchoCancellation(event.target.checked)}
-            />
-            <span className={styles.switchTrack} aria-hidden="true">
-              <span className={styles.switchThumb} />
-            </span>
-            <span className={styles.switchLabel}>Cancelamento de eco</span>
-          </label>
-          <span className={styles.hint}>
-            Impede que a sala volte pelo seu microfone. De fone de ouvido, desligue: o cancelamento corta o
-            agudo da voz acima de 14 kHz. Com caixa de som, deixe ligado.
+      {/* Os dois transportes aplicam: a captura pede `echoCancellation: { ideal }`. */}
+      <div className={styles.field}>
+        <label className={styles.switchRow}>
+          <input
+            type="checkbox"
+            className={styles.checkbox}
+            checked={devices.echoCancellation}
+            onChange={(event) => devices.setEchoCancellation(event.target.checked)}
+          />
+          <span className={styles.switchTrack} aria-hidden="true">
+            <span className={styles.switchThumb} />
           </span>
-        </div>
+          <span className={styles.switchLabel}>Cancelamento de eco</span>
+        </label>
+        <span className={styles.hint}>
+          Impede que a sala volte pelo seu microfone. De fone de ouvido, desligue: o cancelamento corta o
+          agudo da voz acima de 14 kHz. Com caixa de som, deixe ligado.
+        </span>
+      </div>
+
+      {voiceBitrate !== undefined && onChangeVoiceBitrate !== undefined ? (
+        <label className={styles.field}>
+          <span className={styles.label}>
+            <MicIcon className={styles.icon} />
+            Qualidade da voz nesta sala
+          </span>
+          <select
+            className={styles.select}
+            value={voiceBitrate}
+            onChange={(event) => {
+              const value = Number(event.target.value);
+              if (isVoiceBitrate(value)) onChangeVoiceBitrate(value);
+            }}
+            aria-label="Qualidade da voz nesta sala"
+          >
+            {VOICE_BITRATE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {voiceBitrateLabel(option)}
+              </option>
+            ))}
+          </select>
+          <span className={styles.hint}>
+            Teto da sua voz, em Opus mono. 64 kbps é o que o Discord usa e já é transparente para fala; mais
+            que isso só vale para música ou canto. Calado, o microfone cai para cerca de 2 kbps em qualquer
+            nível. Vale na hora, e fica guardado para esta sala.
+          </span>
+        </label>
       ) : null}
 
       </>
@@ -311,13 +372,33 @@ export function DeviceSettings({
                 ? `${TEST_LABEL.recording} ${test.secondsLeft}s`
                 : TEST_LABEL[test.state]}
             </button>
-            <div className={styles.meter} ref={test.meterRef} aria-hidden="true">
+            <div
+              className={styles.meter}
+              ref={(element) => {
+                test.meterRef.current = element;
+                level.meterRef.current = element;
+              }}
+              aria-hidden="true"
+            >
               <div className={styles.meterFill} />
             </div>
           </div>
         ) : null}
 
+        {level.state === 'dead' ? (
+          <span className={styles.warning} role="status">
+            Nenhum som chegando deste microfone. Confira se ele está mudo no sistema, ou escolha outro aparelho.
+          </span>
+        ) : null}
+        {level.state === 'error' && level.error !== null ? (
+          <span className={styles.warning} role="status">
+            {level.error}
+          </span>
+        ) : null}
         <span className={styles.hint}>
+          {level.state === 'live' || level.state === 'dead'
+            ? 'A barra mostra ao vivo o que este microfone capta, com o mesmo processamento da sala. '
+            : ''}
           {test.state === 'recording'
             ? 'Fale normalmente — a barra mostra o que está entrando.'
             : test.state === 'playing'

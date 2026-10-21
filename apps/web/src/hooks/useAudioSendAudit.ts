@@ -56,9 +56,6 @@ async function audit(label: string, track: LocalAudioTrack, profile: AudioSendPr
       maxBitrate: parameters.encodings[0]?.maxBitrate,
       codecs: parameters.codecs ?? [],
       sampleRate: settings.sampleRate,
-      // Só o microfone pede canal fixo na captura; a tela entrega o que a
-      // fonte tem, e o estéreo dela é decidido na negociação.
-      channelCount: profile.stereo ? undefined : settings.channelCount,
       first,
       second,
     },
@@ -94,9 +91,9 @@ function useAuditPublication(
  * garante que a configuração e a auditoria estão certas; isto garante que o
  * navegador e o servidor de verdade não desfizeram nada no caminho.
  */
-export function useAudioSendAudit(): void {
+export function useAudioSendAudit(voiceProfile: AudioSendProfile = VOICE_PROFILE): void {
   const { localParticipant } = useLocalParticipant();
-  useAuditPublication(localParticipant.getTrackPublication(Track.Source.Microphone), 'microfone', VOICE_PROFILE);
+  useAuditPublication(localParticipant.getTrackPublication(Track.Source.Microphone), 'microfone', voiceProfile);
   useAuditPublication(
     localParticipant.getTrackPublication(Track.Source.ScreenShareAudio),
     'áudio da tela',

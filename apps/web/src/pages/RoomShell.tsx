@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { RoomAudioRenderer, useRoomContext } from '@livekit/components-react';
 import { useNavigate } from 'react-router-dom';
 import type { TransportMode } from '@telecord/shared';
@@ -36,6 +36,9 @@ import { useSoundVolume } from '../hooks/useSoundVolume';
 import { useTalkControls } from '../hooks/useTalkControls';
 import { useNoiseFilter } from '../hooks/useNoiseFilter';
 import { useAudioSendAudit } from '../hooks/useAudioSendAudit';
+import { useLiveKitVoicePipeline } from '../hooks/useLiveKitVoicePipeline';
+import { VoiceDebugPanel } from '../components/VoiceDebugPanel';
+import { voiceProfileFor } from '../lib/audioSendProfile';
 import { useForcedMove } from '../hooks/useForcedMove';
 import { useOverlay } from '../hooks/useOverlay';
 import { useRoomGamification } from '../hooks/useRoomGamification';
@@ -99,7 +102,9 @@ export function RoomShell({
   const cameras = useCameras(push);
   const talk = useTalkControls((message) => push('error', message));
   const noiseFilter = useNoiseFilter();
-  useAudioSendAudit();
+  const voice = useLiveKitVoicePipeline(roomId);
+  const voiceProfile = useMemo(() => voiceProfileFor(voice.bitrate), [voice.bitrate]);
+  useAudioSendAudit(voiceProfile);
   const sound = useSoundVolume();
   const { status: authStatus, user } = useAuth();
   /*
@@ -416,6 +421,8 @@ export function RoomShell({
               isOverlayOpen={overlay.isOpen}
               onToggleOverlay={overlay.toggle}
               noiseFilter={noiseFilter}
+              voiceBitrate={voice.bitrate}
+              onChangeVoiceBitrate={voice.setBitrate}
               onChangeScreenQuality={(id) => {
                 setScreenQualityId(id);
                 writeScreenQuality(id);
@@ -511,6 +518,8 @@ export function RoomShell({
             isAway: p.isAway,
           }))}
         />
+
+        <VoiceDebugPanel getSources={voice.getStatsSources} bitrate={voice.bitrate} transportLabel="LiveKit" />
 
         <ToastStack toasts={toasts} onDismiss={dismiss} />
       </div>

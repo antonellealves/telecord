@@ -34,6 +34,8 @@ const RECORD_SECONDS = 4;
 export function useMicrophoneTest(
   getOutputDeviceId: () => string,
   onError: (message: string) => void,
+  /** O mesmo aparelho e processamento da sala — testar outro microfone não diria nada. */
+  getCaptureConstraints: () => Promise<MediaTrackConstraints | boolean> = async () => true,
 ): MicrophoneTest {
   const [state, setState] = useState<MicrophoneTestState>('idle');
   const [secondsLeft, setSecondsLeft] = useState(RECORD_SECONDS);
@@ -51,6 +53,8 @@ export function useMicrophoneTest(
   onErrorRef.current = onError;
   const getOutputRef = useRef(getOutputDeviceId);
   getOutputRef.current = getOutputDeviceId;
+  const getCaptureRef = useRef(getCaptureConstraints);
+  getCaptureRef.current = getCaptureConstraints;
 
   const supported =
     typeof window !== 'undefined' &&
@@ -127,8 +131,9 @@ export function useMicrophoneTest(
 
     setSecondsLeft(RECORD_SECONDS);
 
-    void navigator.mediaDevices
-      .getUserMedia({ audio: true })
+    void getCaptureRef
+      .current()
+      .then((audio) => navigator.mediaDevices.getUserMedia({ audio }))
       .then((stream) => {
         streamRef.current = stream;
         setState('recording');

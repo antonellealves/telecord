@@ -4,6 +4,7 @@
  */
 import type { TransportMode } from '@telecord/shared';
 import { DEFAULT_SCREEN_QUALITY, type ScreenQualityId } from './media';
+import { DEFAULT_VOICE_BITRATE, isVoiceBitrate, type VoiceBitrate } from './voice/voiceProfile';
 
 /** Ids válidos, para recusar lixo vindo do localStorage. */
 const SCREEN_QUALITY_IDS: ScreenQualityId[] = ['suave', 'equilibrada', 'alta', 'maxima'];
@@ -150,11 +151,78 @@ export function readPreferredDevice(kind: MediaDeviceKind): string {
   }
 }
 
+/**
+ * Disparado a cada escolha de dispositivo. A sala escuta para trocar a track
+ * no ar (`replaceTrack`, sem renegociar) — quem só escolhe não precisa saber
+ * qual transporte está ligado.
+ */
+export const PREFERRED_DEVICE_EVENT = 'telecord:preferred-device';
+
+export interface PreferredDeviceChange {
+  kind: MediaDeviceKind;
+  deviceId: string;
+}
+
 export function writePreferredDevice(kind: MediaDeviceKind, deviceId: string): void {
   try {
     window.localStorage.setItem(DEVICE_KEY_PREFIX + kind, deviceId);
   } catch {
     // Storage indisponível.
+  }
+  window.dispatchEvent(
+    new CustomEvent<PreferredDeviceChange>(PREFERRED_DEVICE_EVENT, { detail: { kind, deviceId } }),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bitrate da voz, por sala
+// ---------------------------------------------------------------------------
+
+/**
+ * O teto do microfone NESTA sala, guardado por slug.
+ *
+ * É preferência deste navegador: cada um decide o teto da própria voz, que é
+ * o que o encoder dele obedece. Fica por sala porque a escolha depende do
+ * tipo de sala (conversa de 64 kbps, ensaio de música a 128).
+ */
+const VOICE_BITRATE_PREFIX = 'telecord.voiceBitrate.';
+
+export const VOICE_BITRATE_EVENT = 'telecord:voice-bitrate';
+
+export interface VoiceBitrateChange {
+  roomId: string;
+  bitrate: VoiceBitrate;
+}
+
+export function readVoiceBitrate(roomId: string): VoiceBitrate {
+  try {
+    const value = Number(window.localStorage.getItem(VOICE_BITRATE_PREFIX + roomId));
+    return isVoiceBitrate(value) ? value : DEFAULT_VOICE_BITRATE;
+  } catch {
+    return DEFAULT_VOICE_BITRATE;
+  }
+}
+
+export function writeVoiceBitrate(roomId: string, bitrate: VoiceBitrate): void {
+  try {
+    window.localStorage.setItem(VOICE_BITRATE_PREFIX + roomId, String(bitrate));
+  } catch {
+    // Storage indisponível: vale só para esta aba.
+  }
+  window.dispatchEvent(new CustomEvent<VoiceBitrateChange>(VOICE_BITRATE_EVENT, { detail: { roomId, bitrate } }));
+}
+
+/**
+ * Gancho de E2EE por quadro (ver `lib/voice/frameTransform.ts`). Desligado
+ * por padrão; liga com `localStorage['telecord.voiceE2eeHook'] = 'on'` ou com
+ * `VITE_VOICE_E2EE_HOOK=1` no build.
+ */
+export function readVoiceE2eeHook(): boolean {
+  if (import.meta.env.VITE_VOICE_E2EE_HOOK === '1') return true;
+  try {
+    return window.localStorage.getItem('telecord.voiceE2eeHook') === 'on';
+  } catch {
+    return false;
   }
 }
 

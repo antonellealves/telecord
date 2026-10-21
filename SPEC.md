@@ -380,30 +380,29 @@ const roomOptions: RoomOptions = {
   adaptiveStream: true,   // pausa vídeo fora da viewport / ajusta à área renderizada
   dynacast: true,         // SFU para de encaminhar o que ninguém consome
   publishDefaults: {
-    dtx: true,                                   // silêncio quase não gasta banda
-    red: true,                                   // redundância de áudio contra perda de pacote
-    audioPreset: AudioPresets.musicHighQuality,  // Opus mono 96 kbps — ver 6.1.1
+    dtx: true,                                   // calado, o microfone cai para ~1–2 kbps
+    red: false,                                  // voz é só Opus — FEC e NACK cobrem a perda
+    audioPreset: { maxBitrate: 64_000 },         // teto da sala (64/96/128) — ver 6.1.1
     stopMicTrackOnMute: false,                   // mute instantâneo, sem repedir permissão
     videoCodec: 'vp9',                           // + backupCodec vp8 — ver 6.2.1
     screenShareEncoding: <nível escolhido>.encoding,             // padrão 1080p@30 — ver 6.2.1
     simulcast: false,                            // ver 6.4
   },
   audioCaptureDefaults: {
-    echoCancellation: true,
-    noiseSuppression: true,
-    autoGainControl: true,
-    channelCount: 1,
+    echoCancellation: { ideal: true },
+    noiseSuppression: { ideal: true },
+    autoGainControl: { ideal: true },
   },
 };
 ```
 
 #### 6.1.1 Qualidade de voz
 
-`musicHighQuality` (96 kbps), e não `speech` (24 kbps). O preset de fala é afinado para inteligibilidade em banda estreita, e a 24 kbps o Opus já corta a parte de cima do espectro — é o que faz voz soar "de telefone".
+O perfil é o do Discord, lido de um dump do `chrome://webrtc-internals` dele: Opus mono, 64 kbps, `minptime=10;useinbandfec=1;usedtx=1`, quadro de 20 ms, sem RED. O detalhe, as diferenças que sobram em cada transporte e o checklist para conferir no navegador estão em [docs/voz.md](./docs/voz.md).
 
-O custo extra é por pessoa **falando**, não por pessoa na sala: com `dtx`, quem está calado quase não manda nada. Numa sala de 20 com 3 conversando, são ~220 kbps a mais no total — desprezível ao lado de uma única tela compartilhada.
+64 kbps é o ponto em que o Opus mono já é transparente para fala. O teto sobe por sala (96 ou 128 kbps, escolha de cada pessoa, guardada por sala), para música ou canto. Com DTX, quem está calado custa ~2 kbps, então a conta da sala é por pessoa **falando**.
 
-Mono continua: voz não tem o que estereofonar, e estéreo só dobraria a conta. O `sampleRate: 48000` acompanha por necessidade, não por capricho — sem ele o navegador pode entregar 16 kHz, e aí subir o bitrate não adianta: o que chega ao codec já vem sem as frequências altas, e o resultado é um fluxo maior com o mesmo som abafado.
+A captura não força taxa nem canais: o Chrome processa a voz a 48 kHz seja qual for a placa. O microfone é aberto sempre pelo id exato do aparelho (o "padrão do sistema" é resolvido para o aparelho por trás dele), e trocar de aparelho ou de filtro troca a track com `replaceTrack`, sem renegociar.
 
 ### 6.2 Captura da tela
 

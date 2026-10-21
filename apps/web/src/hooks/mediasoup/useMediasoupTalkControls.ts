@@ -1,9 +1,42 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { describeMicrophoneError } from '../../lib/errors';
-import { readTalkMode, writeTalkMode, type TalkMode } from '../../lib/storage';
-import { MIC_CONSTRAINTS } from './audioProfile';
+import {
+  ECHO_CANCELLATION_EVENT,
+  NOISE_SUPPRESSION_EVENT,
+  PREFERRED_DEVICE_EVENT,
+  readEchoCancellation,
+  readNoiseSuppression,
+  readPreferredDevice,
+  readTalkMode,
+  writeTalkMode,
+  type PreferredDeviceChange,
+  type TalkMode,
+} from '../../lib/storage';
+import { resolveInputDevice } from '../../lib/voice/inputDevice';
+import { voiceCaptureConstraints } from '../../lib/voice/voiceProfile';
 import type { MediasoupEngine } from './useMediasoupEngine';
+import { markVoiceTrack } from './voiceDevice';
 import { withPublishTimeout } from './withPublishTimeout';
+
+/**
+ * Abre o microfone com o perfil da voz: o aparelho escolhido pelo id EXATO
+ * (o padrão do sistema resolvido para o aparelho por trás dele), supressão
+ * de ruído e cancelamento de eco como a pessoa deixou, ganho automático
+ * ligado — tudo `ideal`. Devolve também o id que foi pedido, para saber
+ * depois se um `devicechange` mudou o alvo.
+ */
+async function captureMicrophone(): Promise<{ stream: MediaStream; deviceId: string | null }> {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const deviceId = resolveInputDevice(devices, readPreferredDevice('audioinput'));
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: voiceCaptureConstraints({
+      deviceId,
+      noiseSuppression: readNoiseSuppression(),
+      echoCancellation: readEchoCancellation(),
+    }),
+  });
+  return { stream, deviceId };
+}
 
 export interface MediasoupTalkControls {
   mode: TalkMode;
@@ -61,6 +94,10 @@ export function useMediasoupTalkControls(
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
   const micStreamRef = useRef<MediaStream | null>(null);
+  /** O aparelho que a captura no ar pediu — ver `captureMicrophone`. */
+  const micDeviceRef = useRef<string | null>(null);
+  /** Uma recaptura por vez: duas trocas rápidas não podem intercalar `replaceTrack`. */
+  const recaptureRef = useRef<Promise<void>>(Promise.resolve());
   /**
    * Lido de dentro de `apply`/`finish` no lugar de um `isMicEnabled`
    * derivado de prop (`engine.localTracks`) capturado por closure de
@@ -114,12 +151,13 @@ export function useMediasoupTalkControls(
       // mudou (`setDesired`, chamado por quem pediu isto) antes desta função
       // sequer ser chamada. Se a publicação falhar, `setDesired(false)` no
       // `.catch()` abaixo desfaz o otimismo e mostra o erro.
-      navigator.mediaDevices
-        .getUserMedia({ audio: MIC_CONSTRAINTS })
-        .then(async (stream) => {
+      captureMicrophone()
+        .then(async ({ stream, deviceId }) => {
           const track = stream.getAudioTracks()[0];
           if (track === undefined) throw new Error('sem track de áudio');
+          markVoiceTrack(track);
           micStreamRef.current = stream;
+          micDeviceRef.current = deviceId;
           await withPublishTimeout(
             connection.publish(track, 'mic'),
             'Tempo esgotado ao publicar o microfone.',
@@ -144,6 +182,70 @@ export function useMediasoupTalkControls(
     }
   }, [engine.connection, isMicEnabledNow, setDesired]);
   applyRef.current = apply;
+
+  /*
+   * Troca a captura NO AR, sem renegociar: escolheu outro microfone, ligou ou
+   * desligou a supressão de ruído ou o cancelamento de eco, ou o aparelho em
+   * uso saiu/o padrão do sistema mudou. Captura nova → `replaceTrack` no
+   * mesmo producer → a antiga é parada. Reabrir é o único jeito que funciona
+   * no Chrome: `applyConstraints` resolve e não muda o processamento.
+   */
+  useEffect(() => {
+    const connection = engine.connection;
+    if (connection === null) return;
+    let alive = true;
+
+    const recapture = (onlyIfDeviceChanged: boolean): void => {
+      recaptureRef.current = recaptureRef.current
+        .then(async () => {
+          if (!alive || busyRef.current || !isMicEnabledNow() || micStreamRef.current === null) return;
+          if (onlyIfDeviceChanged) {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const target = resolveInputDevice(devices, readPreferredDevice('audioinput'));
+            const live = micStreamRef.current.getAudioTracks()[0];
+            const unchanged = target === micDeviceRef.current && live?.readyState === 'live';
+            if (target === null || unchanged) return;
+          }
+          const { stream, deviceId } = await captureMicrophone();
+          const track = stream.getAudioTracks()[0];
+          if (track === undefined || !alive || !isMicEnabledNow()) {
+            stream.getTracks().forEach((entry) => entry.stop());
+            return;
+          }
+          markVoiceTrack(track);
+          const replaced = await connection.replaceTrack('mic', track);
+          if (!replaced) {
+            stream.getTracks().forEach((entry) => entry.stop());
+            return;
+          }
+          const previous = micStreamRef.current;
+          micStreamRef.current = stream;
+          micDeviceRef.current = deviceId;
+          previous?.getTracks().forEach((entry) => entry.stop());
+        })
+        .catch((error: unknown) => {
+          onErrorRef.current(describeMicrophoneError(error));
+        });
+    };
+
+    const handleDevice = (event: Event): void => {
+      if ((event as CustomEvent<PreferredDeviceChange>).detail.kind === 'audioinput') recapture(false);
+    };
+    const handleProcessing = (): void => recapture(false);
+    const handleDeviceChange = (): void => recapture(true);
+
+    window.addEventListener(PREFERRED_DEVICE_EVENT, handleDevice);
+    window.addEventListener(NOISE_SUPPRESSION_EVENT, handleProcessing);
+    window.addEventListener(ECHO_CANCELLATION_EVENT, handleProcessing);
+    navigator.mediaDevices?.addEventListener?.('devicechange', handleDeviceChange);
+    return () => {
+      alive = false;
+      window.removeEventListener(PREFERRED_DEVICE_EVENT, handleDevice);
+      window.removeEventListener(NOISE_SUPPRESSION_EVENT, handleProcessing);
+      window.removeEventListener(ECHO_CANCELLATION_EVENT, handleProcessing);
+      navigator.mediaDevices?.removeEventListener?.('devicechange', handleDeviceChange);
+    };
+  }, [engine.connection, isMicEnabledNow]);
 
   const pressToTalk = useCallback(() => {
     setDesired(true);

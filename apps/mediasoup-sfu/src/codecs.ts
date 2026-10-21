@@ -9,8 +9,8 @@ import type * as mediasoup from 'mediasoup';
  * sala só para responder a quem ainda nem entrou, e é o que deixa uma track
  * atravessar de um Worker para outro sem renegociar nada.
  *
- * Opus sem DTX e com FEC, espelhando `apps/web/src/hooks/mediasoup/
- * audioProfile.ts`: mesma meta de qualidade dos dois lados do transporte.
+ * Opus no formato do Discord, espelhando `apps/web/src/lib/voice/
+ * voiceProfile.ts`: mesma meta dos dois lados do transporte.
  */
 export const MEDIA_CODECS: mediasoup.types.RouterRtpCodecCapability[] = [
   {
@@ -18,58 +18,35 @@ export const MEDIA_CODECS: mediasoup.types.RouterRtpCodecCapability[] = [
     mimeType: 'audio/opus',
     clockRate: 48000,
     // `channels` no RTP do Opus é sempre 2 por definição do RFC 7587 (é o
-    // número de canais do STREAM Opus, não da captura) — o cliente publica
-    // mono via `sprop-stereo=0`/`stereo=0` nos fmtp, então baixar isto para 1
+    // número de canais do STREAM Opus, não da captura) — a voz é mono por
+    // não ter `stereo=1` no fmtp, como no Discord, então baixar isto para 1
     // aqui só faz o `canProduce('audio')` do Device falhar em navegadores que
     // seguem o RFC à risca (o codec deixa de "casar" com o suportado pelo
     // Router).
     channels: 2,
+    // 111, o número que o Chrome dá ao Opus e que o Discord usa nos dois
+    // sentidos. Sem isto o Router numera a partir de 100, e quem RECEBE via
+    // o Opus como 100 no webrtc-internals.
+    preferredPayloadType: 111,
     /*
-     * Perfil de voz de ALTA FIDELIDADE, bem acima do padrão de
-     * videoconferência.
+     * O mínimo, de propósito: estes `parameters` são o PONTO DE PARTIDA da
+     * resposta que o mediasoup-client monta para cada producer de áudio, e o
+     * que cada tipo de track quer por cima disto vem dos `codecOptions` do
+     * cliente (`apps/web/src/hooks/mediasoup/audioProfile.ts`):
      *
-     * Sem estes fmtp o Chrome negocia o preset dele: ~32 kbps mono, banda
-     * cortada em ~16 kHz. É o que faz voz soar "de telefone" em qualquer
-     * chamada comum. Cada parâmetro abaixo empurra o Opus para o extremo
-     * oposto — o custo é banda de subida por pessoa FALANDO (não por pessoa
-     * na sala), que numa conversa real fica na casa de algumas centenas de
-     * kbps no total.
+     * - voz: `minptime=10;useinbandfec=1;usedtx=1`, mono, quadro de 20 ms —
+     *   o que o Discord usa;
+     * - áudio da tela: estéreo e teto alto, sem DTX.
+     *
+     * Antes estavam aqui `stereo=1`, `ptime=10`, `maxaveragebitrate=510000` e
+     * companhia, e todos vazavam para a voz: estéreo de mentira (o dobro de
+     * bits para o mesmo som mono) e pacote de 10 ms.
      */
     parameters: {
-      // Resiliência a perda de pacote embutida no próprio codec (RFC 6716
-      // §2.1.7) — repõe quadro perdido sem retransmissão, essencial numa
-      // faixa de bitrate alta onde cada perda custa mais.
-      useinbandfec: 1,
-      // SEM `usedtx`: DTX corta o envio nos trechos que o encoder considera
-      // silêncio, e essa detecção é agressiva o bastante para comer o início
-      // de fala. Para "melhor som possível" isso é o avesso do que se quer —
-      // o ganho seria economizar banda de quem está calado, e não é esse o
-      // objetivo aqui.
-      //
-      // 510 kbps é o TETO ABSOLUTO do Opus (RFC 7587 §7.1, `maxaveragebitrate`).
-      // Na prática o encoder só chega perto disso em música/estéreo; para voz
-      // ele se acomoda bem abaixo, mas sem este teto alto ele NUNCA passa do
-      // preset conservador do navegador, por mais banda que sobre.
-      maxaveragebitrate: 510000,
-      // Áudio de banda completa (48 kHz, todo o espectro audível). Sem isto o
-      // Chrome entrega `wideband` (16 kHz) e tudo acima de 8 kHz — o "ar" da
-      // voz, sibilância, presença — simplesmente não existe do outro lado.
-      maxplaybackrate: 48000,
-      'sprop-maxcapturerate': 48000,
-      // Estéreo habilitado na negociação. A captura de voz continua mono (ver
-      // `useMediasoupTalkControls`), mas deixar isto ligado evita que o
-      // caminho estéreo seja descartado na negociação — e é o que permite o
-      // soundboard/áudio de tela chegarem em estéreo de verdade.
-      stereo: 1,
-      'sprop-stereo': 1,
-      // Pacotes de 10 ms em vez dos 20 ms padrão: metade da latência de
-      // empacotamento e menos áudio perdido por pacote descartado. Custa mais
-      // overhead de cabeçalho RTP, que a esta altura de bitrate é ruído.
-      ptime: 10,
       minptime: 10,
-      // Sem limite de complexidade: o encoder usa o algoritmo mais caro (e
-      // mais fiel) que a CPU permitir, em vez de economizar ciclos.
-      complexity: 10,
+      // Resiliência a perda de pacote embutida no próprio codec (RFC 6716
+      // §2.1.7) — repõe quadro perdido sem retransmissão.
+      useinbandfec: 1,
     },
   },
   /*

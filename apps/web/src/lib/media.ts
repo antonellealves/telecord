@@ -3,13 +3,15 @@ import {
   VideoPresets,
   type AudioPreset,
   type RemoteTrack,
+  type RoomConnectOptions,
   type RoomOptions,
   type ScreenShareCaptureOptions,
   type TrackPublishOptions,
   type VideoCaptureOptions,
   type VideoEncoding,
 } from 'livekit-client';
-import { SCREEN_AUDIO_PROFILE, VOICE_PROFILE, type AudioSendProfile } from './audioSendProfile';
+import { SCREEN_AUDIO_PROFILE, VOICE_PROFILE, voiceProfileFor, type AudioSendProfile } from './audioSendProfile';
+import { VOICE_RTC_CONFIGURATION, type VoiceBitrate } from './voice/voiceProfile';
 import type { ScreenCodec } from './screenCodec';
 import { canCaptureSystemAudio } from './shell';
 
@@ -147,10 +149,16 @@ function audioPreset(profile: AudioSendProfile): AudioPreset {
  * Voz. Bitrate, RED e DTX vêm de `VOICE_PROFILE` (`audioSendProfile.ts`), que
  * explica a escolha e é o que a auditoria do sender confere.
  *
- * O servidor LiveKit responde `maxaveragebitrate=510000` no SDP, então é o
- * `maxBitrate` do sender que manda de fato no encoder.
+ * É o teto PADRÃO (64 kbps). O teto escolhido na sala é aplicado por
+ * `useLiveKitVoicePipeline`, que também troca o `maxaveragebitrate=510000`
+ * da resposta do servidor pelo mesmo valor.
  */
 export const VOICE_PRESET: AudioPreset = audioPreset(VOICE_PROFILE);
+
+/** O preset da voz para um teto escolhido na sala. */
+export function voicePreset(bitrate: VoiceBitrate): AudioPreset {
+  return audioPreset(voiceProfileFor(bitrate));
+}
 
 /**
  * Opções de publicação da TELA, que o SDK aplica também ao áudio dela.
@@ -197,15 +205,13 @@ export const roomOptions: RoomOptions = {
   dynacast: true,
   publishDefaults: {
     /*
-     * DTX desligado: ele corta o envio em trecho que o encoder julga
-     * silencioso, e o custo aparece no começo de cada frase (ataque de
-     * consoante engolido) e em fala baixa tratada como silêncio. Mesma decisão
-     * do mediasoup (`hooks/mediasoup/audioProfile.ts`).
+     * Como o Discord: DTX ligado (`usedtx=1` na resposta do servidor), para o
+     * microfone aberto e calado cair a ~1–2 kbps, e RED desligado — a voz é
+     * só Opus, com o FEC dele e NACK cobrindo perda.
      */
     dtx: VOICE_PROFILE.dtx,
-    // Redundância de pacote (RED): uma perda vira áudio íntegro em vez de um
-    // "tec" no meio da palavra. Dobra o custo de rede da voz.
     red: VOICE_PROFILE.red,
+    forceStereo: VOICE_PROFILE.stereo,
     audioPreset: VOICE_PRESET,
     stopMicTrackOnMute: false,
     /*
@@ -235,19 +241,30 @@ export const roomOptions: RoomOptions = {
     degradationPreference: 'maintain-resolution',
     simulcast: false,
   },
+  /*
+   * Captura como a do Discord: processamento de voz como PEDIDO (`ideal`),
+   * sem forçar taxa nem canais. O aparelho e a supressão de ruído entram por
+   * cima disto: o id exato vem de `useLiveKitVoicePipeline` e a supressão de
+   * `useNoiseFilter`, cada um dono da sua constraint.
+   */
   audioCaptureDefaults: {
-    echoCancellation: true,
-    noiseSuppression: true,
-    autoGainControl: true,
-    channelCount: 1,
-    /*
-     * Pede ao navegador para não reamostrar para 16 kHz antes de entregar.
-     * Sem isto, subir o bitrate do Opus não adianta: o que chega ao codec já
-     * vem sem as frequências altas, e o que se ganha é um arquivo maior com o
-     * mesmo som abafado.
-     */
-    sampleRate: 48000,
+    echoCancellation: { ideal: true },
+    noiseSuppression: { ideal: true },
+    autoGainControl: { ideal: true },
   },
+};
+
+/**
+ * Opções de conexão: a `RTCConfiguration` da voz (`max-bundle`,
+ * `rtcp-mux: require`). Os `iceServers` ficam de fora de propósito — sem
+ * eles o SDK usa os TURN que o servidor manda no join.
+ *
+ * Uma PeerConnection só por pessoa já é o padrão do SDK
+ * (`singlePeerConnection`), quando o servidor suporta: microfone `sendonly` e
+ * um `recvonly` por voz remota, o mesmo desenho do Discord.
+ */
+export const LIVEKIT_CONNECT_OPTIONS: RoomConnectOptions = {
+  rtcConfig: { ...VOICE_RTC_CONFIGURATION },
 };
 
 /**

@@ -1,3 +1,5 @@
+import { DEFAULT_VOICE_BITRATE, type VoiceBitrate } from './voice/voiceProfile';
+
 /**
  * O que a voz e o áudio da tela DEVEM sair transmitindo na sala LiveKit — e a
  * conferência de que estão saindo assim.
@@ -8,17 +10,18 @@
  * `RTCRtpSender` real (`auditAudioSender`). Os testes em
  * `audioSendProfile.test.ts` amarram as três.
  *
- * ## Por que a voz voltou de 256 para 96 kbps
+ * ## A voz segue o Discord
  *
- * 256 kbps não deixou a voz melhor e deixou a sala pior. O Opus mono já é
- * transparente para fala em ~64 kbps — acima de 96 kbps não há diferença que
- * um ouvido distinga, só bytes a mais. E a conta era multiplicada três vezes:
- * RED manda cada quadro duas vezes (~512 kbps no fio), DTX desligado faz
- * isso valer para todo microfone ABERTO e não só para quem fala, e o SFU
- * repassa cada um para cada ouvinte. Numa sala de 10 com microfones abertos,
- * eram ~5 Mbps de áudio na descida de cada pessoa, com prioridade alta — a
- * banda saía da transmissão de tela, que congelava, e a perda de pacote que
- * sobrava deixava a própria voz robótica.
+ * 64 kbps mono, Opus só (sem RED), FEC dentro do Opus e DTX ligado — o que
+ * o dump do `webrtc-internals` do Discord mostra (ver `voice/voiceProfile.ts`).
+ *
+ * - **64 kbps**: o Opus mono já é transparente para fala aí. O teto sobe por
+ *   sala (96/128) para quem quer folga, sem mudar o padrão.
+ * - **Sem RED**: RED manda cada quadro duas vezes. O FEC do Opus e o NACK
+ *   cobrem a perda isolada por uma fração do custo.
+ * - **DTX ligado**: microfone aberto e calado cai para ~1–2 kbps. Numa sala
+ *   cheia, quase todo mundo está calado quase sempre — é a maior economia
+ *   de banda da sala.
  */
 
 export interface AudioSendProfile {
@@ -31,27 +34,24 @@ export interface AudioSendProfile {
   dtx: boolean;
 }
 
-/**
- * Microfone.
- *
- * - 96 kbps mono: banda completa (20 kHz) com folga para transiente.
- * - RED ligado: uma perda isolada chega íntegra em vez de virar estalo, e a
- *   96 kbps o dobro ainda cabe (~220 kbps no fio).
- * - DTX desligado: ele engolia ataque de consoante e fala baixa.
- */
+/** Microfone, no teto padrão. Para o teto escolhido na sala, `voiceProfileFor`. */
 export const VOICE_PROFILE: AudioSendProfile = {
-  maxBitrate: 96_000,
+  maxBitrate: DEFAULT_VOICE_BITRATE,
   stereo: false,
-  red: true,
-  dtx: false,
+  red: false,
+  dtx: true,
 };
+
+export function voiceProfileFor(bitrate: VoiceBitrate): AudioSendProfile {
+  return { ...VOICE_PROFILE, maxBitrate: bitrate };
+}
 
 /**
  * Áudio da tela compartilhada (vídeo, música, jogo).
  *
  * Estéreo a 128 kbps, onde o Opus fica transparente para música mixada. RED
- * desligado: herdado da voz, ele dobrava o fluxo mais caro da sala, e um
- * estalo no áudio de um vídeo incomoda bem menos que a imagem travar.
+ * desligado: um estalo no áudio de um vídeo incomoda bem menos que a imagem
+ * travar. DTX desligado: música tem trecho baixo que não é silêncio.
  */
 export const SCREEN_AUDIO_PROFILE: AudioSendProfile = {
   maxBitrate: 128_000,
@@ -91,9 +91,9 @@ export interface RoomAudioScenario {
 }
 
 /**
- * Áudio que chega a UM ouvinte no pior caso realista: todo mundo de microfone
- * aberto (sem DTX, microfone aberto custa o mesmo que microfone falando) e as
- * telas com áudio de outras pessoas.
+ * Áudio que chega a UM ouvinte no pior caso: todo mundo FALANDO ao mesmo
+ * tempo e as telas com áudio de outras pessoas. Com DTX, quem está calado
+ * custa ~2 kbps — a conta abaixo ignora isso de propósito, para ser o teto.
  */
 export function roomAudioDownlink(
   scenario: RoomAudioScenario,
@@ -143,7 +143,6 @@ export interface AudioSenderSnapshot {
   codecs: SenderCodec[];
   /** `MediaStreamTrack.getSettings()` da captura. */
   sampleRate?: number;
-  channelCount?: number;
   /** Duas leituras espaçadas, para medir o bitrate real. */
   first?: OutboundSample;
   second?: OutboundSample;
@@ -159,7 +158,7 @@ export type AudioIssueCode =
   | 'fmtp-ceiling'
   | 'red'
   | 'sample-rate'
-  | 'channels'
+  | 'extra-codecs'
   | 'target-bitrate'
   | 'overspend';
 
@@ -196,8 +195,12 @@ function isMime(codec: { mimeType?: string } | undefined, mime: string): boolean
  *
  * Cada item pega um jeito conhecido de a configuração não chegar ao fio: o
  * SDK ignorar o `audioPreset`, o SFU responder um `fmtp` que corta o teto,
- * o navegador reamostrar a captura, o Firefox usar `maxaveragebitrate` como
- * bitrate fixo, o RED não ser negociado.
+ * o DTX não ser negociado, o aparelho capturar em banda estreita, o Firefox
+ * usar `maxaveragebitrate` como bitrate fixo, RED aparecer sem ser pedido.
+ *
+ * A captura não é forçada a 48 kHz nem a um canal (o Discord também não
+ * força): 44,1 kHz é normal e não é acusado. Só banda de TELEFONE (abaixo de
+ * 32 kHz) é, porque aí o agudo da voz já não existe antes do codec.
  */
 export function auditAudioSender(snapshot: AudioSenderSnapshot, profile: AudioSendProfile): AudioAudit {
   const issues: AudioIssue[] = [];
@@ -242,12 +245,14 @@ export function auditAudioSender(snapshot: AudioSenderSnapshot, profile: AudioSe
     issues.push({ code: 'red', message: profile.red ? 'RED pedido e saindo sem redundância' : 'RED saindo num perfil sem redundância' });
   }
 
-  if (snapshot.sampleRate !== undefined && snapshot.sampleRate < 48_000) {
-    issues.push({ code: 'sample-rate', message: `captura a ${snapshot.sampleRate} Hz — a banda alta morre antes do codec` });
+  // `setCodecPreferences` deixa a seção só com o Opus. O RED tem item próprio acima.
+  const extra = snapshot.codecs.filter((codec) => !isMime(codec, 'audio/opus') && !isMime(codec, 'audio/red'));
+  if (extra.length > 0) {
+    issues.push({ code: 'extra-codecs', message: `codecs além do Opus negociados: ${extra.map((codec) => codec.mimeType).join(', ')}` });
   }
-  const channels = profile.stereo ? 2 : 1;
-  if (snapshot.channelCount !== undefined && snapshot.channelCount !== channels) {
-    issues.push({ code: 'channels', message: `captura com ${snapshot.channelCount} canal(is), o perfil pede ${channels}` });
+
+  if (snapshot.sampleRate !== undefined && snapshot.sampleRate < 32_000) {
+    issues.push({ code: 'sample-rate', message: `captura a ${snapshot.sampleRate} Hz — a banda alta morre antes do codec` });
   }
 
   const target = snapshot.second?.targetBitrate;
@@ -273,6 +278,6 @@ export function auditAudioSender(snapshot: AudioSenderSnapshot, profile: AudioSe
 /** Uma linha para o console: o que está saindo, e o que diverge do perfil. */
 export function describeAudit(label: string, audit: AudioAudit, profile: AudioSendProfile): string {
   const measured = audit.measuredBitrate === undefined ? '' : ` · medido ${Math.round(audit.measuredBitrate / 1000)} kbps`;
-  const head = `[áudio] ${label}: Opus ${profile.maxBitrate / 1000} kbps${profile.stereo ? ' estéreo' : ' mono'}${profile.red ? ' + RED' : ''}${measured}`;
+  const head = `[áudio] ${label}: Opus ${profile.maxBitrate / 1000} kbps${profile.stereo ? ' estéreo' : ' mono'}${profile.red ? ' + RED' : ''}${profile.dtx ? ' + DTX' : ''}${measured}`;
   return audit.ok ? `${head} — conforme o perfil` : `${head} — DIVERGE: ${audit.issues.map((issue) => issue.message).join('; ')}`;
 }

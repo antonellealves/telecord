@@ -1,4 +1,5 @@
 import type { AudioCaptureOptions } from 'livekit-client';
+import { constraintBoolean } from './voice/voiceProfile';
 
 /**
  * O pedaço de `LocalAudioTrack` que a troca usa. Estreito de propósito: o
@@ -26,14 +27,25 @@ export interface CaptureProcessing {
 /**
  * As opções de captura que pedem esse processamento.
  *
- * `voiceIsolation` (o filtro do sistema operacional, que o LiveKit pede por
- * padrão) acompanha a supressão de ruído: é a mesma coisa com outro nome.
+ * `ideal`, como o Discord: aparelho sem um dos filtros abre do mesmo jeito,
+ * em vez de falhar a captura. `voiceIsolation` (o filtro do sistema
+ * operacional, que o LiveKit pede por padrão) acompanha a supressão de
+ * ruído: é a mesma coisa com outro nome.
  */
 export function captureOptionsFor(processing: CaptureProcessing): AudioCaptureOptions {
   return {
-    noiseSuppression: processing.noiseSuppression,
-    voiceIsolation: processing.noiseSuppression,
-    echoCancellation: processing.echoCancellation,
+    noiseSuppression: { ideal: processing.noiseSuppression },
+    voiceIsolation: { ideal: processing.noiseSuppression },
+    echoCancellation: { ideal: processing.echoCancellation },
+    autoGainControl: { ideal: true },
+  };
+}
+
+/** O processamento que as constraints de uma track pedem (sem olhar o que o navegador fez). */
+export function requestedProcessing(constraints: MediaTrackConstraints): Partial<CaptureProcessing> {
+  return {
+    noiseSuppression: constraintBoolean(constraints.noiseSuppression),
+    echoCancellation: constraintBoolean(constraints.echoCancellation),
   };
 }
 

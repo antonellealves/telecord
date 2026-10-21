@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
 import { LocalAudioTrack, type Room } from 'livekit-client';
-import { applyCaptureProcessing, captureOptionsFor, type CaptureProcessing } from '../lib/captureProcessing';
+import {
+  applyCaptureProcessing,
+  captureOptionsFor,
+  requestedProcessing,
+  type CaptureProcessing,
+} from '../lib/captureProcessing';
 import { RNNOISE_PROCESSOR_NAME, RnnoiseProcessor, isRnnoiseSupported } from '../lib/rnnoiseProcessor';
 import {
   ECHO_CANCELLATION_EVENT,
@@ -64,7 +69,7 @@ async function setCapture(room: Room, track: LocalAudioTrack | null, processing:
 async function setEchoUnderFilter(room: Room, track: LocalAudioTrack, echoCancellation: boolean): Promise<void> {
   const processing: CaptureProcessing = { noiseSuppression: false, echoCancellation };
   room.options.audioCaptureDefaults = { ...room.options.audioCaptureDefaults, ...captureOptionsFor(processing) };
-  if (track.constraints.echoCancellation === echoCancellation) return;
+  if (requestedProcessing(track.constraints).echoCancellation === echoCancellation) return;
   await track.restartTrack({ ...track.constraints, ...captureOptionsFor(processing) });
 }
 
