@@ -11,7 +11,7 @@ Os dois transportes são **SFU** — não há mesh P2P em lugar nenhum.
 | | LiveKit (padrão) | mediasoup (servidor próprio) |
 |---|---|---|
 | Biblioteca no navegador | `livekit-client` 2.22 + `@livekit/components-react` | `mediasoup-client` 3.23 |
-| Servidor | LiveKit Cloud (ou `livekit/` self-host) | `apps/mediasoup-sfu` |
+| Servidor | `livekit-server` próprio na VM (`livekit/docker-compose.prod.yml`) | `apps/mediasoup-sfu`, na mesma VM |
 | PeerConnections por pessoa | **uma** (`singlePeerConnection`, padrão do SDK): microfone `sendonly` + um `recvonly` por voz remota — o desenho do Discord | **duas**: um transporte de envio e um de recepção (é como o mediasoup-client funciona) |
 | `getUserMedia` | o SDK, a partir de `roomOptions.audioCaptureDefaults` (`lib/media.ts`) | `captureMicrophone` em `hooks/mediasoup/useMediasoupTalkControls.ts` |
 | Oferta/resposta | o SDK; o telecord entra pelo evento `LocalSenderCreated` (`hooks/useLiveKitVoicePipeline.ts`) | o mediasoup-client; o telecord embrulha o handler (`hooks/mediasoup/voiceDevice.ts`) |
@@ -78,7 +78,7 @@ em `transformFrame`, que hoje devolve o quadro intacto.
 
 Abra `chrome://webrtc-internals` em outra aba **antes** de entrar na sala, ligue o microfone e fale.
 
-1. **Quantas PeerConnections.** LiveKit: uma, para `wss://…livekit.cloud`. mediasoup: duas (envio e
+1. **Quantas PeerConnections.** LiveKit: uma, para `wss://livekit-<ip>.nip.io`. mediasoup: duas (envio e
    recepção).
 2. **Configuração.** Na linha da PeerConnection: `bundlePolicy: max-bundle`, `rtcpMuxPolicy: require`.
 3. **Captura.** Em `getUserMedia` (topo da página): `deviceId: {exact: "<id longo>"}` — não `default` —,
@@ -105,9 +105,10 @@ Abra `chrome://webrtc-internals` em outra aba **antes** de entrar na sala, ligue
 
 ### O que foi medido aqui
 
-Chrome sem interface, servidor local, mesma máquina (RTT ~1 ms):
+Chrome sem interface, servidores locais, mesma máquina (RTT ~1 ms). O `livekit-server` do teste é o
+1.13.10; o da VM está no 1.13.6, da mesma linha — a resposta de SDP é a mesma.
 
-| | mediasoup | LiveKit 1.13.10 |
+| | mediasoup | livekit-server 1.13.10 |
 |---|---|---|
 | codec de envio | `opus (111, minptime=10;usedtx=1;useinbandfec=1)` | `opus (111, maxaveragebitrate=64000;minptime=10;usedtx=1;useinbandfec=1)` |
 | codec de recepção | `opus (111, minptime=10;useinbandfec=1)` | `opus (111, minptime=10;stereo=1;useinbandfec=1)` |
