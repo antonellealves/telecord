@@ -106,7 +106,7 @@ Abra `chrome://webrtc-internals` em outra aba **antes** de entrar na sala, ligue
 ### O que foi medido aqui
 
 Chrome sem interface, servidores locais, mesma máquina (RTT ~1 ms). O `livekit-server` do teste é o
-1.13.10; o da VM está no 1.13.6, da mesma linha — a resposta de SDP é a mesma.
+1.13.10; o da VM está no 1.13.6, da mesma linha. Vale repetir o checklist acima na produção.
 
 | | mediasoup | livekit-server 1.13.10 |
 |---|---|---|
